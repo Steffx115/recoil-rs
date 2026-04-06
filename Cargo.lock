@@ -3214,6 +3214,7 @@ dependencies = [
 name = "recoil-net"
 version = "0.1.0"
 dependencies = [
+ "bevy_ecs",
  "bincode",
  "recoil-sim",
  "serde",

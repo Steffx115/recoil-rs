@@ -6,12 +6,14 @@ use winit::window::Window;
 use crate::camera::Camera;
 use crate::gpu::GpuContext;
 use crate::terrain::TerrainResources;
+use crate::unit_renderer::{UnitInstance, UnitRenderer};
 
 /// Top-level renderer that owns GPU state and all render sub-systems.
 pub struct Renderer {
     pub gpu: GpuContext,
     pub camera: Camera,
     terrain: TerrainResources,
+    unit_renderer: UnitRenderer,
 }
 
 impl Renderer {
@@ -27,10 +29,14 @@ impl Renderer {
         let terrain =
             TerrainResources::new(&gpu, &camera).context("failed to create terrain resources")?;
 
+        let unit_renderer =
+            UnitRenderer::new(&gpu.device, gpu.config.format, terrain.bind_group_layout());
+
         Ok(Self {
             gpu,
             camera,
             terrain,
+            unit_renderer,
         })
     }
 
@@ -92,6 +98,10 @@ impl Renderer {
                 wgpu::IndexFormat::Uint32,
             );
             pass.draw_indexed(0..self.terrain.index_count, 0, 0..1);
+
+            // Units: reuse the same camera bind group (group 0).
+            pass.set_bind_group(0, &self.terrain.camera_bind_group, &[]);
+            self.unit_renderer.render(&mut pass);
         }
 
         self.gpu.queue.submit(std::iter::once(encoder.finish()));
@@ -118,6 +128,12 @@ impl Renderer {
             far: camera.far,
         };
         self.terrain.update_camera(&self.gpu.queue, &self.camera);
+    }
+
+    /// Upload unit instance data for the next frame.
+    pub fn update_units(&mut self, instances: &[UnitInstance]) {
+        self.unit_renderer
+            .prepare(&self.gpu.device, &self.gpu.queue, instances);
     }
 
     /// Access terrain resources (e.g. for custom draw calls).
