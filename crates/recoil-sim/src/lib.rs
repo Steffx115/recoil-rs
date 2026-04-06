@@ -3,6 +3,7 @@ pub mod combat_data;
 pub mod commands;
 pub mod components;
 pub mod construction;
+pub mod damage;
 pub mod determinism;
 pub mod economy;
 pub mod factory;

@@ -118,6 +118,12 @@ pub struct Health {
 #[derive(Component, Serialize, Deserialize, Debug, Clone)]
 pub struct Dead;
 
+/// Applied by paralyzer weapons — prevents the entity from firing.
+#[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Stunned {
+    pub remaining_frames: u32,
+}
+
 // ---------------------------------------------------------------------------
 // Identity
 // ---------------------------------------------------------------------------
