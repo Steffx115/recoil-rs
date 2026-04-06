@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -11,30 +12,25 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 
-use recoil_math::{SimFloat, SimVec2, SimVec3};
+use recoil_math::{SimFloat, SimVec3};
 use recoil_render::camera::Camera;
 use recoil_render::particles::ParticleSystem;
 use recoil_render::projectile_renderer::ProjectileInstance;
 use recoil_render::unit_renderer::UnitInstance;
 use recoil_render::Renderer;
-use recoil_sim::collision::collision_system;
-use recoil_sim::combat_data::WeaponSet;
-use recoil_sim::combat_data::{ArmorClass, DamageTable, WeaponDef, WeaponInstance};
-use recoil_sim::commands::{command_system, CommandQueue};
+use recoil_sim::combat_data::{WeaponInstance, WeaponSet};
+use recoil_sim::commands::CommandQueue;
 use recoil_sim::components::Stunned;
 use recoil_sim::construction::Reclaimable;
-use recoil_sim::damage::{damage_system, stun_system};
-use recoil_sim::economy::{economy_system, init_economy, EconomyState, ResourceProducer};
-use recoil_sim::fog::{fog_system, FogOfWar};
-use recoil_sim::lifecycle::{cleanup_dead, init_lifecycle, spawn_unit};
-use recoil_sim::movement::movement_system;
-use recoil_sim::pathfinding::TerrainGrid;
-use recoil_sim::projectile::{
-    projectile_movement_system, spawn_projectile_system, ImpactEventQueue, Projectile,
-};
+use recoil_sim::economy::{init_economy, EconomyState, ResourceProducer};
+use recoil_sim::fog::FogOfWar;
+use recoil_sim::lifecycle::spawn_unit;
+use recoil_sim::map::load_map_manifest;
+use recoil_sim::projectile::{ImpactEventQueue, Projectile};
 use recoil_sim::selection::screen_to_ground_raw;
-use recoil_sim::spatial::SpatialGrid;
-use recoil_sim::targeting::{reload_system, targeting_system, FireEventQueue, WeaponRegistry};
+use recoil_sim::sim_runner;
+use recoil_sim::targeting::WeaponRegistry;
+use recoil_sim::unit_defs::UnitDefRegistry;
 use recoil_sim::{
     Allegiance, CollisionRadius, Dead, Heading, Health, MoveState, MovementParams, Position,
     SightRange, Target, UnitType, Velocity,
@@ -71,9 +67,6 @@ impl Lcg {
 // ---------------------------------------------------------------------------
 
 const NUM_UNITS: usize = 18;
-const WORLD_SIZE: f32 = 600.0;
-const GRID_CELL_SIZE: i32 = 10;
-const GRID_DIM: i32 = 64;
 const SELECT_RADIUS_SQ: f32 = 400.0; // 20^2
 
 // Camera movement
@@ -187,32 +180,42 @@ impl SimState {
         self.selected = None;
         self.frame_count = 0;
 
-        init_lifecycle(&mut self.world);
+        // Use sim_runner to initialize all resources (lifecycle, spatial grid,
+        // terrain, weapon registry, damage table, fire/impact queues, economy).
+        sim_runner::init_sim_world(&mut self.world);
 
-        let grid = SpatialGrid::new(SimFloat::from_int(GRID_CELL_SIZE), GRID_DIM, GRID_DIM);
-        self.world.insert_resource(grid);
+        // Load unit defs from Armada faction
+        let unit_def_registry =
+            UnitDefRegistry::load_directory(Path::new("assets/unitdefs/armada"))
+                .unwrap_or_default();
+        tracing::info!("Loaded {} Armada unit defs", unit_def_registry.defs.len());
 
-        let terrain = TerrainGrid::new(64, 64, SimFloat::ONE);
-        self.world.insert_resource(terrain);
+        // Register all weapon defs from loaded unit defs into the WeaponRegistry.
+        // Build a map from (unit_type_id, weapon_index) -> weapon_def_id for spawning.
+        let mut weapon_def_ids: std::collections::BTreeMap<u32, Vec<u32>> =
+            std::collections::BTreeMap::new();
+        {
+            let mut registry = self.world.resource_mut::<WeaponRegistry>();
+            for (unit_type_id, unit_def) in &unit_def_registry.defs {
+                let mut ids = Vec::new();
+                for weapon_def in unit_def.to_weapon_defs() {
+                    let id = registry.defs.len() as u32;
+                    registry.defs.push(weapon_def);
+                    ids.push(id);
+                }
+                weapon_def_ids.insert(*unit_type_id, ids);
+            }
+        }
 
-        self.world.insert_resource(DamageTable::default());
-
-        let mut registry = WeaponRegistry { defs: Vec::new() };
-        registry.defs.push(WeaponDef {
-            damage: SimFloat::from_int(10),
-            damage_type: recoil_sim::combat_data::DamageType::Normal,
-            range: SimFloat::from_int(120),
-            reload_time: 30,
-            projectile_speed: SimFloat::from_int(8),
-            area_of_effect: SimFloat::ZERO,
-            is_paralyzer: false,
-        });
-        self.world.insert_resource(registry);
-
-        self.world
-            .insert_resource(FireEventQueue { events: Vec::new() });
-        self.world
-            .insert_resource(ImpactEventQueue { events: Vec::new() });
+        // Load map manifest for start positions
+        let map_manifest = load_map_manifest(Path::new("assets/maps/small_duel/manifest.ron")).ok();
+        if let Some(ref manifest) = map_manifest {
+            tracing::info!(
+                "Loaded map '{}' with {} start positions",
+                manifest.name,
+                manifest.start_positions.len()
+            );
+        }
 
         init_economy(&mut self.world, &[0, 1]);
 
@@ -220,54 +223,107 @@ impl SimState {
         let fog = FogOfWar::new(64, 64, &[0, 1]);
         self.world.insert_resource(fog);
 
+        // Look up Peewee def (unit_type_id 100) for unit spawning stats
+        let peewee_def = unit_def_registry.get(100);
+
+        // Extract stats from unit def, with fallbacks
+        let (hp, max_speed, accel, turn_rate, collision_r, sight_r, armor_class, unit_type_id) =
+            if let Some(def) = peewee_def {
+                (
+                    SimFloat::from_f64(def.max_health),
+                    SimFloat::from_f64(def.max_speed),
+                    SimFloat::from_f64(def.acceleration),
+                    SimFloat::from_f64(def.turn_rate),
+                    SimFloat::from_f64(def.collision_radius),
+                    SimFloat::from_f64(def.sight_range),
+                    def.parse_armor_class(),
+                    def.unit_type_id,
+                )
+            } else {
+                tracing::warn!("Peewee unit def (id=100) not found, using fallback stats");
+                (
+                    SimFloat::from_int(500),
+                    SimFloat::from_int(2),
+                    SimFloat::ONE,
+                    SimFloat::PI / SimFloat::from_int(30),
+                    SimFloat::from_int(8),
+                    SimFloat::from_int(80),
+                    recoil_sim::combat_data::ArmorClass::Light,
+                    1u32,
+                )
+            };
+
+        let peewee_weapon_ids = weapon_def_ids.get(&100).cloned().unwrap_or_default();
+
+        // Determine spawn positions from map start positions or fallback to random
+        let start_pos_0: (f32, f32);
+        let start_pos_1: (f32, f32);
+        if let Some(ref manifest) = map_manifest {
+            let sp0 = manifest.start_positions.iter().find(|sp| sp.team == 0);
+            let sp1 = manifest.start_positions.iter().find(|sp| sp.team == 1);
+            start_pos_0 = sp0
+                .map(|sp| (sp.x as f32, sp.z as f32))
+                .unwrap_or((200.0, 200.0));
+            start_pos_1 = sp1
+                .map(|sp| (sp.x as f32, sp.z as f32))
+                .unwrap_or((824.0, 824.0));
+        } else {
+            start_pos_0 = (150.0, 150.0);
+            start_pos_1 = (450.0, 450.0);
+        }
+
+        // Spawn units around start positions
         let mut rng = Lcg::new(self.rng_seed);
         for i in 0..NUM_UNITS {
-            let x = rng.next_f32(WORLD_SIZE);
-            let z = rng.next_f32(WORLD_SIZE);
+            let team = (i % 2) as u8;
+            let (cx, cz) = if team == 0 { start_pos_0 } else { start_pos_1 };
+            // Spread units in a cluster around the start position
+            let x = cx + rng.next_f32(120.0) - 60.0;
+            let z = cz + rng.next_f32(120.0) - 60.0;
 
             let entity = spawn_unit(
                 &mut self.world,
                 Position {
                     pos: SimVec3::new(SimFloat::from_f32(x), SimFloat::ZERO, SimFloat::from_f32(z)),
                 },
-                UnitType { id: 1 },
-                Allegiance {
-                    team: (i % 2) as u8,
-                },
+                UnitType { id: unit_type_id },
+                Allegiance { team },
                 Health {
-                    current: SimFloat::from_int(500),
-                    max: SimFloat::from_int(500),
+                    current: hp,
+                    max: hp,
                 },
             );
+
+            let weapons: Vec<WeaponInstance> = peewee_weapon_ids
+                .iter()
+                .map(|&def_id| WeaponInstance {
+                    def_id,
+                    reload_remaining: 0,
+                })
+                .collect();
 
             self.world.entity_mut(entity).insert((
                 MoveState::Idle,
                 MovementParams {
-                    max_speed: SimFloat::from_int(2),
-                    acceleration: SimFloat::ONE,
-                    turn_rate: SimFloat::PI / SimFloat::from_int(30),
+                    max_speed,
+                    acceleration: accel,
+                    turn_rate,
                 },
                 CollisionRadius {
-                    radius: SimFloat::from_int(8),
+                    radius: collision_r,
                 },
                 Heading {
                     angle: SimFloat::ZERO,
                 },
                 Velocity { vel: SimVec3::ZERO },
-                ArmorClass::Light,
+                armor_class,
                 Target { entity: None },
-                WeaponSet {
-                    weapons: vec![WeaponInstance {
-                        def_id: 0,
-                        reload_remaining: 0,
-                    }],
-                },
+                WeaponSet { weapons },
                 CommandQueue::default(),
-                SightRange {
-                    range: SimFloat::from_int(80),
-                },
+                SightRange { range: sight_r },
             ));
 
+            // First unit per team is a resource producer
             if i < 2 {
                 self.world.entity_mut(entity).insert(ResourceProducer {
                     metal_per_tick: SimFloat::from_int(1),
@@ -276,40 +332,25 @@ impl SimState {
             }
         }
 
+        // Store unit def registry as a resource for potential future use
+        self.world.insert_resource(unit_def_registry);
+
         self.rng_seed = self.rng_seed.wrapping_add(7);
     }
 
     /// Run one simulation tick. Returns impact positions and death positions
     /// for particle effects.
     fn tick(&mut self) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
-        // 1. Rebuild SpatialGrid
-        {
-            let entities: Vec<(Entity, SimVec3)> = self
-                .world
-                .query_filtered::<(Entity, &Position), Without<Dead>>()
-                .iter(&self.world)
-                .map(|(e, p)| (e, p.pos))
-                .collect();
+        // Snapshot entities with low health before sim_tick to detect deaths
+        let pre_death: Vec<[f32; 3]> = self
+            .world
+            .query_filtered::<(&Position, &Health), Without<Dead>>()
+            .iter(&self.world)
+            .filter(|(_, h)| h.current <= SimFloat::ZERO)
+            .map(|(p, _)| [p.pos.x.to_f32(), p.pos.y.to_f32() + 5.0, p.pos.z.to_f32()])
+            .collect();
 
-            let mut grid = self.world.resource_mut::<SpatialGrid>();
-            grid.clear();
-            for (e, pos) in entities {
-                grid.insert(e, SimVec2::new(pos.x, pos.z));
-            }
-        }
-
-        self.world.resource_mut::<FireEventQueue>().events.clear();
-
-        command_system(&mut self.world);
-        economy_system(&mut self.world);
-        movement_system(&mut self.world);
-        collision_system(&mut self.world);
-        targeting_system(&mut self.world);
-        reload_system(&mut self.world);
-        spawn_projectile_system(&mut self.world);
-        projectile_movement_system(&mut self.world);
-
-        // Capture impact positions for particle effects before damage_system drains them
+        // Capture impact positions before sim_tick processes them
         let impact_positions: Vec<[f32; 3]> = self
             .world
             .resource::<ImpactEventQueue>()
@@ -324,17 +365,8 @@ impl SimState {
             })
             .collect();
 
-        // Snapshot entities with low health before damage/cleanup to detect deaths
-        let pre_death: Vec<[f32; 3]> = self
-            .world
-            .query_filtered::<(&Position, &Health), Without<Dead>>()
-            .iter(&self.world)
-            .filter(|(_, h)| h.current <= SimFloat::ZERO)
-            .map(|(p, _)| [p.pos.x.to_f32(), p.pos.y.to_f32() + 5.0, p.pos.z.to_f32()])
-            .collect();
-
-        damage_system(&mut self.world);
-        stun_system(&mut self.world);
+        // Run all 14 systems via the canonical sim_runner
+        sim_runner::sim_tick(&mut self.world);
 
         // Detect newly dead entities (marked Dead by damage_system this frame)
         let new_deaths: Vec<[f32; 3]> = {
@@ -352,11 +384,6 @@ impl SimState {
         } else {
             new_deaths
         };
-
-        cleanup_dead(&mut self.world);
-
-        // Run fog of war system (cell size matches terrain grid)
-        fog_system(&mut self.world, SimFloat::ONE);
 
         (impact_positions, death_positions)
     }
