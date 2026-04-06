@@ -21,8 +21,11 @@ use recoil_sim::collision::collision_system;
 use recoil_sim::combat_data::WeaponSet;
 use recoil_sim::combat_data::{ArmorClass, DamageTable, WeaponDef, WeaponInstance};
 use recoil_sim::commands::{command_system, CommandQueue};
+use recoil_sim::components::Stunned;
+use recoil_sim::construction::Reclaimable;
 use recoil_sim::damage::{damage_system, stun_system};
-use recoil_sim::economy::{economy_system, init_economy, ResourceProducer};
+use recoil_sim::economy::{economy_system, init_economy, EconomyState, ResourceProducer};
+use recoil_sim::fog::{fog_system, FogOfWar};
 use recoil_sim::lifecycle::{cleanup_dead, init_lifecycle, spawn_unit};
 use recoil_sim::movement::movement_system;
 use recoil_sim::pathfinding::TerrainGrid;
@@ -34,7 +37,7 @@ use recoil_sim::spatial::SpatialGrid;
 use recoil_sim::targeting::{reload_system, targeting_system, FireEventQueue, WeaponRegistry};
 use recoil_sim::{
     Allegiance, CollisionRadius, Dead, Heading, Health, MoveState, MovementParams, Position,
-    Target, UnitType, Velocity,
+    SightRange, Target, UnitType, Velocity,
 };
 
 // ---------------------------------------------------------------------------
@@ -213,6 +216,10 @@ impl SimState {
 
         init_economy(&mut self.world, &[0, 1]);
 
+        // Fog of War — grid covers 64x64 cells for the two teams
+        let fog = FogOfWar::new(64, 64, &[0, 1]);
+        self.world.insert_resource(fog);
+
         let mut rng = Lcg::new(self.rng_seed);
         for i in 0..NUM_UNITS {
             let x = rng.next_f32(WORLD_SIZE);
@@ -256,6 +263,9 @@ impl SimState {
                     }],
                 },
                 CommandQueue::default(),
+                SightRange {
+                    range: SimFloat::from_int(80),
+                },
             ));
 
             if i < 2 {
@@ -269,7 +279,9 @@ impl SimState {
         self.rng_seed = self.rng_seed.wrapping_add(7);
     }
 
-    fn tick(&mut self) {
+    /// Run one simulation tick. Returns impact positions and death positions
+    /// for particle effects.
+    fn tick(&mut self) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
         // 1. Rebuild SpatialGrid
         {
             let entities: Vec<(Entity, SimVec3)> = self
@@ -296,26 +308,111 @@ impl SimState {
         reload_system(&mut self.world);
         spawn_projectile_system(&mut self.world);
         projectile_movement_system(&mut self.world);
+
+        // Capture impact positions for particle effects before damage_system drains them
+        let impact_positions: Vec<[f32; 3]> = self
+            .world
+            .resource::<ImpactEventQueue>()
+            .events
+            .iter()
+            .map(|e| {
+                [
+                    e.position.x.to_f32(),
+                    e.position.y.to_f32() + 5.0,
+                    e.position.z.to_f32(),
+                ]
+            })
+            .collect();
+
+        // Snapshot entities with low health before damage/cleanup to detect deaths
+        let pre_death: Vec<[f32; 3]> = self
+            .world
+            .query_filtered::<(&Position, &Health), Without<Dead>>()
+            .iter(&self.world)
+            .filter(|(_, h)| h.current <= SimFloat::ZERO)
+            .map(|(p, _)| [p.pos.x.to_f32(), p.pos.y.to_f32() + 5.0, p.pos.z.to_f32()])
+            .collect();
+
         damage_system(&mut self.world);
         stun_system(&mut self.world);
+
+        // Detect newly dead entities (marked Dead by damage_system this frame)
+        let new_deaths: Vec<[f32; 3]> = {
+            let mut q = self.world.query::<(&Position, &Dead, &Health)>();
+            q.iter(&self.world)
+                .filter(|(_, _, h)| h.current <= SimFloat::ZERO)
+                .map(|(p, _, _)| [p.pos.x.to_f32(), p.pos.y.to_f32() + 5.0, p.pos.z.to_f32()])
+                .collect()
+        };
+
+        // Combine pre-death captures with newly-dead entities (avoid duplicates
+        // by using new_deaths which is authoritative)
+        let death_positions = if new_deaths.is_empty() {
+            pre_death
+        } else {
+            new_deaths
+        };
+
         cleanup_dead(&mut self.world);
+
+        // Run fog of war system (cell size matches terrain grid)
+        fog_system(&mut self.world, SimFloat::ONE);
+
+        (impact_positions, death_positions)
     }
 
     /// Extract unit instances for rendering (exclude Dead entities).
+    /// Health scales brightness; stunned units get a purple tint;
+    /// selected units are scaled up via a heading trick (rendered bigger).
     fn unit_instances(&mut self) -> Vec<UnitInstance> {
+        let selected = self.selected;
+
         self.world
-            .query_filtered::<(&Position, &Heading, &Allegiance), Without<Dead>>()
+            .query_filtered::<(
+                Entity,
+                &Position,
+                &Heading,
+                &Allegiance,
+                &Health,
+                Option<&Stunned>,
+            ), Without<Dead>>()
             .iter(&self.world)
-            .map(|(pos, heading, allegiance)| {
-                let team_color = if allegiance.team == 0 {
-                    [0.3, 0.5, 1.0] // blue
+            .map(|(entity, pos, heading, allegiance, health, stunned)| {
+                // Base team color
+                let mut color = if allegiance.team == 0 {
+                    [0.3f32, 0.5, 1.0] // blue
                 } else {
-                    [1.0, 0.3, 0.3] // red
+                    [1.0f32, 0.3, 0.3] // red
                 };
+
+                // Scale brightness by HP fraction (min 0.2 so units are never invisible)
+                let hp_frac = if health.max > SimFloat::ZERO {
+                    (health.current.to_f32() / health.max.to_f32()).clamp(0.2, 1.0)
+                } else {
+                    1.0
+                };
+                color[0] *= hp_frac;
+                color[1] *= hp_frac;
+                color[2] *= hp_frac;
+
+                // Stunned units: blend toward purple
+                if stunned.is_some() {
+                    color[0] = color[0] * 0.5 + 0.5 * 0.6;
+                    color[1] *= 0.3;
+                    color[2] = color[2] * 0.5 + 0.5 * 0.8;
+                }
+
+                // Selected unit: render slightly brighter (boost toward white)
+                if selected == Some(entity) {
+                    color[0] = (color[0] + 0.4).min(1.0);
+                    color[1] = (color[1] + 0.4).min(1.0);
+                    color[2] = (color[2] + 0.4).min(1.0);
+                }
+
                 UnitInstance {
                     position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()],
                     heading: heading.angle.to_f32(),
-                    team_color,
+                    team_color: color,
                     _pad: 0.0,
                 }
             })
@@ -351,6 +448,128 @@ impl SimState {
                 }
             })
             .collect()
+    }
+
+    /// Extract wreckage (Reclaimable, not Dead) as grey flattened billboards.
+    fn wreckage_instances(&mut self) -> Vec<ProjectileInstance> {
+        self.world
+            .query_filtered::<(&Position, &Reclaimable), Without<Dead>>()
+            .iter(&self.world)
+            .map(|(pos, _recl)| ProjectileInstance {
+                position: [
+                    pos.pos.x.to_f32(),
+                    pos.pos.y.to_f32() + 1.0,
+                    pos.pos.z.to_f32(),
+                ],
+                size: 4.0,
+                velocity_dir: [0.0, 1.0, 0.0],
+                _pad: 0.0,
+                color: [0.4, 0.35, 0.25], // grey-brown wreckage
+                _pad2: 0.0,
+            })
+            .collect()
+    }
+
+    /// Draw thin red lines from units to their targets (rendered as small billboards
+    /// along the line at intervals).
+    fn target_line_instances(&mut self) -> Vec<ProjectileInstance> {
+        let mut instances = Vec::new();
+
+        // Collect targeting pairs: (source_pos, target_entity)
+        let pairs: Vec<([f32; 3], Entity)> = self
+            .world
+            .query_filtered::<(&Position, &Target), Without<Dead>>()
+            .iter(&self.world)
+            .filter_map(|(pos, target)| {
+                target.entity.map(|t| {
+                    (
+                        [
+                            pos.pos.x.to_f32(),
+                            pos.pos.y.to_f32() + 5.0,
+                            pos.pos.z.to_f32(),
+                        ],
+                        t,
+                    )
+                })
+            })
+            .collect();
+
+        for (src, target_entity) in pairs {
+            if let Some(target_pos) = self.world.get::<Position>(target_entity) {
+                let dst = [
+                    target_pos.pos.x.to_f32(),
+                    target_pos.pos.y.to_f32() + 5.0,
+                    target_pos.pos.z.to_f32(),
+                ];
+                // Place 3 small dots along the line
+                for i in 1..=3 {
+                    let t = i as f32 / 4.0;
+                    let p = [
+                        src[0] + (dst[0] - src[0]) * t,
+                        src[1] + (dst[1] - src[1]) * t,
+                        src[2] + (dst[2] - src[2]) * t,
+                    ];
+                    instances.push(ProjectileInstance {
+                        position: p,
+                        size: 1.0,
+                        velocity_dir: [0.0, 1.0, 0.0],
+                        _pad: 0.0,
+                        color: [1.0, 0.1, 0.1], // red targeting line dots
+                        _pad2: 0.0,
+                    });
+                }
+            }
+        }
+
+        instances
+    }
+
+    /// Count alive units per team.
+    fn unit_counts(&mut self) -> (usize, usize) {
+        let mut blue = 0usize;
+        let mut red = 0usize;
+        for allegiance in self
+            .world
+            .query_filtered::<&Allegiance, Without<Dead>>()
+            .iter(&self.world)
+        {
+            if allegiance.team == 0 {
+                blue += 1;
+            } else {
+                red += 1;
+            }
+        }
+        (blue, red)
+    }
+
+    /// Log economy info every N frames.
+    fn log_economy(&mut self) {
+        let unit_count: usize = self
+            .world
+            .query_filtered::<Entity, Without<Dead>>()
+            .iter(&self.world)
+            .count();
+
+        if let Some(economy) = self.world.get_resource::<EconomyState>() {
+            let t0 = economy.teams.get(&0);
+            let t1 = economy.teams.get(&1);
+            let (m0, e0) = t0
+                .map(|t| (t.metal.to_f32(), t.energy.to_f32()))
+                .unwrap_or((0.0, 0.0));
+            let (m1, e1) = t1
+                .map(|t| (t.metal.to_f32(), t.energy.to_f32()))
+                .unwrap_or((0.0, 0.0));
+
+            tracing::info!(
+                "Frame {} | Team 0: M:{:.0} E:{:.0} | Team 1: M:{:.0} E:{:.0} | Units: {}",
+                self.frame_count,
+                m0,
+                e0,
+                m1,
+                e1,
+                unit_count,
+            );
+        }
     }
 
     /// Find the nearest unit to a world (x, z) position.
@@ -410,7 +629,7 @@ impl App {
             window: None,
             renderer: None,
             sim: SimState::new(),
-            camera_ctrl: CameraController::new(300.0, 300.0, 400.0),
+            camera_ctrl: CameraController::new(300.0, 300.0, 600.0),
             particle_system: ParticleSystem::new(4096),
             last_frame: Instant::now(),
             cursor_pos: [0.0; 2],
@@ -550,9 +769,42 @@ impl ApplicationHandler for App {
                 self.camera_ctrl.update();
 
                 // Sim tick
+                let mut impact_positions = Vec::new();
+                let mut death_positions = Vec::new();
                 if !self.sim.paused {
-                    self.sim.tick();
+                    let (impacts, deaths) = self.sim.tick();
+                    impact_positions = impacts;
+                    death_positions = deaths;
                     self.sim.frame_count += 1;
+
+                    // Log economy every 60 frames
+                    if self.sim.frame_count.is_multiple_of(60) {
+                        self.sim.log_economy();
+                    }
+                }
+
+                // Emit particles for projectile impacts (small orange sparks)
+                for pos in &impact_positions {
+                    self.particle_system.emit(
+                        *pos,
+                        6,
+                        [1.0, 0.6, 0.2, 1.0],
+                        (5.0, 15.0),
+                        (0.2, 0.5),
+                        (1.0, 2.5),
+                    );
+                }
+
+                // Emit explosion particles for unit deaths (bigger red-orange burst)
+                for pos in &death_positions {
+                    self.particle_system.emit(
+                        *pos,
+                        20,
+                        [1.0, 0.3, 0.1, 1.0],
+                        (10.0, 30.0),
+                        (0.4, 1.0),
+                        (2.0, 5.0),
+                    );
                 }
 
                 // Particle system update
@@ -561,6 +813,14 @@ impl ApplicationHandler for App {
                 // Build render data
                 let unit_instances = self.sim.unit_instances();
                 let mut proj_instances = self.sim.projectile_instances();
+
+                // Add wreckage rendering
+                proj_instances.extend(self.sim.wreckage_instances());
+
+                // Add target line dots
+                proj_instances.extend(self.sim.target_line_instances());
+
+                // Add particle effects
                 let particle_instances = self.particle_system.instances();
                 proj_instances.extend(particle_instances);
 
@@ -579,8 +839,14 @@ impl ApplicationHandler for App {
                     }
                 }
 
-                // Request next frame
+                // Update window title with unit counts and frame number
                 if let Some(window) = self.window.as_ref() {
+                    let (blue, red) = self.sim.unit_counts();
+                    let title = format!(
+                        "Recoil RTS - Blue: {} Red: {} Frame: {}",
+                        blue, red, self.sim.frame_count
+                    );
+                    window.set_title(&title);
                     window.request_redraw();
                 }
             }
