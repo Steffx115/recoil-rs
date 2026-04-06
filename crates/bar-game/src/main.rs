@@ -5,13 +5,23 @@ use tracing_subscriber::EnvFilter;
 
 use recoil_math::{SimFloat, SimVec2, SimVec3};
 use recoil_sim::collision::collision_system;
+use recoil_sim::combat_data::WeaponSet;
+use recoil_sim::combat_data::{ArmorClass, DamageTable, WeaponDef, WeaponInstance};
+use recoil_sim::commands::{command_system, CommandQueue};
+use recoil_sim::components::Stunned;
+use recoil_sim::damage::{damage_system, stun_system};
+use recoil_sim::economy::{economy_system, init_economy, ResourceProducer};
 use recoil_sim::lifecycle::{cleanup_dead, init_lifecycle, spawn_unit};
 use recoil_sim::movement::movement_system;
 use recoil_sim::pathfinding::TerrainGrid;
+use recoil_sim::projectile::{
+    projectile_movement_system, spawn_projectile_system, ImpactEventQueue,
+};
 use recoil_sim::spatial::SpatialGrid;
+use recoil_sim::targeting::{reload_system, targeting_system, FireEventQueue, WeaponRegistry};
 use recoil_sim::{
     Allegiance, CollisionRadius, Heading, Health, MoveState, MovementParams, Position, SimId,
-    UnitType, Velocity,
+    Target, UnitType, Velocity,
 };
 
 // ---------------------------------------------------------------------------
@@ -95,6 +105,31 @@ impl RecoilDebugApp {
         let terrain = TerrainGrid::new(64, 64, SimFloat::ONE);
         self.world.insert_resource(terrain);
 
+        // Insert DamageTable
+        self.world.insert_resource(DamageTable::default());
+
+        // Insert weapon registry with one weapon type
+        let mut registry = WeaponRegistry { defs: Vec::new() };
+        registry.defs.push(WeaponDef {
+            damage: SimFloat::from_int(10),
+            damage_type: recoil_sim::combat_data::DamageType::Normal,
+            range: SimFloat::from_int(120),
+            reload_time: 30,
+            projectile_speed: SimFloat::from_int(8),
+            area_of_effect: SimFloat::ZERO,
+            is_paralyzer: false,
+        });
+        self.world.insert_resource(registry);
+
+        // Insert event queues
+        self.world
+            .insert_resource(FireEventQueue { events: Vec::new() });
+        self.world
+            .insert_resource(ImpactEventQueue { events: Vec::new() });
+
+        // Init economy (two teams)
+        init_economy(&mut self.world, &[0, 1]);
+
         // Spawn units
         let mut rng = Lcg::new(self.rng_seed);
         for i in 0..NUM_UNITS {
@@ -116,7 +151,7 @@ impl RecoilDebugApp {
                 },
             );
 
-            // Insert additional movement components
+            // Insert movement, combat, and command components
             self.world.entity_mut(entity).insert((
                 MoveState::Idle,
                 MovementParams {
@@ -131,7 +166,24 @@ impl RecoilDebugApp {
                     angle: SimFloat::ZERO,
                 },
                 Velocity { vel: SimVec3::ZERO },
+                ArmorClass::Light,
+                Target { entity: None },
+                WeaponSet {
+                    weapons: vec![WeaponInstance {
+                        def_id: 0,
+                        reload_remaining: 0,
+                    }],
+                },
+                CommandQueue::default(),
             ));
+
+            // Give each team a metal producer to keep economy alive
+            if i < 2 {
+                self.world.entity_mut(entity).insert(ResourceProducer {
+                    metal_per_tick: SimFloat::from_int(1),
+                    energy_per_tick: SimFloat::from_int(2),
+                });
+            }
         }
 
         // Bump seed for next reset
@@ -155,13 +207,40 @@ impl RecoilDebugApp {
             }
         }
 
-        // 2. Movement
+        // 2. Clear fire event queue for this tick
+        self.world.resource_mut::<FireEventQueue>().events.clear();
+
+        // 3. Command processing → sets MoveState from CommandQueue
+        command_system(&mut self.world);
+
+        // 4. Economy
+        economy_system(&mut self.world);
+
+        // 5. Movement
         movement_system(&mut self.world);
 
-        // 3. Collision
+        // 6. Collision
         collision_system(&mut self.world);
 
-        // 4. Cleanup dead
+        // 7. Targeting → finds enemies, sets Target
+        targeting_system(&mut self.world);
+
+        // 8. Reload + fire → produces FireEvents
+        reload_system(&mut self.world);
+
+        // 9. Spawn projectiles from fire events (or instant beam impacts)
+        spawn_projectile_system(&mut self.world);
+
+        // 10. Projectile movement + impact detection
+        projectile_movement_system(&mut self.world);
+
+        // 11. Damage processing → apply impacts, kill units, spawn wreckage
+        damage_system(&mut self.world);
+
+        // 12. Stun tick-down
+        stun_system(&mut self.world);
+
+        // 13. Cleanup dead entities
         cleanup_dead(&mut self.world);
     }
 
@@ -178,11 +257,15 @@ impl RecoilDebugApp {
         let pos = self.world.get::<Position>(entity)?.clone();
         let state = self.world.get::<MoveState>(entity)?.clone();
         let health = self.world.get::<Health>(entity)?.clone();
+        let target = self.world.get::<Target>(entity).and_then(|t| t.entity);
+        let stunned = self.world.get::<Stunned>(entity).is_some();
         Some(SelectedInfo {
             sim_id,
             pos,
             state,
             health,
+            target,
+            stunned,
         })
     }
 }
@@ -192,6 +275,8 @@ struct SelectedInfo {
     pos: Position,
     state: MoveState,
     health: Health,
+    target: Option<Entity>,
+    stunned: bool,
 }
 
 impl eframe::App for RecoilDebugApp {
@@ -231,10 +316,16 @@ impl eframe::App for RecoilDebugApp {
                     ));
                     ui.label(format!("State: {:?}", info.state));
                     ui.label(format!(
-                        "Health: {}/{}",
+                        "HP: {:.0}/{:.0}",
                         info.health.current.to_f32(),
                         info.health.max.to_f32()
                     ));
+                    if let Some(_target) = info.target {
+                        ui.label("Target: engaged");
+                    }
+                    if info.stunned {
+                        ui.colored_label(egui::Color32::from_rgb(200, 100, 255), "STUNNED");
+                    }
                 } else {
                     ui.label("No unit selected");
                 }
@@ -338,13 +429,51 @@ impl eframe::App for RecoilDebugApp {
             for (entity, x, z, radius, team, heading, move_state) in &unit_data {
                 let center = egui::pos2(origin.x + x, origin.y + z);
 
-                // Unit circle
-                let color = if *team == 0 {
+                // Unit circle — dim if dead
+                let hp = self
+                    .world
+                    .get::<Health>(*entity)
+                    .map(|h| h.current.to_f32() / h.max.to_f32().max(1.0))
+                    .unwrap_or(1.0);
+                let stunned = self.world.get::<Stunned>(*entity).is_some();
+
+                let base_color = if *team == 0 {
                     egui::Color32::from_rgb(80, 120, 255) // blue
                 } else {
                     egui::Color32::from_rgb(255, 80, 80) // red
                 };
+                let color = if stunned {
+                    egui::Color32::from_rgb(200, 100, 255) // purple when stunned
+                } else {
+                    base_color
+                };
                 painter.circle_filled(center, *radius, color);
+
+                // Health bar above unit
+                if hp < 1.0 {
+                    let bar_w = radius * 2.0;
+                    let bar_h = 3.0;
+                    let bar_y = center.y - radius - 6.0;
+                    let bar_x = center.x - radius;
+                    // Background
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(
+                            egui::pos2(bar_x, bar_y),
+                            egui::vec2(bar_w, bar_h),
+                        ),
+                        0.0,
+                        egui::Color32::from_rgb(60, 0, 0),
+                    );
+                    // Fill
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(
+                            egui::pos2(bar_x, bar_y),
+                            egui::vec2(bar_w * hp.max(0.0), bar_h),
+                        ),
+                        0.0,
+                        egui::Color32::from_rgb(0, 200, 0),
+                    );
+                }
 
                 // Selected highlight
                 if self.selected == Some(*entity) {
@@ -365,6 +494,22 @@ impl eframe::App for RecoilDebugApp {
                     egui::Stroke::new(1.5, egui::Color32::WHITE),
                 );
 
+                // Target line (red to enemy being attacked)
+                if let Some(target) = self.world.get::<Target>(*entity) {
+                    if let Some(target_entity) = target.entity {
+                        if let Some(tpos) = self.world.get::<Position>(target_entity) {
+                            let tp = egui::pos2(
+                                origin.x + tpos.pos.x.to_f32(),
+                                origin.y + tpos.pos.z.to_f32(),
+                            );
+                            painter.line_segment(
+                                [center, tp],
+                                egui::Stroke::new(1.0, egui::Color32::from_rgb(255, 50, 50)),
+                            );
+                        }
+                    }
+                }
+
                 // Move target line
                 if let MoveState::MovingTo(target) = move_state {
                     let tx = origin.x + target.x.to_f32();
@@ -374,9 +519,20 @@ impl eframe::App for RecoilDebugApp {
                         [center, target_pos],
                         egui::Stroke::new(0.5, egui::Color32::from_rgb(100, 255, 100)),
                     );
-                    // Small dot at target
                     painter.circle_filled(target_pos, 3.0, egui::Color32::from_rgb(100, 255, 100));
                 }
+            }
+
+            // Draw projectiles
+            let projectile_data: Vec<(f32, f32)> = self
+                .world
+                .query::<(&Position, &recoil_sim::projectile::Projectile)>()
+                .iter(&self.world)
+                .map(|(pos, _)| (pos.pos.x.to_f32(), pos.pos.z.to_f32()))
+                .collect();
+            for (px, pz) in &projectile_data {
+                let pp = egui::pos2(origin.x + px, origin.y + pz);
+                painter.circle_filled(pp, 2.0, egui::Color32::from_rgb(255, 255, 50));
             }
         });
     }
