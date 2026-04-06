@@ -9,6 +9,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::obj_loader;
+use crate::s3o_loader;
 use crate::unit_mesh::{generate_unit_mesh, UnitVertex};
 
 /// A loaded model's vertex and index data, ready for GPU upload.
@@ -44,6 +45,22 @@ impl ModelRegistry {
     /// Load an OBJ file from disk and register it under the given unit type ID.
     pub fn load_model_file(&mut self, unit_type_id: u32, path: &Path) -> Result<()> {
         let (vertices, indices) = obj_loader::load_obj_file(path)?;
+        self.models
+            .insert(unit_type_id, LoadedModel { vertices, indices });
+        Ok(())
+    }
+
+    /// Parse an s3o byte slice and register it under the given unit type ID.
+    pub fn load_s3o_model(&mut self, unit_type_id: u32, data: &[u8]) -> Result<()> {
+        let (vertices, indices) = s3o_loader::load_s3o(data)?;
+        self.models
+            .insert(unit_type_id, LoadedModel { vertices, indices });
+        Ok(())
+    }
+
+    /// Load an s3o file from disk and register it under the given unit type ID.
+    pub fn load_s3o_file(&mut self, unit_type_id: u32, path: &Path) -> Result<()> {
+        let (vertices, indices) = s3o_loader::load_s3o_file(path)?;
         self.models
             .insert(unit_type_id, LoadedModel { vertices, indices });
         Ok(())
