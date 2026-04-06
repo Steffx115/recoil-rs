@@ -184,22 +184,60 @@ impl SimState {
         // terrain, weapon registry, damage table, fire/impact queues, economy).
         sim_runner::init_sim_world(&mut self.world);
 
-        // Load unit defs from both factions
-        let mut unit_def_registry =
-            UnitDefRegistry::load_directory(Path::new("assets/unitdefs/armada"))
-                .unwrap_or_default();
-        let armada_count = unit_def_registry.defs.len();
-        if let Ok(cortex) = UnitDefRegistry::load_directory(Path::new("assets/unitdefs/cortex")) {
-            for (id, def) in cortex.defs {
-                unit_def_registry.register(def);
+        // Load unit defs from BAR Lua files (preferred) or fall back to RON
+        let bar_units = Path::new("../Beyond-All-Reason-Sandbox/units");
+        let mut unit_def_registry = UnitDefRegistry::default();
+        if bar_units.exists() {
+            let bar_dirs = [
+                "ArmBots",
+                "ArmVehicles",
+                "ArmBuildings",
+                "ArmAircraft",
+                "CorBots",
+                "CorVehicles",
+                "CorBuildings",
+                "CorAircraft",
+            ];
+            for dir in &bar_dirs {
+                let path = bar_units.join(dir);
+                if path.exists() {
+                    if let Ok(reg) = recoil_sim::lua_unitdefs::load_bar_unitdefs_directory(&path) {
+                        for (_id, def) in reg.defs {
+                            unit_def_registry.register(def);
+                        }
+                    }
+                }
             }
+            // Also load commander defs from units/ root
+            for entry in std::fs::read_dir(bar_units).into_iter().flatten() {
+                if let Ok(e) = entry {
+                    if e.path().extension().map_or(false, |ext| ext == "lua") {
+                        if let Ok(def) = recoil_sim::lua_unitdefs::load_bar_unitdef(&e.path()) {
+                            unit_def_registry.register(def);
+                        }
+                    }
+                }
+            }
+            tracing::info!(
+                "Loaded {} BAR unit defs from Lua",
+                unit_def_registry.defs.len()
+            );
+        } else {
+            // Fall back to RON files
+            unit_def_registry =
+                UnitDefRegistry::load_directory(Path::new("assets/unitdefs/armada"))
+                    .unwrap_or_default();
+            if let Ok(cortex) = UnitDefRegistry::load_directory(Path::new("assets/unitdefs/cortex"))
+            {
+                for (_id, def) in cortex.defs {
+                    unit_def_registry.register(def);
+                }
+            }
+            tracing::info!(
+                "Loaded {} RON unit defs (BAR repo not found)",
+                unit_def_registry.defs.len()
+            );
         }
-        tracing::info!(
-            "Loaded {} unit defs ({} Armada, {} Cortex)",
-            unit_def_registry.defs.len(),
-            armada_count,
-            unit_def_registry.defs.len() - armada_count,
-        );
 
         // Register all weapon defs from loaded unit defs into the WeaponRegistry.
         // Build a map from (unit_type_id, weapon_index) -> weapon_def_id for spawning.
@@ -270,17 +308,25 @@ impl SimState {
             1u32,
         );
 
-        // Team 0 = Armada Peewee (id 100), Team 1 = Cortex AK (id 150)
-        let stats_team0 = unit_def_registry
-            .get(100)
-            .map(extract_stats)
-            .unwrap_or(fallback);
-        let stats_team1 = unit_def_registry
-            .get(150)
-            .map(extract_stats)
-            .unwrap_or(fallback);
-        let weapons_team0 = weapon_def_ids.get(&100).cloned().unwrap_or_default();
-        let weapons_team1 = weapon_def_ids.get(&150).cloned().unwrap_or_default();
+        // Find units by name — BAR Lua defs use hashed IDs
+        let find_by_name = |name: &str| -> Option<&recoil_sim::unit_defs::UnitDef> {
+            unit_def_registry
+                .defs
+                .values()
+                .find(|d| d.name.to_lowercase() == name)
+        };
+
+        // Team 0 = Armada Peewee, Team 1 = Cortex AK
+        let stats_team0 = find_by_name("armpw").map(extract_stats).unwrap_or(fallback);
+        let stats_team1 = find_by_name("corak").map(extract_stats).unwrap_or(fallback);
+        let weapons_team0 = weapon_def_ids
+            .get(&stats_team0.7)
+            .cloned()
+            .unwrap_or_default();
+        let weapons_team1 = weapon_def_ids
+            .get(&stats_team1.7)
+            .cloned()
+            .unwrap_or_default();
 
         // Determine spawn positions from map start positions or fallback to random
         let start_pos_0: (f32, f32);
