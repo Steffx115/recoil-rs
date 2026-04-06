@@ -1,0 +1,11 @@
+[package]
+name = "recoil-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Spatial audio for the Recoil RTS engine"
+
+[dependencies]
+recoil-sim = { path = "../recoil-sim" }
+kira = { workspace = true }
+tracing = { workspace = true }

@@ -1,0 +1,18 @@
+[package]
+name = "bar-game"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "BAR-inspired RTS game binary"
+
+[dependencies]
+recoil-math = { path = "../recoil-math" }
+recoil-sim = { path = "../recoil-sim" }
+recoil-net = { path = "../recoil-net" }
+recoil-render = { path = "../recoil-render" }
+recoil-ui = { path = "../recoil-ui" }
+recoil-audio = { path = "../recoil-audio" }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+ron = { workspace = true }

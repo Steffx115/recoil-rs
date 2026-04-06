@@ -1,0 +1,54 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/recoil-math",
+    "crates/recoil-sim",
+    "crates/recoil-net",
+    "crates/recoil-render",
+    "crates/recoil-ui",
+    "crates/recoil-audio",
+    "crates/bar-game",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Math & core
+serde = { version = "1", features = ["derive"] }
+bincode = "1"
+
+# ECS
+bevy_ecs = "0.15"
+
+# Async & networking
+tokio = { version = "1", features = ["full"] }
+
+# Rendering
+wgpu = "24"
+winit = "0.30"
+
+# UI
+egui = "0.31"
+egui-wgpu = "0.31"
+egui-winit = "0.31"
+
+# Audio
+kira = "0.9"
+
+# Data formats
+ron = "0.8"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Testing
+proptest = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
