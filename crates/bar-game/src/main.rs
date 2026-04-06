@@ -184,11 +184,22 @@ impl SimState {
         // terrain, weapon registry, damage table, fire/impact queues, economy).
         sim_runner::init_sim_world(&mut self.world);
 
-        // Load unit defs from Armada faction
-        let unit_def_registry =
+        // Load unit defs from both factions
+        let mut unit_def_registry =
             UnitDefRegistry::load_directory(Path::new("assets/unitdefs/armada"))
                 .unwrap_or_default();
-        tracing::info!("Loaded {} Armada unit defs", unit_def_registry.defs.len());
+        let armada_count = unit_def_registry.defs.len();
+        if let Ok(cortex) = UnitDefRegistry::load_directory(Path::new("assets/unitdefs/cortex")) {
+            for (id, def) in cortex.defs {
+                unit_def_registry.register(def);
+            }
+        }
+        tracing::info!(
+            "Loaded {} unit defs ({} Armada, {} Cortex)",
+            unit_def_registry.defs.len(),
+            armada_count,
+            unit_def_registry.defs.len() - armada_count,
+        );
 
         // Register all weapon defs from loaded unit defs into the WeaponRegistry.
         // Build a map from (unit_type_id, weapon_index) -> weapon_def_id for spawning.
@@ -223,37 +234,53 @@ impl SimState {
         let fog = FogOfWar::new(64, 64, &[0, 1]);
         self.world.insert_resource(fog);
 
-        // Look up Peewee def (unit_type_id 100) for unit spawning stats
-        let peewee_def = unit_def_registry.get(100);
+        // Helper to extract stats from a unit def
+        fn extract_stats(
+            def: &recoil_sim::unit_defs::UnitDef,
+        ) -> (
+            SimFloat,
+            SimFloat,
+            SimFloat,
+            SimFloat,
+            SimFloat,
+            SimFloat,
+            recoil_sim::combat_data::ArmorClass,
+            u32,
+        ) {
+            (
+                SimFloat::from_f64(def.max_health),
+                SimFloat::from_f64(def.max_speed),
+                SimFloat::from_f64(def.acceleration),
+                SimFloat::from_f64(def.turn_rate),
+                SimFloat::from_f64(def.collision_radius),
+                SimFloat::from_f64(def.sight_range),
+                def.parse_armor_class(),
+                def.unit_type_id,
+            )
+        }
 
-        // Extract stats from unit def, with fallbacks
-        let (hp, max_speed, accel, turn_rate, collision_r, sight_r, armor_class, unit_type_id) =
-            if let Some(def) = peewee_def {
-                (
-                    SimFloat::from_f64(def.max_health),
-                    SimFloat::from_f64(def.max_speed),
-                    SimFloat::from_f64(def.acceleration),
-                    SimFloat::from_f64(def.turn_rate),
-                    SimFloat::from_f64(def.collision_radius),
-                    SimFloat::from_f64(def.sight_range),
-                    def.parse_armor_class(),
-                    def.unit_type_id,
-                )
-            } else {
-                tracing::warn!("Peewee unit def (id=100) not found, using fallback stats");
-                (
-                    SimFloat::from_int(500),
-                    SimFloat::from_int(2),
-                    SimFloat::ONE,
-                    SimFloat::PI / SimFloat::from_int(30),
-                    SimFloat::from_int(8),
-                    SimFloat::from_int(80),
-                    recoil_sim::combat_data::ArmorClass::Light,
-                    1u32,
-                )
-            };
+        let fallback = (
+            SimFloat::from_int(500),
+            SimFloat::from_int(2),
+            SimFloat::ONE,
+            SimFloat::PI / SimFloat::from_int(30),
+            SimFloat::from_int(8),
+            SimFloat::from_int(80),
+            recoil_sim::combat_data::ArmorClass::Light,
+            1u32,
+        );
 
-        let peewee_weapon_ids = weapon_def_ids.get(&100).cloned().unwrap_or_default();
+        // Team 0 = Armada Peewee (id 100), Team 1 = Cortex AK (id 150)
+        let stats_team0 = unit_def_registry
+            .get(100)
+            .map(extract_stats)
+            .unwrap_or(fallback);
+        let stats_team1 = unit_def_registry
+            .get(150)
+            .map(extract_stats)
+            .unwrap_or(fallback);
+        let weapons_team0 = weapon_def_ids.get(&100).cloned().unwrap_or_default();
+        let weapons_team1 = weapon_def_ids.get(&150).cloned().unwrap_or_default();
 
         // Determine spawn positions from map start positions or fallback to random
         let start_pos_0: (f32, f32);
@@ -277,6 +304,14 @@ impl SimState {
         for i in 0..NUM_UNITS {
             let team = (i % 2) as u8;
             let (cx, cz) = if team == 0 { start_pos_0 } else { start_pos_1 };
+            let (hp, max_speed, accel, turn_rate, collision_r, sight_r, armor_class, unit_type_id) =
+                if team == 0 { stats_team0 } else { stats_team1 };
+            let weapon_ids = if team == 0 {
+                &weapons_team0
+            } else {
+                &weapons_team1
+            };
+
             // Spread units in a cluster around the start position
             let x = cx + rng.next_f32(120.0) - 60.0;
             let z = cz + rng.next_f32(120.0) - 60.0;
@@ -294,7 +329,7 @@ impl SimState {
                 },
             );
 
-            let weapons: Vec<WeaponInstance> = peewee_weapon_ids
+            let weapons: Vec<WeaponInstance> = weapon_ids
                 .iter()
                 .map(|&def_id| WeaponInstance {
                     def_id,
