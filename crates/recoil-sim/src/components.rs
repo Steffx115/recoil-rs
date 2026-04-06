@@ -45,19 +45,19 @@ pub struct SimId {
 // ---------------------------------------------------------------------------
 
 /// World-space position.
-#[derive(Component, Serialize, Deserialize, Debug, Clone)]
+#[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Position {
     pub pos: SimVec3,
 }
 
 /// Linear velocity in world-space units per tick.
-#[derive(Component, Serialize, Deserialize, Debug, Clone)]
+#[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Velocity {
     pub vel: SimVec3,
 }
 
 /// Facing direction expressed as an angle in radians.
-#[derive(Component, Serialize, Deserialize, Debug, Clone)]
+#[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Heading {
     pub angle: SimFloat,
 }
@@ -77,7 +77,7 @@ pub struct CollisionRadius {
 // ---------------------------------------------------------------------------
 
 /// Hit-points pool.
-#[derive(Component, Serialize, Deserialize, Debug, Clone)]
+#[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Health {
     pub current: SimFloat,
     pub max: SimFloat,
@@ -108,7 +108,7 @@ pub struct Allegiance {
 // ---------------------------------------------------------------------------
 
 /// Current movement state of an entity.
-#[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MoveState {
     /// Standing still, no movement order.
     Idle,

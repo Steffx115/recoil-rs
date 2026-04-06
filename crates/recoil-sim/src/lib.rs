@@ -5,6 +5,7 @@ pub mod flowfield;
 pub mod lifecycle;
 pub mod movement;
 pub mod pathfinding;
+pub mod sim_runner;
 pub mod spatial;
 
 pub use recoil_math::{SimFloat, SimVec2, SimVec3};
