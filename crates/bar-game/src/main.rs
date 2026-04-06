@@ -228,8 +228,8 @@ impl SimState {
                     team: (i % 2) as u8,
                 },
                 Health {
-                    current: SimFloat::from_int(100),
-                    max: SimFloat::from_int(100),
+                    current: SimFloat::from_int(500),
+                    max: SimFloat::from_int(500),
                 },
             );
 
@@ -274,7 +274,7 @@ impl SimState {
         {
             let entities: Vec<(Entity, SimVec3)> = self
                 .world
-                .query::<(Entity, &Position)>()
+                .query_filtered::<(Entity, &Position), Without<Dead>>()
                 .iter(&self.world)
                 .map(|(e, p)| (e, p.pos))
                 .collect();
