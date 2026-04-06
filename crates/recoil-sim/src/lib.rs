@@ -2,6 +2,7 @@ pub mod components;
 pub mod determinism;
 pub mod lifecycle;
 pub mod movement;
+pub mod pathfinding;
 pub mod spatial;
 
 pub use recoil_math::{SimFloat, SimVec2, SimVec3};

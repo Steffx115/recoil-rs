@@ -65,7 +65,7 @@ impl TerrainGrid {
     /// Returns `true` when the cell is in-bounds and its cost is greater than zero.
     #[inline]
     fn is_passable(&self, x: usize, y: usize) -> bool {
-        self.get(x, y).map_or(false, |c| c > SimFloat::ZERO)
+        self.get(x, y).is_some_and(|c| c > SimFloat::ZERO)
     }
 }
 
@@ -172,7 +172,6 @@ pub fn find_path(terrain: &TerrainGrid, start: SimVec2, goal: SimVec2) -> Option
     let mut tie_counter: u64 = 0;
 
     // Track closest-to-goal node for partial-path fallback.
-    let mut best_h = SimFloat::MAX;
     let mut best_cell: (usize, usize) = (sx, sy);
 
     // Initialise start node.
@@ -188,7 +187,7 @@ pub fn find_path(terrain: &TerrainGrid, start: SimVec2, goal: SimVec2) -> Option
         (sx, sy),
     );
     tie_counter += 1;
-    best_h = h0;
+    let mut best_h = h0;
 
     while let Some((&key, &(cx, cy))) = open.iter().next() {
         open.remove(&key);
@@ -226,19 +225,14 @@ pub fn find_path(terrain: &TerrainGrid, start: SimVec2, goal: SimVec2) -> Option
 
             // For diagonal moves, also check that the two adjacent cardinal
             // cells are passable (no corner-cutting through walls).
-            if diag {
-                if !terrain.is_passable(cx.wrapping_add_signed(dx as isize), cy)
-                    || !terrain.is_passable(cx, cy.wrapping_add_signed(dy as isize))
-                {
-                    continue;
-                }
+            if diag
+                && (!terrain.is_passable(cx.wrapping_add_signed(dx as isize), cy)
+                    || !terrain.is_passable(cx, cy.wrapping_add_signed(dy as isize)))
+            {
+                continue;
             }
 
-            let step = if diag {
-                diagonal_cost()
-            } else {
-                SimFloat::ONE
-            };
+            let step = if diag { diagonal_cost() } else { SimFloat::ONE };
             let tentative_g = current_g + step * cell_cost;
 
             let nidx = ny * w + nx;
