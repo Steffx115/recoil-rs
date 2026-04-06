@@ -85,6 +85,41 @@ pub fn targeting_system(world: &mut World) {
         });
     }
 
+    // Batch-collect candidate data upfront to avoid per-candidate world queries.
+    // This is a flat Vec indexed by Entity bits via a BTreeMap for O(log n) lookup,
+    // but populated once instead of once-per-shooter.
+    struct CandidateInfo {
+        team: u8,
+        is_dead: bool,
+        health_positive: bool,
+        pos_xz: SimVec2,
+        sim_id: u64,
+    }
+
+    let mut candidate_data: std::collections::BTreeMap<u64, CandidateInfo> =
+        std::collections::BTreeMap::new();
+
+    let mut cand_query = world.query::<(
+        Entity,
+        &Position,
+        &Allegiance,
+        Option<&Dead>,
+        Option<&Health>,
+        Option<&SimId>,
+    )>();
+    for (entity, pos, allegiance, dead, health, sim_id) in cand_query.iter(world) {
+        candidate_data.insert(
+            entity.to_bits(),
+            CandidateInfo {
+                team: allegiance.team,
+                is_dead: dead.is_some(),
+                health_positive: health.is_some_and(|h| h.current > SimFloat::ZERO),
+                pos_xz: SimVec2::new(pos.pos.x, pos.pos.z),
+                sim_id: sim_id.map_or(u64::MAX, |s| s.id),
+            },
+        );
+    }
+
     // For each shooter, find the best target.
     let mut assignments: Vec<(Entity, Option<Entity>)> = Vec::with_capacity(shooters.len());
 
@@ -99,45 +134,35 @@ pub fn targeting_system(world: &mut World) {
                 continue;
             }
 
-            // Must have Allegiance and be enemy.
-            let Some(allegiance) = world.get::<Allegiance>(*candidate) else {
+            let Some(info) = candidate_data.get(&candidate.to_bits()) else {
                 continue;
             };
-            if allegiance.team == shooter.team {
+
+            // Must be enemy.
+            if info.team == shooter.team {
                 continue;
             }
 
             // Must not be Dead.
-            if world.get::<Dead>(*candidate).is_some() {
+            if info.is_dead {
                 continue;
             }
 
             // Must be alive (Health.current > 0).
-            let Some(health) = world.get::<Health>(*candidate) else {
-                continue;
-            };
-            if health.current <= SimFloat::ZERO {
+            if !info.health_positive {
                 continue;
             }
 
-            // Distance for sorting.
-            let Some(cand_pos) = world.get::<Position>(*candidate) else {
-                continue;
-            };
-            let cand_xz = SimVec2::new(cand_pos.pos.x, cand_pos.pos.z);
-            let dist_sq = shooter.pos_xz.distance_squared(cand_xz);
-
-            // Tie-break by SimId (lower id wins for determinism).
-            let sim_id = world.get::<SimId>(*candidate).map_or(u64::MAX, |s| s.id);
+            let dist_sq = shooter.pos_xz.distance_squared(info.pos_xz);
 
             match &best {
                 Some((best_dist, best_id, _)) => {
-                    if dist_sq < *best_dist || (dist_sq == *best_dist && sim_id < *best_id) {
-                        best = Some((dist_sq, sim_id, *candidate));
+                    if dist_sq < *best_dist || (dist_sq == *best_dist && info.sim_id < *best_id) {
+                        best = Some((dist_sq, info.sim_id, *candidate));
                     }
                 }
                 None => {
-                    best = Some((dist_sq, sim_id, *candidate));
+                    best = Some((dist_sq, info.sim_id, *candidate));
                 }
             }
         }

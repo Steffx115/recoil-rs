@@ -10,13 +10,13 @@
     turn_rate: 0.08,
     metal_cost: 150.0,
     energy_cost: 1800.0,
-    build_time: 220,
+    build_time: 200,
     weapons: [
         (
             name: "Missile",
-            damage: 40.0,
+            damage: 35.0,
             damage_type: "Normal",
-            range: 600.0,
+            range: 700.0,
             reload_time: 30,
             projectile_speed: 12.0,
             area_of_effect: 0.0,

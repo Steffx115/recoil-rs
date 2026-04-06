@@ -139,6 +139,10 @@ fn diagonal_cost() -> SimFloat {
 // Public API
 // ---------------------------------------------------------------------------
 
+/// Default maximum number of A* iterations before returning a partial path.
+/// Prevents pathfinding from blocking the sim tick on very large or complex maps.
+pub const DEFAULT_MAX_ITERATIONS: u32 = 10_000;
+
 /// Run A* on `terrain` from `start` to `goal` (world-space `SimVec2`).
 ///
 /// Coordinates are truncated to grid-cell indices (integer part of each
@@ -146,7 +150,22 @@ fn diagonal_cost() -> SimFloat {
 /// * `Some(path)` — a sequence of cell-centre positions from start to goal
 ///   (or to the nearest reachable cell if the goal is blocked).
 /// * `None` — when the start cell itself is impassable.
+///
+/// Uses [`DEFAULT_MAX_ITERATIONS`] as the iteration limit.
 pub fn find_path(terrain: &TerrainGrid, start: SimVec2, goal: SimVec2) -> Option<Vec<SimVec2>> {
+    find_path_with_limit(terrain, start, goal, DEFAULT_MAX_ITERATIONS)
+}
+
+/// Like [`find_path`] but with an explicit iteration limit.
+///
+/// If the limit is reached before the goal is found, returns a partial
+/// path to the closest cell discovered so far.
+pub fn find_path_with_limit(
+    terrain: &TerrainGrid,
+    start: SimVec2,
+    goal: SimVec2,
+    max_iterations: u32,
+) -> Option<Vec<SimVec2>> {
     let sx = start.x.to_f64() as usize;
     let sy = start.y.to_f64() as usize;
     let gx = goal.x.to_f64() as usize;
@@ -188,9 +207,16 @@ pub fn find_path(terrain: &TerrainGrid, start: SimVec2, goal: SimVec2) -> Option
     );
     tie_counter += 1;
     let mut best_h = h0;
+    let mut iterations: u32 = 0;
 
     while let Some((&key, &(cx, cy))) = open.iter().next() {
         open.remove(&key);
+
+        iterations += 1;
+        if iterations > max_iterations {
+            // Budget exhausted — return partial path to the best cell found.
+            break;
+        }
 
         let cidx = cy * w + cx;
         if nodes[cidx].closed {

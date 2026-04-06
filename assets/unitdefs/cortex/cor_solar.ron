@@ -10,7 +10,7 @@
     turn_rate: 0.0,
     metal_cost: 150.0,
     energy_cost: 0.0,
-    build_time: 250,
+    build_time: 120,
     weapons: [],
     model_path: None,
     icon_path: None,

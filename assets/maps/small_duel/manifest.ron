@@ -1,0 +1,23 @@
+(
+    name: "Small Duel",
+    width: 128,
+    height: 128,
+    cell_size: 8.0,
+    water_level: 0.0,
+    start_positions: [
+        (x: 200.0, z: 200.0, team: 0),
+        (x: 824.0, z: 824.0, team: 1),
+    ],
+    metal_spots: [
+        // Team 0 cluster (near 200, 200)
+        (x: 150.0, z: 150.0, metal_per_tick: 2.0),
+        (x: 250.0, z: 150.0, metal_per_tick: 2.0),
+        (x: 150.0, z: 250.0, metal_per_tick: 2.0),
+        (x: 250.0, z: 250.0, metal_per_tick: 2.0),
+        // Team 1 cluster (near 824, 824) — symmetric mirror
+        (x: 774.0, z: 774.0, metal_per_tick: 2.0),
+        (x: 874.0, z: 774.0, metal_per_tick: 2.0),
+        (x: 774.0, z: 874.0, metal_per_tick: 2.0),
+        (x: 874.0, z: 874.0, metal_per_tick: 2.0),
+    ],
+)

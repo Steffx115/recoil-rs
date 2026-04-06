@@ -6,8 +6,6 @@
 //!
 //! All math uses deterministic [`SimFloat`] fixed-point arithmetic.
 
-use std::collections::BTreeSet;
-
 use bevy_ecs::entity::Entity;
 use bevy_ecs::prelude::*;
 
@@ -28,8 +26,9 @@ use crate::{SimFloat, SimVec2, SimVec3};
 /// 3. **Response** — push both entities apart by half the overlap distance
 ///    along the line connecting their centres.
 ///
-/// Each pair is processed exactly once thanks to a `BTreeSet` of ordered
-/// `(Entity, Entity)` keys.
+/// Each pair is processed exactly once by only handling pairs where
+/// `entity_a.to_bits() < neighbour.to_bits()`, eliminating the need for a
+/// `BTreeSet` of processed pairs.
 pub fn collision_system(world: &mut World) {
     // We need the spatial grid to exist as a resource.
     let has_grid = world.get_resource::<SpatialGrid>().is_some();
@@ -52,9 +51,6 @@ pub fn collision_system(world: &mut World) {
         .max()
         .unwrap_or(SimFloat::ZERO);
 
-    // Track which pairs we have already processed.
-    let mut processed: BTreeSet<(u64, u64)> = BTreeSet::new();
-
     // Accumulate displacement vectors so we can apply them all at once
     // (avoids order-dependent position changes within the same tick).
     let mut displacements: Vec<(Entity, SimVec3)> = Vec::new();
@@ -66,21 +62,14 @@ pub fn collision_system(world: &mut World) {
         let center = SimVec2::new(pos_a.x, pos_a.z);
         let neighbours = grid.units_in_radius(center, search_radius);
 
-        for neighbour in neighbours {
-            if neighbour == entity_a {
-                continue;
-            }
+        let bits_a = entity_a.to_bits();
 
-            // Canonical pair key (smaller bits first) to avoid double-processing.
-            let key = if entity_a.to_bits() < neighbour.to_bits() {
-                (entity_a.to_bits(), neighbour.to_bits())
-            } else {
-                (neighbour.to_bits(), entity_a.to_bits())
-            };
-            if processed.contains(&key) {
+        for neighbour in neighbours {
+            // Only process each pair once: require entity_a < neighbour by bits.
+            // This replaces the BTreeSet<(u64,u64)> approach with an O(1) check.
+            if bits_a >= neighbour.to_bits() {
                 continue;
             }
-            processed.insert(key);
 
             // Look up neighbour data.
             let (pos_b, radius_b) = match (

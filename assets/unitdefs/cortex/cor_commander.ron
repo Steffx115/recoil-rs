@@ -27,6 +27,6 @@
     categories: ["commander", "bot", "armed"],
     can_build: [51, 250, 251, 252],
     build_power: Some(350.0),
-    metal_production: Some(2.0),
-    energy_production: Some(25.0),
+    metal_production: Some(3.0),
+    energy_production: Some(30.0),
 )

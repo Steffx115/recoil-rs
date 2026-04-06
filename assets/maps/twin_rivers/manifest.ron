@@ -1,0 +1,35 @@
+(
+    name: "Twin Rivers",
+    width: 256,
+    height: 256,
+    cell_size: 8.0,
+    water_level: -5.0,
+    start_positions: [
+        (x: 300.0, z: 300.0, team: 0),
+        (x: 300.0, z: 1748.0, team: 0),
+        (x: 1748.0, z: 300.0, team: 1),
+        (x: 1748.0, z: 1748.0, team: 1),
+    ],
+    metal_spots: [
+        // Team 0, player 1 cluster (near 300, 300)
+        (x: 250.0, z: 250.0, metal_per_tick: 2.0),
+        (x: 350.0, z: 250.0, metal_per_tick: 2.0),
+        (x: 250.0, z: 350.0, metal_per_tick: 2.0),
+        (x: 350.0, z: 350.0, metal_per_tick: 2.0),
+        // Team 0, player 2 cluster (near 300, 1748)
+        (x: 250.0, z: 1698.0, metal_per_tick: 2.0),
+        (x: 350.0, z: 1698.0, metal_per_tick: 2.0),
+        (x: 250.0, z: 1798.0, metal_per_tick: 2.0),
+        (x: 350.0, z: 1798.0, metal_per_tick: 2.0),
+        // Team 1, player 1 cluster (near 1748, 300)
+        (x: 1698.0, z: 250.0, metal_per_tick: 2.0),
+        (x: 1798.0, z: 250.0, metal_per_tick: 2.0),
+        (x: 1698.0, z: 350.0, metal_per_tick: 2.0),
+        (x: 1798.0, z: 350.0, metal_per_tick: 2.0),
+        // Team 1, player 2 cluster (near 1748, 1748)
+        (x: 1698.0, z: 1698.0, metal_per_tick: 2.0),
+        (x: 1798.0, z: 1698.0, metal_per_tick: 2.0),
+        (x: 1698.0, z: 1798.0, metal_per_tick: 2.0),
+        (x: 1798.0, z: 1798.0, metal_per_tick: 2.0),
+    ],
+)

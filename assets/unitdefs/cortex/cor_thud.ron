@@ -1,16 +1,16 @@
 (
     name: "Thud",
     unit_type_id: 152,
-    max_health: 1000.0,
+    max_health: 1060.0,
     armor_class: "Heavy",
     sight_range: 380.0,
     collision_radius: 16.0,
     max_speed: 1.2,
     acceleration: 0.3,
     turn_rate: 0.05,
-    metal_cost: 180.0,
-    energy_cost: 2200.0,
-    build_time: 280,
+    metal_cost: 175.0,
+    energy_cost: 2000.0,
+    build_time: 200,
     weapons: [
         (
             name: "Heavy Plasma",

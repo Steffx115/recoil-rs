@@ -17,6 +17,6 @@
     categories: ["building", "t1", "economy", "metal"],
     can_build: [],
     build_power: None,
-    metal_production: Some(2.0),
+    metal_production: Some(3.0),
     energy_production: None,
 )

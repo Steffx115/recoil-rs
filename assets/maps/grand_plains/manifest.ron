@@ -1,0 +1,61 @@
+(
+    name: "Grand Plains",
+    width: 384,
+    height: 384,
+    cell_size: 8.0,
+    water_level: 0.0,
+    start_positions: [
+        // Team 0 — left side
+        (x: 400.0, z: 400.0, team: 0),
+        (x: 400.0, z: 1136.0, team: 0),
+        (x: 400.0, z: 1936.0, team: 0),
+        (x: 400.0, z: 2672.0, team: 0),
+        // Team 1 — right side
+        (x: 2672.0, z: 400.0, team: 1),
+        (x: 2672.0, z: 1136.0, team: 1),
+        (x: 2672.0, z: 1936.0, team: 1),
+        (x: 2672.0, z: 2672.0, team: 1),
+    ],
+    metal_spots: [
+        // Team 0, player 1 cluster (near 400, 400)
+        (x: 350.0, z: 350.0, metal_per_tick: 2.0),
+        (x: 450.0, z: 350.0, metal_per_tick: 2.0),
+        (x: 350.0, z: 450.0, metal_per_tick: 2.0),
+        (x: 450.0, z: 450.0, metal_per_tick: 2.0),
+        // Team 0, player 2 cluster (near 400, 1136)
+        (x: 350.0, z: 1086.0, metal_per_tick: 2.0),
+        (x: 450.0, z: 1086.0, metal_per_tick: 2.0),
+        (x: 350.0, z: 1186.0, metal_per_tick: 2.0),
+        (x: 450.0, z: 1186.0, metal_per_tick: 2.0),
+        // Team 0, player 3 cluster (near 400, 1936)
+        (x: 350.0, z: 1886.0, metal_per_tick: 2.0),
+        (x: 450.0, z: 1886.0, metal_per_tick: 2.0),
+        (x: 350.0, z: 1986.0, metal_per_tick: 2.0),
+        (x: 450.0, z: 1986.0, metal_per_tick: 2.0),
+        // Team 0, player 4 cluster (near 400, 2672)
+        (x: 350.0, z: 2622.0, metal_per_tick: 2.0),
+        (x: 450.0, z: 2622.0, metal_per_tick: 2.0),
+        (x: 350.0, z: 2722.0, metal_per_tick: 2.0),
+        (x: 450.0, z: 2722.0, metal_per_tick: 2.0),
+        // Team 1, player 1 cluster (near 2672, 400)
+        (x: 2622.0, z: 350.0, metal_per_tick: 2.0),
+        (x: 2722.0, z: 350.0, metal_per_tick: 2.0),
+        (x: 2622.0, z: 450.0, metal_per_tick: 2.0),
+        (x: 2722.0, z: 450.0, metal_per_tick: 2.0),
+        // Team 1, player 2 cluster (near 2672, 1136)
+        (x: 2622.0, z: 1086.0, metal_per_tick: 2.0),
+        (x: 2722.0, z: 1086.0, metal_per_tick: 2.0),
+        (x: 2622.0, z: 1186.0, metal_per_tick: 2.0),
+        (x: 2722.0, z: 1186.0, metal_per_tick: 2.0),
+        // Team 1, player 3 cluster (near 2672, 1936)
+        (x: 2622.0, z: 1886.0, metal_per_tick: 2.0),
+        (x: 2722.0, z: 1886.0, metal_per_tick: 2.0),
+        (x: 2622.0, z: 1986.0, metal_per_tick: 2.0),
+        (x: 2722.0, z: 1986.0, metal_per_tick: 2.0),
+        // Team 1, player 4 cluster (near 2672, 2672)
+        (x: 2622.0, z: 2622.0, metal_per_tick: 2.0),
+        (x: 2722.0, z: 2622.0, metal_per_tick: 2.0),
+        (x: 2622.0, z: 2722.0, metal_per_tick: 2.0),
+        (x: 2722.0, z: 2722.0, metal_per_tick: 2.0),
+    ],
+)

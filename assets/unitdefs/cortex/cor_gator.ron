@@ -1,16 +1,16 @@
 (
     name: "Gator",
     unit_type_id: 151,
-    max_health: 500.0,
+    max_health: 410.0,
     armor_class: "Medium",
     sight_range: 370.0,
     collision_radius: 14.0,
-    max_speed: 2.8,
+    max_speed: 3.0,
     acceleration: 0.6,
     turn_rate: 0.08,
     metal_cost: 100.0,
-    energy_cost: 1200.0,
-    build_time: 160,
+    energy_cost: 1100.0,
+    build_time: 120,
     weapons: [
         (
             name: "Laser",

@@ -5,7 +5,6 @@
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Resource;
-use std::collections::BTreeMap;
 
 use crate::{SimFloat, SimVec2};
 
@@ -13,13 +12,18 @@ use crate::{SimFloat, SimVec2};
 ///
 /// Stored as a Bevy [`Resource`] and rebuilt every tick from the
 /// authoritative [`Position`](crate::Position) components.
+///
+/// Positions are stored in a flat `Vec` for O(1) indexed lookup during
+/// radius/rect queries, replacing the previous `BTreeMap<u64, SimVec2>`.
+/// The index into `positions` is stored alongside the entity in each cell.
 #[derive(Resource, Debug, Clone)]
 pub struct SpatialGrid {
     cell_size: SimFloat,
     width: i32,
     height: i32,
-    cells: Vec<Vec<Entity>>,
-    positions: BTreeMap<u64, SimVec2>,
+    cells: Vec<Vec<(Entity, u32)>>,
+    /// Flat storage of all inserted positions. Index matches insertion order.
+    positions: Vec<SimVec2>,
 }
 
 impl SpatialGrid {
@@ -30,7 +34,7 @@ impl SpatialGrid {
             width,
             height,
             cells: vec![Vec::new(); total],
-            positions: BTreeMap::new(),
+            positions: Vec::new(),
         }
     }
 
@@ -56,8 +60,9 @@ impl SpatialGrid {
     pub fn insert(&mut self, entity: Entity, pos: SimVec2) {
         let (cx, cz) = self.cell_coords(pos);
         let idx = self.cell_index(cx, cz);
-        self.cells[idx].push(entity);
-        self.positions.insert(entity.to_bits(), pos);
+        let pos_idx = self.positions.len() as u32;
+        self.positions.push(pos);
+        self.cells[idx].push((entity, pos_idx));
     }
 
     pub fn units_in_radius(&self, center: SimVec2, radius: SimFloat) -> Vec<Entity> {
@@ -71,11 +76,10 @@ impl SpatialGrid {
         for cz in min_cz..=max_cz {
             for cx in min_cx..=max_cx {
                 let idx = self.cell_index(cx, cz);
-                for &entity in &self.cells[idx] {
-                    if let Some(&pos) = self.positions.get(&entity.to_bits()) {
-                        if pos.distance_squared(center) <= radius_sq {
-                            result.push(entity);
-                        }
+                for &(entity, pos_idx) in &self.cells[idx] {
+                    let pos = self.positions[pos_idx as usize];
+                    if pos.distance_squared(center) <= radius_sq {
+                        result.push(entity);
                     }
                 }
             }
@@ -91,15 +95,14 @@ impl SpatialGrid {
         for cz in min_cz..=max_cz {
             for cx in min_cx..=max_cx {
                 let idx = self.cell_index(cx, cz);
-                for &entity in &self.cells[idx] {
-                    if let Some(&pos) = self.positions.get(&entity.to_bits()) {
-                        if pos.x >= min_pos.x
-                            && pos.x <= max_pos.x
-                            && pos.y >= min_pos.y
-                            && pos.y <= max_pos.y
-                        {
-                            result.push(entity);
-                        }
+                for &(entity, pos_idx) in &self.cells[idx] {
+                    let pos = self.positions[pos_idx as usize];
+                    if pos.x >= min_pos.x
+                        && pos.x <= max_pos.x
+                        && pos.y >= min_pos.y
+                        && pos.y <= max_pos.y
+                    {
+                        result.push(entity);
                     }
                 }
             }

@@ -10,13 +10,13 @@
     turn_rate: 0.06,
     metal_cost: 140.0,
     energy_cost: 1800.0,
-    build_time: 220,
+    build_time: 200,
     weapons: [
         (
             name: "Heavy Missile",
-            damage: 50.0,
+            damage: 40.0,
             damage_type: "Normal",
-            range: 650.0,
+            range: 700.0,
             reload_time: 35,
             projectile_speed: 10.0,
             area_of_effect: 0.0,

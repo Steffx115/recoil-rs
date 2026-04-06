@@ -1,16 +1,16 @@
 (
     name: "Flash",
     unit_type_id: 101,
-    max_health: 400.0,
+    max_health: 350.0,
     armor_class: "Light",
     sight_range: 380.0,
     collision_radius: 10.0,
-    max_speed: 3.2,
+    max_speed: 3.5,
     acceleration: 1.2,
     turn_rate: 0.09,
     metal_cost: 90.0,
-    energy_cost: 1200.0,
-    build_time: 150,
+    energy_cost: 1000.0,
+    build_time: 120,
     weapons: [
         (
             name: "Light Laser",
