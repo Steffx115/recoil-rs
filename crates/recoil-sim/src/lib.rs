@@ -18,6 +18,7 @@ pub mod selection;
 pub mod sim_runner;
 pub mod spatial;
 pub mod targeting;
+pub mod unit_defs;
 
 pub use recoil_math::{SimFloat, SimVec2, SimVec3};
 

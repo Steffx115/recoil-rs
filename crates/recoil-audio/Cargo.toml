@@ -9,3 +9,4 @@ description = "Spatial audio for the Recoil RTS engine"
 recoil-sim = { path = "../recoil-sim" }
 kira = { workspace = true }
 tracing = { workspace = true }
+anyhow = { workspace = true }

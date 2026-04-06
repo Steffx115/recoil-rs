@@ -5,6 +5,8 @@
 
 pub mod camera;
 pub mod gpu;
+pub mod model_registry;
+pub mod obj_loader;
 pub mod particles;
 pub mod projectile_renderer;
 pub mod renderer;
@@ -14,6 +16,8 @@ pub mod unit_renderer;
 
 pub use camera::Camera;
 pub use gpu::GpuContext;
+pub use model_registry::{LoadedModel, ModelRegistry};
+pub use obj_loader::{load_obj, load_obj_file};
 pub use particles::{Particle, ParticleSystem};
 pub use projectile_renderer::{ProjectileInstance, ProjectileRenderer};
 pub use renderer::Renderer;

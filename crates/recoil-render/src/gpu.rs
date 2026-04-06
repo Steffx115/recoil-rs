@@ -45,7 +45,7 @@ impl GpuContext {
                     required_limits: wgpu::Limits::default(),
                     ..Default::default()
                 },
-                None, // trace path
+                None,
             )
             .await
             .context("failed to create GPU device")?;
@@ -58,7 +58,7 @@ impl GpuContext {
         let surface_format = surface_caps
             .formats
             .iter()
-            .find(|f| f.is_srgb())
+            .find(|f: &&wgpu::TextureFormat| f.is_srgb())
             .copied()
             .unwrap_or(surface_caps.formats[0]);
 
