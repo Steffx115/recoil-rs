@@ -15,6 +15,9 @@ recoil-audio = { path = "../recoil-audio" }
 anyhow = { workspace = true }
 bevy_ecs = { workspace = true }
 eframe = { workspace = true }
+pollster = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
 ron = { workspace = true }
