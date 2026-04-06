@@ -18,6 +18,9 @@ Thumbs.db
 .env
 *.local
 
+# Screenshots
+/images/
+
 # Profiling
 *.tracy
 flamegraph.svg
