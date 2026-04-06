@@ -50,6 +50,9 @@ thiserror = "2"
 proptest = "1"
 criterion = { version = "0.5", features = ["html_reports"] }
 
+# Buffer uploads
+bytemuck = { version = "1", features = ["derive"] }
+
 # Tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

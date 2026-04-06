@@ -3227,6 +3227,7 @@ name = "recoil-render"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
  "recoil-sim",
  "tracing",
  "wgpu",

@@ -5,7 +5,8 @@
       "Bash(git init:*)",
       "Bash(rustup component:*)",
       "Bash(git -C /c/Users/Stefan/source/repos/bar/recoil-rust add -A)",
-      "Bash(git -C /c/Users/Stefan/source/repos/bar/recoil-rust status)"
+      "Bash(git -C /c/Users/Stefan/source/repos/bar/recoil-rust status)",
+      "Bash(git:*)"
     ]
   }
 }
