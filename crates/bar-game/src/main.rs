@@ -441,6 +441,9 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
+                // Drop renderer before exit to avoid wgpu cleanup crash
+                self.renderer = None;
+                self.window = None;
                 event_loop.exit();
             }
 
