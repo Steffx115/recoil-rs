@@ -716,8 +716,27 @@ impl ApplicationHandler for App {
                 .expect("failed to create window"),
         );
 
-        let renderer = pollster::block_on(Renderer::new(Arc::clone(&window)))
+        let mut renderer = pollster::block_on(Renderer::new(Arc::clone(&window)))
             .expect("failed to create renderer");
+
+        // Try to load BAR .s3o model for units (Peewee)
+        let bar_models_dir = Path::new("../Beyond-All-Reason-Sandbox/objects3d/Units");
+        let s3o_path = bar_models_dir.join("armpw.s3o");
+        if s3o_path.exists() {
+            match recoil_render::load_s3o_file(&s3o_path) {
+                Ok((verts, indices)) => {
+                    tracing::info!(
+                        "Loaded .s3o model: {} verts, {} indices",
+                        verts.len(),
+                        indices.len()
+                    );
+                    renderer.set_unit_mesh(&verts, &indices);
+                }
+                Err(e) => tracing::warn!("Failed to load .s3o: {}", e),
+            }
+        } else {
+            tracing::info!("No BAR models found at {:?}, using placeholder", s3o_path);
+        }
 
         self.window = Some(window);
         self.renderer = Some(renderer);

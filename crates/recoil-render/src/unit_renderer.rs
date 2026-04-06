@@ -261,6 +261,21 @@ impl UnitRenderer {
         }
     }
 
+    /// Replace the unit mesh with new vertex/index data.
+    pub fn set_mesh(&mut self, device: &wgpu::Device, vertices: &[UnitVertex], indices: &[u16]) {
+        self.vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("unit_vertex_buffer"),
+            contents: bytemuck::cast_slice(vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        self.index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("unit_index_buffer"),
+            contents: bytemuck::cast_slice(indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        self.index_count = indices.len() as u32;
+    }
+
     /// Record draw commands into an existing render pass.
     ///
     /// The caller must have already set bind group 0 to the camera bind group.

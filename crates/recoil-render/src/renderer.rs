@@ -140,6 +140,12 @@ impl Renderer {
         self.terrain.update_camera(&self.gpu.queue, &self.camera);
     }
 
+    /// Replace the unit mesh (e.g. load an .s3o model).
+    pub fn set_unit_mesh(&mut self, vertices: &[crate::unit_mesh::UnitVertex], indices: &[u16]) {
+        self.unit_renderer
+            .set_mesh(&self.gpu.device, vertices, indices);
+    }
+
     /// Upload unit instance data for the next frame.
     pub fn update_units(&mut self, instances: &[UnitInstance]) {
         self.unit_renderer
