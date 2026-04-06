@@ -5,6 +5,7 @@ use winit::window::Window;
 
 use crate::camera::Camera;
 use crate::gpu::GpuContext;
+use crate::projectile_renderer::{ProjectileInstance, ProjectileRenderer};
 use crate::terrain::TerrainResources;
 use crate::unit_renderer::{UnitInstance, UnitRenderer};
 
@@ -14,6 +15,7 @@ pub struct Renderer {
     pub camera: Camera,
     terrain: TerrainResources,
     unit_renderer: UnitRenderer,
+    projectile_renderer: ProjectileRenderer,
 }
 
 impl Renderer {
@@ -32,11 +34,15 @@ impl Renderer {
         let unit_renderer =
             UnitRenderer::new(&gpu.device, gpu.config.format, terrain.bind_group_layout());
 
+        let projectile_renderer =
+            ProjectileRenderer::new(&gpu.device, gpu.config.format, terrain.bind_group_layout());
+
         Ok(Self {
             gpu,
             camera,
             terrain,
             unit_renderer,
+            projectile_renderer,
         })
     }
 
@@ -102,6 +108,10 @@ impl Renderer {
             // Units: reuse the same camera bind group (group 0).
             pass.set_bind_group(0, &self.terrain.camera_bind_group, &[]);
             self.unit_renderer.render(&mut pass);
+
+            // Projectiles / particles: draw after units (alpha-blended).
+            pass.set_bind_group(0, &self.terrain.camera_bind_group, &[]);
+            self.projectile_renderer.render(&mut pass);
         }
 
         self.gpu.queue.submit(std::iter::once(encoder.finish()));
@@ -133,6 +143,12 @@ impl Renderer {
     /// Upload unit instance data for the next frame.
     pub fn update_units(&mut self, instances: &[UnitInstance]) {
         self.unit_renderer
+            .prepare(&self.gpu.device, &self.gpu.queue, instances);
+    }
+
+    /// Upload projectile/particle instance data for the next frame.
+    pub fn update_projectiles(&mut self, instances: &[ProjectileInstance]) {
+        self.projectile_renderer
             .prepare(&self.gpu.device, &self.gpu.queue, instances);
     }
 

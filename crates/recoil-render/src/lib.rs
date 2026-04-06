@@ -5,6 +5,8 @@
 
 pub mod camera;
 pub mod gpu;
+pub mod particles;
+pub mod projectile_renderer;
 pub mod renderer;
 pub mod terrain;
 pub mod unit_mesh;
@@ -12,6 +14,8 @@ pub mod unit_renderer;
 
 pub use camera::Camera;
 pub use gpu::GpuContext;
+pub use particles::{Particle, ParticleSystem};
+pub use projectile_renderer::{ProjectileInstance, ProjectileRenderer};
 pub use renderer::Renderer;
 pub use terrain::{TerrainResources, TerrainVertex};
 pub use unit_mesh::UnitVertex;
