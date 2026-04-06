@@ -191,11 +191,14 @@ impl RecoilDebugApp {
     }
 
     fn sim_tick(&mut self) {
-        // 1. Rebuild SpatialGrid
+        // 1. Rebuild SpatialGrid (exclude Dead entities and wreckage)
         {
             let entities: Vec<(Entity, SimVec3)> = self
                 .world
-                .query::<(Entity, &Position)>()
+                .query_filtered::<(Entity, &Position), (
+                    bevy_ecs::query::Without<recoil_sim::Dead>,
+                    bevy_ecs::query::Without<recoil_sim::construction::Reclaimable>,
+                )>()
                 .iter(&self.world)
                 .map(|(e, p)| (e, p.pos))
                 .collect();

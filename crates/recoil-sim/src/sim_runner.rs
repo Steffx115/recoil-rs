@@ -22,10 +22,10 @@ use crate::{SimFloat, SimVec2};
 /// 3. Run [`collision_system`].
 /// 4. Run [`cleanup_dead`].
 pub fn sim_tick(world: &mut World) {
-    // 1. Rebuild spatial grid
+    // 1. Rebuild spatial grid (exclude Dead entities)
     {
         let entities: Vec<(Entity, SimVec2)> = world
-            .query::<(Entity, &Position)>()
+            .query_filtered::<(Entity, &Position), bevy_ecs::query::Without<crate::Dead>>()
             .iter(world)
             .map(|(e, p)| (e, SimVec2::new(p.pos.x, p.pos.z)))
             .collect();
