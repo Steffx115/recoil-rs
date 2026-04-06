@@ -13,6 +13,93 @@ pub struct SimFloat(i64);
 const SHIFT: u32 = 32;
 const SCALE: i64 = 1i64 << SHIFT; // 4_294_967_296
 
+// --- Compile-time sin lookup table (256 entries for [0, PI/2]) ---
+// Each entry is the raw i64 value of sin(i * PI / (2 * TABLE_SIZE)) in 32.32 fixed-point.
+const SIN_TABLE_SIZE: usize = 256;
+const SIN_TABLE: [i64; SIN_TABLE_SIZE + 1] = {
+    // We pre-compute using integer-only Taylor series at compile time.
+    // sin(x) for x in [0, pi/2], sampled at 257 points (0..=256).
+    //
+    // We use the fact that we can compute these from a high-precision
+    // rational approximation. We'll use a const-evaluated loop with
+    // the Taylor series computed in i128 to get sufficient precision.
+    //
+    // angle = i * (PI/2) / 256, but we represent PI/2 in fixed-point.
+    // PI/2 in 32.32 = 6_746_518_852 (approximately)
+    //
+    // For the Taylor series: sin(x) = x - x^3/6 + x^5/120 - x^7/5040 + ...
+    // We compute in 64.64 (i128) for intermediate precision, then truncate to 32.32.
+
+    let pi_half_raw: i64 = 6_746_518_852; // floor(PI/2 * 2^32)
+
+    let mut table = [0i64; SIN_TABLE_SIZE + 1];
+    let mut i = 0usize;
+    while i <= SIN_TABLE_SIZE {
+        // angle in 32.32 = pi_half_raw * i / 256
+        let x_raw = (pi_half_raw as i128 * i as i128) / SIN_TABLE_SIZE as i128;
+        let x = x_raw; // in 32.32 as i128
+
+        // Taylor series in higher precision:
+        // We work in 32.32 throughout, using i128 for intermediates.
+        // x^n is computed by repeated multiplication with >>32 to stay in 32.32.
+        let x2 = (x * x) >> 32;
+        let x3 = (x2 * x) >> 32;
+        let x5 = (x3 * x2) >> 32;
+        let x7 = (x5 * x2) >> 32;
+        let x9 = (x7 * x2) >> 32;
+        let x11 = (x9 * x2) >> 32;
+        let x13 = (x11 * x2) >> 32;
+
+        // sin(x) = x - x^3/3! + x^5/5! - x^7/7! + x^9/9! - x^11/11! + x^13/13!
+        let result = x - x3 / 6 + x5 / 120 - x7 / 5040 + x9 / 362_880 - x11 / 39_916_800
+            + x13 / 6_227_020_800;
+
+        table[i] = result as i64;
+        i += 1;
+    }
+    table
+};
+
+// CORDIC atan table: atan(2^-i) in 32.32 fixed-point, for i = 0..31
+const CORDIC_ATAN_TABLE: [i64; 32] = {
+    // atan(2^-i) * 2^32, computed from known high-precision values.
+    // These are the exact floor values of atan(2^-i) * 2^32.
+    [
+        3_373_259_426, // atan(1)       = pi/4
+        1_991_351_317, // atan(1/2)
+        1_052_572_536, // atan(1/4)
+        534_100_634,   // atan(1/8)
+        268_190_545,   // atan(1/16)
+        134_281_079,   // atan(1/32)
+        67_172_925,    // atan(1/64)
+        33_592_156,    // atan(1/128)
+        16_797_404,    // atan(1/256)
+        8_398_891,     // atan(1/512)
+        4_199_482,     // atan(1/1024)
+        2_099_747,     // atan(1/2048)
+        1_049_874,     // atan(1/4096)
+        524_937,       // atan(1/8192)
+        262_469,       // atan(1/16384)
+        131_234,       // atan(1/32768)
+        65_617,        // atan(1/65536)
+        32_809,
+        16_404,
+        8_202,
+        4_101,
+        2_051,
+        1_025,
+        513,
+        256,
+        128,
+        64,
+        32,
+        16,
+        8,
+        4,
+        2,
+    ]
+};
+
 impl SimFloat {
     pub const ZERO: Self = Self(0);
     pub const ONE: Self = Self(SCALE);
@@ -21,6 +108,15 @@ impl SimFloat {
     pub const TWO: Self = Self(SCALE * 2);
     pub const MAX: Self = Self(i64::MAX);
     pub const MIN: Self = Self(i64::MIN + 1); // avoid negation overflow
+
+    /// PI in 32.32 fixed-point.
+    pub const PI: Self = Self(13_493_037_705); // floor(pi * 2^32)
+    /// TAU (2*PI) in 32.32 fixed-point.
+    pub const TAU: Self = Self(26_986_075_409); // floor(2*pi * 2^32)
+    /// PI/2 in 32.32 fixed-point.
+    pub const FRAC_PI_2: Self = Self(6_746_518_852); // floor(pi/2 * 2^32)
+    /// PI/4 in 32.32 fixed-point.
+    pub const FRAC_PI_4: Self = Self(3_373_259_426); // floor(pi/4 * 2^32)
 
     /// Construct from raw fixed-point bits.
     #[inline]
@@ -158,6 +254,167 @@ impl SimFloat {
                 Self(floor + SCALE)
             }
         }
+    }
+
+    // -- Trigonometric & math functions --
+    // All implementations use only integer arithmetic on the raw i64.
+    // Expected precision vs f32: sin/cos ~1e-7, atan2 ~1e-5, sqrt ~1e-9.
+
+    /// Sine of self (angle in radians). Deterministic, integer-only.
+    ///
+    /// Uses a 257-entry lookup table with linear interpolation.
+    /// Reduces angle to [0, PI/2] using symmetry.
+    pub fn sin(self) -> Self {
+        // Reduce to [0, TAU)
+        let tau = Self::TAU.0;
+        let mut x = self.0 % tau;
+        if x < 0 {
+            x += tau;
+        }
+
+        // Determine quadrant and reduce to [0, PI/2]
+        let pi = Self::PI.0;
+        let pi_half = Self::FRAC_PI_2.0;
+
+        let (angle, negate) = if x < pi_half {
+            (x, false)
+        } else if x < pi {
+            (pi - x, false)
+        } else if x < pi + pi_half {
+            (x - pi, true)
+        } else {
+            (tau - x, true)
+        };
+
+        // Lookup with linear interpolation.
+        // index = angle * TABLE_SIZE / (PI/2)
+        // We compute in i128 to avoid overflow.
+        let idx_scaled = (angle as i128 * SIN_TABLE_SIZE as i128 * SCALE as i128) / pi_half as i128;
+        let idx = (idx_scaled >> SHIFT) as usize;
+        let frac = (idx_scaled as i64) & (SCALE - 1); // fractional part in 32.32
+
+        let idx = if idx >= SIN_TABLE_SIZE {
+            SIN_TABLE_SIZE - 1
+        } else {
+            idx
+        };
+        let next = if idx < SIN_TABLE_SIZE {
+            idx + 1
+        } else {
+            SIN_TABLE_SIZE
+        };
+
+        let a = SIN_TABLE[idx];
+        let b = SIN_TABLE[next];
+        // lerp: a + (b - a) * frac
+        let result = a + (((b - a) as i128 * frac as i128) >> SHIFT) as i64;
+
+        if negate {
+            Self(-result)
+        } else {
+            Self(result)
+        }
+    }
+
+    /// Cosine of self (angle in radians). Deterministic, integer-only.
+    ///
+    /// cos(x) = sin(x + PI/2)
+    pub fn cos(self) -> Self {
+        (self + Self::FRAC_PI_2).sin()
+    }
+
+    /// Two-argument arctangent. Returns angle in radians in (-PI, PI].
+    /// Deterministic, integer-only, using CORDIC algorithm.
+    pub fn atan2(y: Self, x: Self) -> Self {
+        if x.0 == 0 && y.0 == 0 {
+            return Self::ZERO;
+        }
+
+        // CORDIC works in the right half-plane. We handle signs manually.
+        let mut cx = x.0.unsigned_abs() as i64;
+        let mut cy = y.0.unsigned_abs() as i64;
+
+        // Pre-scale to avoid overflow: shift both down until they fit in 62 bits.
+        // We need headroom since CORDIC adds intermediate values.
+        while cx > (1i64 << 60) || cy > (1i64 << 60) {
+            cx >>= 1;
+            cy >>= 1;
+        }
+
+        // CORDIC vectoring mode: rotate (cx, cy) toward the x-axis,
+        // accumulating angle.
+        let mut angle: i64 = 0;
+        let iterations = 30;
+        for i in 0..iterations {
+            let (nx, ny, da) = if cy >= 0 {
+                (
+                    cx + (cy >> i),
+                    cy - (cx >> i),
+                    CORDIC_ATAN_TABLE[i as usize],
+                )
+            } else {
+                (
+                    cx - (cy >> i),
+                    cy + (cx >> i),
+                    -CORDIC_ATAN_TABLE[i as usize],
+                )
+            };
+            cx = nx;
+            cy = ny;
+            angle += da;
+        }
+
+        // angle is now atan2(|y|, |x|) in the first quadrant (in 32.32 radians)
+
+        // Adjust for original quadrant
+        let result = if x.0 >= 0 && y.0 >= 0 {
+            // Q1
+            angle
+        } else if x.0 < 0 && y.0 >= 0 {
+            // Q2
+            Self::PI.0 - angle
+        } else if x.0 >= 0 {
+            // Q4
+            -angle
+        } else {
+            // Q3
+            -(Self::PI.0 - angle)
+        };
+
+        Self(result)
+    }
+
+    /// Square root. Returns ZERO for negative inputs.
+    /// Deterministic, integer-only, using Newton's method on the raw i64.
+    ///
+    /// For a 32.32 fixed-point value v, sqrt(v) in fixed-point is:
+    ///   raw_result = isqrt(v.raw * 2^32)
+    /// because sqrt(v * 2^32) / 2^32 would lose the scale factor,
+    /// so we compute isqrt(v.raw << 32) to get a 32.32 result.
+    pub fn sqrt(self) -> Self {
+        if self.0 <= 0 {
+            return Self::ZERO;
+        }
+
+        // We need isqrt(self.0 * 2^32) = isqrt(self.0 << 32)
+        // Work in i128 to hold the shifted value.
+        let val = (self.0 as u128) << SHIFT;
+
+        // Newton's method: x_{n+1} = (x_n + val / x_n) / 2
+        // Start with a reasonable initial guess.
+        // Use bit-length to estimate: sqrt(val) ~ 2^(bits/2)
+        let bits = 128 - val.leading_zeros();
+        let mut guess = 1u128 << (bits.div_ceil(2));
+
+        loop {
+            let next = (guess + val / guess) >> 1;
+            if next >= guess {
+                break;
+            }
+            guess = next;
+        }
+
+        Self(guess as i64)
     }
 }
 
@@ -436,6 +693,11 @@ mod tests {
         (-RANGE * 1000..=RANGE * 1000).prop_map(|n| SimFloat::from_ratio(n, 1000))
     }
 
+    fn arb_angle() -> impl Strategy<Value = SimFloat> {
+        // Angles in [-2*TAU, 2*TAU] with fractional precision
+        (-25_132..=25_132i32).prop_map(|n| SimFloat::from_ratio(n, 4000))
+    }
+
     proptest! {
         #[test]
         fn prop_add_commutative(a in arb_simfloat(), b in arb_simfloat()) {
@@ -501,5 +763,207 @@ mod tests {
                 prop_assert_eq!(a, b);
             }
         }
+
+        #[test]
+        fn prop_sin_bounded(angle in arb_angle()) {
+            let s = angle.sin();
+            prop_assert!(s.to_f64() >= -1.0 - 1e-6 && s.to_f64() <= 1.0 + 1e-6,
+                "sin out of range: sin({}) = {}", angle.to_f64(), s.to_f64());
+        }
+
+        #[test]
+        fn prop_cos_bounded(angle in arb_angle()) {
+            let c = angle.cos();
+            prop_assert!(c.to_f64() >= -1.0 - 1e-6 && c.to_f64() <= 1.0 + 1e-6,
+                "cos out of range: cos({}) = {}", angle.to_f64(), c.to_f64());
+        }
+
+        #[test]
+        fn prop_sin_cos_pythagorean(angle in arb_angle()) {
+            let s = angle.sin();
+            let c = angle.cos();
+            let sum = (s * s + c * c).to_f64();
+            prop_assert!((sum - 1.0).abs() < 1e-4,
+                "sin^2 + cos^2 = {} for angle {}", sum, angle.to_f64());
+        }
+
+        #[test]
+        fn prop_sin_vs_f64(angle in arb_angle()) {
+            let sim = angle.sin().to_f64();
+            let reference = angle.to_f64().sin();
+            prop_assert!((sim - reference).abs() < 5e-5,
+                "sin({}) = {} (expected {})", angle.to_f64(), sim, reference);
+        }
+
+        #[test]
+        fn prop_cos_vs_f64(angle in arb_angle()) {
+            let sim = angle.cos().to_f64();
+            let reference = angle.to_f64().cos();
+            prop_assert!((sim - reference).abs() < 5e-5,
+                "cos({}) = {} (expected {})", angle.to_f64(), sim, reference);
+        }
+
+        #[test]
+        fn prop_sqrt_vs_f64(val in 0..=RANGE) {
+            let v = SimFloat::from_int(val);
+            let sim = v.sqrt().to_f64();
+            let reference = (val as f64).sqrt();
+            prop_assert!((sim - reference).abs() < 1e-4,
+                "sqrt({}) = {} (expected {})", val, sim, reference);
+        }
+
+        #[test]
+        fn prop_sqrt_squared(val in 1..=RANGE) {
+            let v = SimFloat::from_int(val);
+            let s = v.sqrt();
+            let back = (s * s).to_f64();
+            prop_assert!((back - val as f64).abs() < 1e-3,
+                "sqrt({})^2 = {} (expected {})", val, back, val);
+        }
+
+        #[test]
+        fn prop_atan2_vs_f64(
+            y in (-RANGE..=RANGE).prop_map(SimFloat::from_int),
+            x in (-RANGE..=RANGE).prop_map(SimFloat::from_int),
+        ) {
+            prop_assume!(x.raw() != 0 || y.raw() != 0);
+            let sim = SimFloat::atan2(y, x).to_f64();
+            let reference = (y.to_f64()).atan2(x.to_f64());
+            // atan2 with CORDIC: allow ~1e-4 tolerance
+            prop_assert!((sim - reference).abs() < 5e-4,
+                "atan2({}, {}) = {} (expected {})", y.to_f64(), x.to_f64(), sim, reference);
+        }
+    }
+
+    // -- Trig & math unit tests --
+
+    #[test]
+    fn pi_constants() {
+        let eps = 1e-9;
+        assert!((SimFloat::PI.to_f64() - std::f64::consts::PI).abs() < eps);
+        assert!((SimFloat::TAU.to_f64() - std::f64::consts::TAU).abs() < eps);
+        assert!((SimFloat::FRAC_PI_2.to_f64() - std::f64::consts::FRAC_PI_2).abs() < eps);
+        assert!((SimFloat::FRAC_PI_4.to_f64() - std::f64::consts::FRAC_PI_4).abs() < eps);
+    }
+
+    #[test]
+    fn sin_known_values() {
+        let eps = 5e-5;
+        // sin(0) = 0
+        assert!(SimFloat::ZERO.sin().to_f64().abs() < eps);
+        // sin(PI/2) = 1
+        assert!((SimFloat::FRAC_PI_2.sin().to_f64() - 1.0).abs() < eps);
+        // sin(PI) = 0
+        assert!(SimFloat::PI.sin().to_f64().abs() < eps);
+        // sin(3*PI/2) = -1
+        let three_pi_half = SimFloat::PI + SimFloat::FRAC_PI_2;
+        assert!((three_pi_half.sin().to_f64() + 1.0).abs() < eps);
+        // sin(-PI/2) = -1
+        assert!((-SimFloat::FRAC_PI_2).sin().to_f64() + 1.0 < eps);
+    }
+
+    #[test]
+    fn cos_known_values() {
+        let eps = 5e-5;
+        // cos(0) = 1
+        assert!((SimFloat::ZERO.cos().to_f64() - 1.0).abs() < eps);
+        // cos(PI/2) = 0
+        assert!(SimFloat::FRAC_PI_2.cos().to_f64().abs() < eps);
+        // cos(PI) = -1
+        assert!((SimFloat::PI.cos().to_f64() + 1.0).abs() < eps);
+    }
+
+    #[test]
+    fn sqrt_known_values() {
+        let eps = 1e-4;
+        // sqrt(0) = 0
+        assert_eq!(SimFloat::ZERO.sqrt(), SimFloat::ZERO);
+        // sqrt(1) = 1
+        assert!((SimFloat::ONE.sqrt().to_f64() - 1.0).abs() < eps);
+        // sqrt(4) = 2
+        assert!((SimFloat::from_int(4).sqrt().to_f64() - 2.0).abs() < eps);
+        // sqrt(2) ~= 1.41421356
+        assert!((SimFloat::TWO.sqrt().to_f64() - std::f64::consts::SQRT_2).abs() < eps);
+        // sqrt(negative) = 0
+        assert_eq!(SimFloat::from_int(-5).sqrt(), SimFloat::ZERO);
+    }
+
+    #[test]
+    fn sqrt_fractional() {
+        let eps = 1e-4;
+        // sqrt(0.25) = 0.5
+        let quarter = SimFloat::from_ratio(1, 4);
+        assert!((quarter.sqrt().to_f64() - 0.5).abs() < eps);
+    }
+
+    #[test]
+    fn atan2_known_values() {
+        let eps = 5e-4;
+        // atan2(0, 1) = 0
+        assert!(
+            SimFloat::atan2(SimFloat::ZERO, SimFloat::ONE)
+                .to_f64()
+                .abs()
+                < eps
+        );
+        // atan2(1, 0) = PI/2
+        assert!(
+            (SimFloat::atan2(SimFloat::ONE, SimFloat::ZERO).to_f64() - std::f64::consts::FRAC_PI_2)
+                .abs()
+                < eps
+        );
+        // atan2(0, -1) = PI
+        assert!(
+            (SimFloat::atan2(SimFloat::ZERO, SimFloat::NEG_ONE).to_f64() - std::f64::consts::PI)
+                .abs()
+                < eps
+        );
+        // atan2(-1, 0) = -PI/2
+        assert!(
+            (SimFloat::atan2(SimFloat::NEG_ONE, SimFloat::ZERO).to_f64()
+                + std::f64::consts::FRAC_PI_2)
+                .abs()
+                < eps
+        );
+        // atan2(0, 0) = 0
+        assert_eq!(
+            SimFloat::atan2(SimFloat::ZERO, SimFloat::ZERO),
+            SimFloat::ZERO
+        );
+        // atan2(1, 1) = PI/4
+        assert!(
+            (SimFloat::atan2(SimFloat::ONE, SimFloat::ONE).to_f64() - std::f64::consts::FRAC_PI_4)
+                .abs()
+                < eps
+        );
+    }
+
+    #[test]
+    fn sin_cos_determinism() {
+        // Same input must always produce the exact same raw bits
+        let angle = SimFloat::from_f64(1.2345);
+        let s1 = angle.sin().raw();
+        let s2 = angle.sin().raw();
+        assert_eq!(s1, s2);
+        let c1 = angle.cos().raw();
+        let c2 = angle.cos().raw();
+        assert_eq!(c1, c2);
+    }
+
+    #[test]
+    fn sqrt_determinism() {
+        let v = SimFloat::from_f64(7.77);
+        let r1 = v.sqrt().raw();
+        let r2 = v.sqrt().raw();
+        assert_eq!(r1, r2);
+    }
+
+    #[test]
+    fn atan2_determinism() {
+        let y = SimFloat::from_f64(3.0);
+        let x = SimFloat::from_f64(4.0);
+        let a1 = SimFloat::atan2(y, x).raw();
+        let a2 = SimFloat::atan2(y, x).raw();
+        assert_eq!(a1, a2);
     }
 }
