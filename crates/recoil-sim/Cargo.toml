@@ -12,6 +12,8 @@ serde = { workspace = true }
 bincode = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+ron = { workspace = true }
+anyhow = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

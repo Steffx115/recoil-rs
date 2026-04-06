@@ -53,6 +53,9 @@ criterion = { version = "0.5", features = ["html_reports"] }
 # Buffer uploads
 bytemuck = { version = "1", features = ["derive"] }
 
+# Async block_on
+pollster = "0.4"
+
 # Tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

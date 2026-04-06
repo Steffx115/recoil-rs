@@ -8,7 +8,9 @@ pub mod determinism;
 pub mod economy;
 pub mod factory;
 pub mod flowfield;
+pub mod fog;
 pub mod lifecycle;
+pub mod map;
 pub mod movement;
 pub mod pathfinding;
 pub mod projectile;
@@ -21,7 +23,8 @@ pub use recoil_math::{SimFloat, SimVec2, SimVec3};
 pub use commands::{command_system, Command, CommandQueue};
 pub use components::{
     Allegiance, BuildProgress, Cloaked, CollisionRadius, Dead, Heading, Health, MoveState,
-    MovementParams, Position, SimId, Target, Transport, UnitType, Velocity,
+    MovementParams, Position, SightRange, SimId, Target, Transport, UnitType, Velocity,
 };
+pub use fog::{fog_system, is_entity_visible, CellVisibility, FogOfWar};
 pub use spatial::SpatialGrid;
 pub use targeting::{FireEvent, FireEventQueue, WeaponRegistry};

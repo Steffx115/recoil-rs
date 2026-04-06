@@ -477,6 +477,10 @@ dependencies = [
  "anyhow",
  "bevy_ecs",
  "eframe",
+ "egui",
+ "egui-wgpu",
+ "egui-winit",
+ "pollster",
  "recoil-audio",
  "recoil-math",
  "recoil-net",
@@ -486,6 +490,8 @@ dependencies = [
  "ron",
  "tracing",
  "tracing-subscriber",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]
@@ -2979,6 +2985,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "pollster"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
+
+[[package]]
 name = "potential_utf"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3239,10 +3251,12 @@ dependencies = [
 name = "recoil-sim"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bevy_ecs",
  "bincode",
  "proptest",
  "recoil-math",
+ "ron",
  "serde",
  "thiserror 2.0.18",
  "tracing",
