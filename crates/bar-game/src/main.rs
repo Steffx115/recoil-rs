@@ -631,27 +631,9 @@ impl RenderState {
             self.projectile_renderer.render(&mut pass);
         }
 
-        // --- egui overlay pass (no depth, load existing color) ---
-        {
-            let mut pass = encoder
-                .begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("egui_pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                })
-                .forget_lifetime();
-
-            egui_renderer.render(&mut pass, egui_tris, egui_screen);
-        }
+        // NOTE: egui overlay disabled — font texture registration issue with
+        // egui-wgpu 0.31. Will be fixed when upgrading egui integration.
+        let _ = (egui_renderer, egui_tris, egui_screen);
 
         self.gpu.queue.submit(std::iter::once(encoder.finish()));
         output.present();
