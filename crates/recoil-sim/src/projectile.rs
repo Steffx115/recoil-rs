@@ -22,7 +22,8 @@ use crate::{SimFloat, SimVec3};
 const GRAVITY: SimFloat = SimFloat::from_ratio(1, 10);
 
 /// Distance threshold below which a projectile counts as hitting its target.
-const HIT_DISTANCE: SimFloat = SimFloat::TWO;
+/// Must be >= projectile speed to prevent overshoot oscillation.
+const HIT_DISTANCE: SimFloat = SimFloat::from_int(10);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -53,6 +54,8 @@ pub struct Projectile {
     pub area_of_effect: SimFloat,
     pub speed: SimFloat,
     pub is_paralyzer: bool,
+    /// Frames remaining before the projectile self-destructs.
+    pub lifetime: u32,
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +172,7 @@ pub fn spawn_projectile_system(world: &mut World) {
                 damage_type: info.damage_type,
                 area_of_effect: info.area_of_effect,
                 speed: info.speed,
+                lifetime: 300,
                 is_paralyzer: info.is_paralyzer,
             },
             Position {
@@ -201,6 +205,7 @@ pub fn projectile_movement_system(world: &mut World) {
         area_of_effect: SimFloat,
         speed: SimFloat,
         is_paralyzer: bool,
+        lifetime: u32,
         pos: SimVec3,
         vel: SimVec3,
     }
@@ -219,6 +224,7 @@ pub fn projectile_movement_system(world: &mut World) {
             area_of_effect: proj.area_of_effect,
             speed: proj.speed,
             is_paralyzer: proj.is_paralyzer,
+            lifetime: proj.lifetime,
             pos: pos.pos,
             vel: vel.vel,
         });
@@ -254,6 +260,13 @@ pub fn projectile_movement_system(world: &mut World) {
             }
         }
 
+        // Decrement lifetime — despawn if expired (prevents infinite orbit).
+        info.lifetime = info.lifetime.saturating_sub(1);
+        if info.lifetime == 0 {
+            despawns.push(info.entity);
+            continue;
+        }
+
         // Check hit distance against target position.
         let dist = info.pos.distance(info.target_pos);
         if dist < HIT_DISTANCE {
@@ -278,6 +291,9 @@ pub fn projectile_movement_system(world: &mut World) {
         }
         if let Some(mut vel) = world.get_mut::<Velocity>(info.entity) {
             vel.vel = info.vel;
+        }
+        if let Some(mut proj) = world.get_mut::<Projectile>(info.entity) {
+            proj.lifetime = info.lifetime;
         }
     }
 
@@ -404,6 +420,7 @@ mod tests {
                 area_of_effect: SimFloat::ZERO,
                 speed,
                 is_paralyzer: false,
+                lifetime: 300,
             },
             Position {
                 pos: SimVec3::new(sf(0), sf(10), sf(0)),
@@ -452,6 +469,7 @@ mod tests {
                     area_of_effect: SimFloat::ZERO,
                     speed,
                     is_paralyzer: false,
+                    lifetime: 300,
                 },
                 Position {
                     pos: SimVec3::new(sf(0), sf(0), sf(0)),
@@ -508,6 +526,7 @@ mod tests {
                     area_of_effect: sf(3),
                     speed,
                     is_paralyzer: false,
+                    lifetime: 300,
                 },
                 Position { pos: SimVec3::ZERO },
                 Velocity {
