@@ -94,6 +94,32 @@ pub struct Allegiance {
 }
 
 // ---------------------------------------------------------------------------
+// Movement
+// ---------------------------------------------------------------------------
+
+/// Current movement state of an entity.
+#[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum MoveState {
+    /// Standing still, no movement order.
+    Idle,
+    /// Actively moving toward a destination.
+    MovingTo(SimVec3),
+    /// Just arrived at target (transient, will transition to Idle).
+    Arriving,
+}
+
+/// Tuning parameters that govern how an entity moves.
+#[derive(Component, Serialize, Deserialize, Debug, Clone)]
+pub struct MovementParams {
+    /// Maximum linear speed in world-units per tick.
+    pub max_speed: SimFloat,
+    /// Acceleration in world-units per tick per tick.
+    pub acceleration: SimFloat,
+    /// Maximum turn rate in radians per tick.
+    pub turn_rate: SimFloat,
+}
+
+// ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
 
