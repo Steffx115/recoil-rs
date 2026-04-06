@@ -63,6 +63,16 @@ pub struct Heading {
 }
 
 // ---------------------------------------------------------------------------
+// Collision
+// ---------------------------------------------------------------------------
+
+/// Circular collision radius for unit-unit overlap detection.
+#[derive(Component, Serialize, Deserialize, Debug, Clone)]
+pub struct CollisionRadius {
+    pub radius: SimFloat,
+}
+
+// ---------------------------------------------------------------------------
 // Combat
 // ---------------------------------------------------------------------------
 
