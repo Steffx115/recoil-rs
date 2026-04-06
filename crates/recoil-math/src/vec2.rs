@@ -32,23 +32,20 @@ impl SimVec2 {
         self.dot(self)
     }
 
-    /// Length — stub that returns length_squared until RR-13 adds sqrt.
+    /// Length (magnitude).
     #[inline]
     pub fn length(self) -> SimFloat {
-        // TODO(RR-13): replace with proper sqrt
-        self.length_squared()
+        self.length_squared().sqrt()
     }
 
-    /// Normalize — stub that returns self until RR-13 adds sqrt.
+    /// Returns a unit vector in the same direction, or ZERO if length is zero.
     #[inline]
     pub fn normalize(self) -> Self {
-        // TODO(RR-13): implement properly once sqrt is available
-        let len_sq = self.length_squared();
-        if len_sq == SimFloat::ZERO {
+        let len = self.length();
+        if len == SimFloat::ZERO {
             return Self::ZERO;
         }
-        // Stub: return self (not a true unit vector)
-        self
+        self / len
     }
 
     /// Squared distance between two points.
@@ -57,11 +54,10 @@ impl SimVec2 {
         (self - other).length_squared()
     }
 
-    /// Distance — stub that returns distance_squared until RR-13 adds sqrt.
+    /// Distance between two points.
     #[inline]
     pub fn distance(self, other: Self) -> SimFloat {
-        // TODO(RR-13): replace with proper sqrt
-        self.distance_squared(other)
+        (self - other).length()
     }
 }
 
