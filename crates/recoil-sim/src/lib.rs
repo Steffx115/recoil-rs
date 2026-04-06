@@ -10,6 +10,7 @@ pub mod factory;
 pub mod flowfield;
 pub mod fog;
 pub mod lifecycle;
+pub mod lua_unitdefs;
 pub mod map;
 pub mod movement;
 pub mod pathfinding;
