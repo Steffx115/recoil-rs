@@ -38,6 +38,9 @@ use recoil_sim::{
     SightRange, Target, UnitType, Velocity,
 };
 
+// egui overlay
+use egui_wgpu::ScreenDescriptor;
+
 // ---------------------------------------------------------------------------
 // Seeded LCG (no rand crate)
 // ---------------------------------------------------------------------------
@@ -1137,7 +1140,8 @@ impl SimState {
         }
     }
 
-    /// Get HUD text for window title.
+    /// Get HUD text for window title (kept for fallback/debug).
+    #[allow(dead_code)]
     fn hud_text(&mut self) -> String {
         let (blue, red) = self.unit_counts();
 
@@ -1222,6 +1226,42 @@ struct App {
     // We use S only when no unit is selected or non-builder is selected for camera.
     // When a builder is selected, S enters solar placement mode.
     backward_held: bool,
+    // egui overlay
+    egui_state: Option<egui_winit::State>,
+    egui_renderer: Option<egui_wgpu::Renderer>,
+    fps_counter: FpsCounter,
+}
+
+/// Simple FPS tracker using a rolling window.
+struct FpsCounter {
+    frame_times: VecDeque<Instant>,
+}
+
+impl FpsCounter {
+    fn new() -> Self {
+        Self {
+            frame_times: VecDeque::with_capacity(120),
+        }
+    }
+
+    fn tick(&mut self) -> f32 {
+        let now = Instant::now();
+        self.frame_times.push_back(now);
+        while self.frame_times.len() > 100 {
+            self.frame_times.pop_front();
+        }
+        if self.frame_times.len() < 2 {
+            return 0.0;
+        }
+        let elapsed = now
+            .duration_since(*self.frame_times.front().unwrap())
+            .as_secs_f32();
+        if elapsed > 0.0 {
+            (self.frame_times.len() - 1) as f32 / elapsed
+        } else {
+            0.0
+        }
+    }
 }
 
 impl App {
@@ -1237,6 +1277,9 @@ impl App {
             window_size: [1280.0, 720.0],
             a_held: false,
             backward_held: false,
+            egui_state: None,
+            egui_renderer: None,
+            fps_counter: FpsCounter::new(),
         }
     }
 }
@@ -1291,11 +1334,39 @@ impl ApplicationHandler for App {
             tracing::info!("No BAR models found at {:?}, using placeholder", s3o_path);
         }
 
+        // Initialize egui
+        let egui_ctx = egui::Context::default();
+        let egui_state = egui_winit::State::new(
+            egui_ctx,
+            egui::ViewportId::ROOT,
+            &*window,
+            Some(window.scale_factor() as f32),
+            window.theme(),
+            Some(renderer.gpu.device.limits().max_texture_dimension_2d as usize),
+        );
+        let egui_renderer = egui_wgpu::Renderer::new(
+            &renderer.gpu.device,
+            renderer.gpu.config.format,
+            None, // no depth for egui
+            1,    // msaa samples
+            false,
+        );
+
+        self.egui_state = Some(egui_state);
+        self.egui_renderer = Some(egui_renderer);
         self.window = Some(window);
         self.renderer = Some(renderer);
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        // Forward events to egui first
+        if let (Some(egui_state), Some(window)) = (self.egui_state.as_mut(), self.window.as_ref()) {
+            let response = egui_state.on_window_event(window, &event);
+            if response.consumed {
+                return;
+            }
+        }
+
         match event {
             WindowEvent::CloseRequested => {
                 std::process::exit(0);
@@ -1503,25 +1574,110 @@ impl ApplicationHandler for App {
                 let particle_instances = self.particle_system.instances();
                 proj_instances.extend(particle_instances);
 
-                if let Some(renderer) = self.renderer.as_mut() {
+                let fps = self.fps_counter.tick();
+
+                if let (Some(renderer), Some(egui_state), Some(egui_renderer), Some(window)) = (
+                    self.renderer.as_mut(),
+                    self.egui_state.as_mut(),
+                    self.egui_renderer.as_mut(),
+                    self.window.as_ref(),
+                ) {
                     let aspect = self.window_size[0] / self.window_size[1];
                     let cam = self.camera_ctrl.camera(aspect);
                     renderer.update_camera(&cam);
                     renderer.update_units(&unit_instances);
                     renderer.update_projectiles(&proj_instances);
 
-                    match renderer.render() {
-                        Ok(()) => {}
+                    // 3D render pass (no present yet)
+                    let render_result = renderer.render_no_present();
+                    let (output, view) = match render_result {
+                        Ok(v) => v,
                         Err(e) => {
                             tracing::error!("render error: {e}");
+                            window.request_redraw();
+                            return;
                         }
-                    }
-                }
+                    };
 
-                // Update window title HUD
-                if let Some(window) = self.window.as_ref() {
-                    let title = self.sim.hud_text();
-                    window.set_title(&title);
+                    // --- egui frame ---
+                    let raw_input = egui_state.take_egui_input(window);
+                    let egui_ctx = egui_state.egui_ctx().clone();
+
+                    // Gather UI data from sim before running egui
+                    let ui_data = gather_ui_data(&mut self.sim, fps);
+
+                    let full_output = egui_ctx.run(raw_input, |ctx| {
+                        draw_egui_ui(ctx, &ui_data);
+                    });
+
+                    egui_state.handle_platform_output(window, full_output.platform_output);
+
+                    let tris =
+                        egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
+
+                    // Upload egui textures BEFORE rendering
+                    for (id, image_delta) in &full_output.textures_delta.set {
+                        egui_renderer.update_texture(
+                            &renderer.gpu.device,
+                            &renderer.gpu.queue,
+                            *id,
+                            image_delta,
+                        );
+                    }
+
+                    let screen_desc = ScreenDescriptor {
+                        size_in_pixels: [renderer.gpu.config.width, renderer.gpu.config.height],
+                        pixels_per_point: full_output.pixels_per_point,
+                    };
+
+                    // egui render pass (separate encoder, loads existing color)
+                    let mut encoder = renderer.gpu.device.create_command_encoder(
+                        &wgpu::CommandEncoderDescriptor {
+                            label: Some("egui_encoder"),
+                        },
+                    );
+
+                    let user_cmd_bufs = egui_renderer.update_buffers(
+                        &renderer.gpu.device,
+                        &renderer.gpu.queue,
+                        &mut encoder,
+                        &tris,
+                        &screen_desc,
+                    );
+
+                    {
+                        let pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: Some("egui_pass"),
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view: &view,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Load,
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            })],
+                            depth_stencil_attachment: None,
+                            timestamp_writes: None,
+                            occlusion_query_set: None,
+                        });
+
+                        let mut pass = pass.forget_lifetime();
+                        egui_renderer.render(&mut pass, &tris, &screen_desc);
+                    }
+
+                    let mut cmd_bufs: Vec<wgpu::CommandBuffer> = Vec::new();
+                    cmd_bufs.push(encoder.finish());
+                    cmd_bufs.extend(user_cmd_bufs);
+                    renderer.gpu.queue.submit(cmd_bufs);
+
+                    // Free egui textures
+                    for id in &full_output.textures_delta.free {
+                        egui_renderer.free_texture(id);
+                    }
+
+                    output.present();
+
+                    window.set_title("Recoil RTS");
                     window.request_redraw();
                 }
             }
@@ -1529,6 +1685,294 @@ impl ApplicationHandler for App {
             _ => {}
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// egui UI data + rendering
+// ---------------------------------------------------------------------------
+
+/// Snapshot of sim state needed by the UI, gathered once per frame.
+struct UiData {
+    metal: f32,
+    metal_storage: f32,
+    metal_income: f32,
+    metal_expense: f32,
+    energy: f32,
+    energy_storage: f32,
+    energy_income: f32,
+    energy_expense: f32,
+    frame_count: u64,
+    fps: f32,
+    paused: bool,
+    blue_count: usize,
+    red_count: usize,
+    // Selected unit info
+    selected_name: Option<String>,
+    selected_hp: Option<(f32, f32)>,
+    selected_pos: Option<(f32, f32)>,
+    selected_is_factory: bool,
+    selected_is_builder: bool,
+    factory_queue_len: usize,
+    // Placement mode
+    placement_label: Option<&'static str>,
+}
+
+fn gather_ui_data(sim: &mut SimState, fps: f32) -> UiData {
+    let (blue_count, red_count) = sim.unit_counts();
+
+    let (metal, metal_storage, energy, energy_storage) = {
+        let economy = sim.world.resource::<EconomyState>();
+        if let Some(res) = economy.teams.get(&0) {
+            (
+                res.metal.to_f32(),
+                res.metal_storage.to_f32(),
+                res.energy.to_f32(),
+                res.energy_storage.to_f32(),
+            )
+        } else {
+            (0.0, 0.0, 0.0, 0.0)
+        }
+    };
+
+    // Compute income/expense from resource producers on team 0
+    let (metal_income, energy_income) = {
+        let mut mi = 0.0f32;
+        let mut ei = 0.0f32;
+        for (prod, alleg) in sim
+            .world
+            .query_filtered::<(&ResourceProducer, &Allegiance), Without<Dead>>()
+            .iter(&sim.world)
+        {
+            if alleg.team == 0 {
+                mi += prod.metal_per_tick.to_f32();
+                ei += prod.energy_per_tick.to_f32();
+            }
+        }
+        (mi, ei)
+    };
+
+    // Approximate expense from active build sites
+    let (metal_expense, energy_expense) = {
+        let mut me = 0.0f32;
+        let mut ee = 0.0f32;
+        for (site, alleg) in sim
+            .world
+            .query_filtered::<(&BuildSite, &Allegiance), Without<Dead>>()
+            .iter(&sim.world)
+        {
+            if alleg.team == 0 && site.total_build_time > SimFloat::ZERO {
+                me += site.metal_cost.to_f32() / site.total_build_time.to_f32();
+                ee += site.energy_cost.to_f32() / site.total_build_time.to_f32();
+            }
+        }
+        // Also count factory production drain
+        for (bq, alleg) in sim
+            .world
+            .query_filtered::<(&BuildQueue, &Allegiance), Without<Dead>>()
+            .iter(&sim.world)
+        {
+            if alleg.team == 0 && !bq.queue.is_empty() {
+                me += 2.0; // rough estimate
+                ee += 10.0;
+            }
+        }
+        (me, ee)
+    };
+
+    // Selected unit info
+    let mut selected_name = None;
+    let mut selected_hp = None;
+    let mut selected_pos = None;
+    let selected_is_factory = sim.selected_is_factory();
+    let selected_is_builder = sim.selected_is_builder();
+    let mut factory_queue_len = 0;
+
+    if let Some(sel) = sim.selected {
+        if sim.world.get_entity(sel).is_ok() {
+            if let Some(health) = sim.world.get::<Health>(sel) {
+                selected_hp = Some((health.current.to_f32(), health.max.to_f32()));
+            }
+            if let Some(pos) = sim.world.get::<Position>(sel) {
+                selected_pos = Some((pos.pos.x.to_f32(), pos.pos.z.to_f32()));
+            }
+            if let Some(ut) = sim.world.get::<UnitType>(sel) {
+                let registry = sim.world.resource::<UnitDefRegistry>();
+                if let Some(def) = registry.defs.get(&ut.id) {
+                    selected_name = Some(def.name.clone());
+                } else {
+                    // Building types
+                    selected_name = Some(match ut.id {
+                        BUILDING_SOLAR_ID => "Solar Collector".to_string(),
+                        BUILDING_MEX_ID => "Metal Extractor".to_string(),
+                        BUILDING_FACTORY_ID => "Factory".to_string(),
+                        _ => format!("Unit #{}", ut.id),
+                    });
+                }
+            }
+            if let Some(bq) = sim.world.get::<BuildQueue>(sel) {
+                factory_queue_len = bq.queue.len();
+            }
+        }
+    }
+
+    let placement_label = sim.placement_mode.map(|pt| pt.label());
+
+    UiData {
+        metal,
+        metal_storage,
+        metal_income,
+        metal_expense,
+        energy,
+        energy_storage,
+        energy_income,
+        energy_expense,
+        frame_count: sim.frame_count,
+        fps,
+        paused: sim.paused,
+        blue_count,
+        red_count,
+        selected_name,
+        selected_hp,
+        selected_pos,
+        selected_is_factory,
+        selected_is_builder,
+        factory_queue_len,
+        placement_label,
+    }
+}
+
+fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData) {
+    // --- Top bar: resources, FPS, frame count ---
+    egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            // Metal
+            let metal_frac = if ui_data.metal_storage > 0.0 {
+                ui_data.metal / ui_data.metal_storage
+            } else {
+                0.0
+            };
+            ui.label(
+                egui::RichText::new("Metal:")
+                    .strong()
+                    .color(egui::Color32::from_rgb(100, 200, 100)),
+            );
+            let bar = egui::ProgressBar::new(metal_frac)
+                .text(format!(
+                    "{:.0}/{:.0}  +{:.1} -{:.1}",
+                    ui_data.metal,
+                    ui_data.metal_storage,
+                    ui_data.metal_income,
+                    ui_data.metal_expense,
+                ))
+                .fill(egui::Color32::from_rgb(60, 160, 60));
+            ui.add_sized([200.0, 18.0], bar);
+
+            ui.separator();
+
+            // Energy
+            let energy_frac = if ui_data.energy_storage > 0.0 {
+                ui_data.energy / ui_data.energy_storage
+            } else {
+                0.0
+            };
+            ui.label(
+                egui::RichText::new("Energy:")
+                    .strong()
+                    .color(egui::Color32::from_rgb(220, 200, 50)),
+            );
+            let bar = egui::ProgressBar::new(energy_frac)
+                .text(format!(
+                    "{:.0}/{:.0}  +{:.1} -{:.1}",
+                    ui_data.energy,
+                    ui_data.energy_storage,
+                    ui_data.energy_income,
+                    ui_data.energy_expense,
+                ))
+                .fill(egui::Color32::from_rgb(180, 160, 30));
+            ui.add_sized([200.0, 18.0], bar);
+
+            ui.separator();
+
+            // Units alive
+            ui.label(format!(
+                "Blue:{} Red:{}",
+                ui_data.blue_count, ui_data.red_count
+            ));
+
+            ui.separator();
+
+            // FPS + frame
+            ui.label(format!("F:{} FPS:{:.0}", ui_data.frame_count, ui_data.fps));
+
+            if ui_data.paused {
+                ui.label(
+                    egui::RichText::new("PAUSED")
+                        .strong()
+                        .color(egui::Color32::YELLOW),
+                );
+            }
+        });
+    });
+
+    // --- Bottom bar: context-sensitive commands ---
+    egui::TopBottomPanel::bottom("bottom_bar").show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            if let Some(label) = ui_data.placement_label {
+                ui.label(
+                    egui::RichText::new(format!("Click to place {} | [Esc] Cancel", label))
+                        .color(egui::Color32::from_rgb(255, 200, 80)),
+                );
+            } else if ui_data.selected_is_factory {
+                ui.label("Queue: [1]Peewee [2]Flash [3]Stumpy [4]Samson");
+                ui.separator();
+                ui.label(format!("Queue: {} items", ui_data.factory_queue_len));
+            } else if ui_data.selected_is_builder {
+                ui.label("Build: [S]olar [M]ex [F]actory");
+            } else if ui_data.selected_name.is_some() {
+                ui.label("[Right-click] Move | [A] Attack-move");
+            } else {
+                ui.label("[Left-click] Select | [Space] Pause | [R] Reset");
+            }
+        });
+    });
+
+    // --- Left panel: selected unit info ---
+    egui::SidePanel::left("info_panel")
+        .default_width(160.0)
+        .resizable(false)
+        .show(ctx, |ui| {
+            ui.heading("Selection");
+            ui.separator();
+
+            if let Some(ref name) = ui_data.selected_name {
+                ui.label(egui::RichText::new(name).strong());
+
+                if let Some((hp, max_hp)) = ui_data.selected_hp {
+                    let frac = if max_hp > 0.0 { hp / max_hp } else { 0.0 };
+                    let color = if frac > 0.5 {
+                        egui::Color32::from_rgb(60, 200, 60)
+                    } else if frac > 0.25 {
+                        egui::Color32::from_rgb(220, 180, 40)
+                    } else {
+                        egui::Color32::from_rgb(220, 50, 50)
+                    };
+                    ui.label(format!("HP: {:.0} / {:.0}", hp, max_hp));
+                    let bar = egui::ProgressBar::new(frac).fill(color);
+                    ui.add_sized([140.0, 14.0], bar);
+                }
+
+                if let Some((x, z)) = ui_data.selected_pos {
+                    ui.label(format!("Pos: ({:.0}, {:.0})", x, z));
+                }
+
+                if ui_data.selected_is_factory && ui_data.factory_queue_len > 0 {
+                    ui.separator();
+                    ui.label(format!("Production queue: {}", ui_data.factory_queue_len));
+                }
+            } else {
+                ui.label("No unit selected");
+            }
+        });
 }
 
 // ---------------------------------------------------------------------------

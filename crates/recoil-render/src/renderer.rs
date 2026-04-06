@@ -48,6 +48,15 @@ impl Renderer {
 
     /// Render one frame: update camera uniform, draw terrain, present.
     pub fn render(&mut self) -> Result<()> {
+        let (output, _view) = self.render_no_present()?;
+        output.present();
+        Ok(())
+    }
+
+    /// Render the 3D scene but do NOT present. Returns the surface texture and
+    /// view so the caller can add additional passes (e.g. egui overlay) before
+    /// presenting.
+    pub fn render_no_present(&mut self) -> Result<(wgpu::SurfaceTexture, wgpu::TextureView)> {
         // Upload latest camera matrix.
         self.terrain.update_camera(&self.gpu.queue, &self.camera);
 
@@ -115,9 +124,8 @@ impl Renderer {
         }
 
         self.gpu.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
 
-        Ok(())
+        Ok((output, view))
     }
 
     /// Handle a window resize.
