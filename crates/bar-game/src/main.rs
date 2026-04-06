@@ -76,6 +76,9 @@ const CAMERA_PAN_SPEED: f32 = 5.0;
 const ZOOM_SPEED: f32 = 0.1;
 const ROTATE_SENSITIVITY: f32 = 0.005;
 
+/// (sim_id, hp_current, hp_max, pos_x, pos_z, move_state, stunned, has_target)
+type SelectedUnitInfo = (u64, f32, f32, f32, f32, String, bool, bool);
+
 // ---------------------------------------------------------------------------
 // Sim state
 // ---------------------------------------------------------------------------
@@ -976,7 +979,7 @@ impl ApplicationHandler for App {
                 let paused = self.sim.paused;
 
                 // Gather selected unit info before the closure to avoid borrow issues.
-                let selected_info: Option<(u64, f32, f32, f32, f32, String, bool, bool)> =
+                let selected_info: Option<SelectedUnitInfo> =
                     self.sim.selected.and_then(|entity| {
                         let sim_id = self.sim.world.get::<SimId>(entity)?.id;
                         let health = self.sim.world.get::<Health>(entity)?;
