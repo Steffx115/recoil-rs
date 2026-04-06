@@ -402,16 +402,34 @@ impl eframe::App for RecoilDebugApp {
             }
 
             // Draw units
+            // Draw wreckage first (behind units)
+            use recoil_sim::construction::Reclaimable;
+            let wreck_data: Vec<(f32, f32)> = self
+                .world
+                .query::<(&Position, &Reclaimable)>()
+                .iter(&self.world)
+                .map(|(pos, _)| (pos.pos.x.to_f32(), pos.pos.z.to_f32()))
+                .collect();
+            for (wx, wz) in &wreck_data {
+                let wp = egui::pos2(origin.x + wx, origin.y + wz);
+                painter.circle_filled(wp, 5.0, egui::Color32::from_rgb(100, 80, 40));
+                painter.circle_stroke(
+                    wp,
+                    5.0,
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 50, 30)),
+                );
+            }
+
             let unit_data: Vec<(Entity, f32, f32, f32, u8, f32, MoveState)> = self
                 .world
-                .query::<(
+                .query_filtered::<(
                     Entity,
                     &Position,
                     &CollisionRadius,
                     &Allegiance,
                     &Heading,
                     &MoveState,
-                )>()
+                ), bevy_ecs::query::Without<recoil_sim::Dead>>()
                 .iter(&self.world)
                 .map(|(e, pos, cr, al, h, ms)| {
                     (
