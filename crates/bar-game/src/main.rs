@@ -724,12 +724,29 @@ impl ApplicationHandler for App {
         let s3o_path = bar_models_dir.join("armpw.s3o");
         if s3o_path.exists() {
             match recoil_render::load_s3o_file(&s3o_path) {
-                Ok((verts, indices)) => {
+                Ok((mut verts, indices)) => {
                     tracing::info!(
                         "Loaded .s3o model: {} verts, {} indices",
                         verts.len(),
                         indices.len()
                     );
+                    // Spring models face -Z; rotate 90° around Y to align with
+                    // our heading system (atan2 from +X). Also scale down since
+                    // Spring units are ~20-40 units tall but we want ~8-16.
+                    let scale = 0.4;
+                    for v in &mut verts {
+                        let x = v.position[0];
+                        let z = v.position[2];
+                        // 90° rotation: (x,z) -> (z, -x)
+                        v.position[0] = z * scale;
+                        v.position[1] *= scale;
+                        v.position[2] = -x * scale;
+                        // Rotate normals too
+                        let nx = v.normal[0];
+                        let nz = v.normal[2];
+                        v.normal[0] = nz;
+                        v.normal[2] = -nx;
+                    }
                     renderer.set_unit_mesh(&verts, &indices);
                 }
                 Err(e) => tracing::warn!("Failed to load .s3o: {}", e),
