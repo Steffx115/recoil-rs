@@ -29,6 +29,26 @@ mod entity_vec_serde {
     }
 }
 
+/// Serde helpers for `Option<Entity>` — serialises as `Option<u64>`.
+mod entity_option_serde {
+    use bevy_ecs::entity::Entity;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(
+        entity: &Option<Entity>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        entity.map(|e| e.to_bits()).serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<Entity>, D::Error> {
+        let raw = Option::<u64>::deserialize(deserializer)?;
+        Ok(raw.map(Entity::from_bits))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Deterministic entity identity
 // ---------------------------------------------------------------------------
@@ -70,6 +90,17 @@ pub struct Heading {
 #[derive(Component, Serialize, Deserialize, Debug, Clone)]
 pub struct CollisionRadius {
     pub radius: SimFloat,
+}
+
+// ---------------------------------------------------------------------------
+// Targeting
+// ---------------------------------------------------------------------------
+
+/// The current target of a unit.
+#[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Target {
+    #[serde(with = "entity_option_serde")]
+    pub entity: Option<Entity>,
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,329 @@
+//! Factory production and build queues.
+//!
+//! Factories are entities with a [`BuildQueue`] component that produce units
+//! over time, consuming metal and energy from the team's economy.  The
+//! [`factory_system`] drives production each tick, respecting economy stall
+//! ratios so that resource shortages proportionally slow build speed.
+
+use std::collections::VecDeque;
+
+use bevy_ecs::prelude::Component;
+use bevy_ecs::system::Resource;
+use bevy_ecs::world::World;
+
+use crate::components::{Allegiance, Health, Position, UnitType};
+use crate::economy::EconomyState;
+use crate::lifecycle::spawn_unit;
+use crate::{SimFloat, SimVec3};
+
+// ---------------------------------------------------------------------------
+// Data definitions
+// ---------------------------------------------------------------------------
+
+/// Blueprint describing a unit type's cost and build parameters.
+///
+/// Stored in the [`UnitRegistry`] resource, indexed by `unit_type_id`.
+#[derive(Debug, Clone)]
+pub struct UnitBlueprint {
+    pub unit_type_id: u32,
+    pub metal_cost: SimFloat,
+    pub energy_cost: SimFloat,
+    /// Frames to complete at full build power (no stall).
+    pub build_time: u32,
+    pub max_health: SimFloat,
+}
+
+// ---------------------------------------------------------------------------
+// Resources
+// ---------------------------------------------------------------------------
+
+/// Registry of all unit blueprints, indexed by `unit_type_id`.
+#[derive(Resource, Debug, Clone, Default)]
+pub struct UnitRegistry {
+    pub blueprints: Vec<UnitBlueprint>,
+}
+
+// ---------------------------------------------------------------------------
+// Components
+// ---------------------------------------------------------------------------
+
+/// A factory's build queue and current production state.
+#[derive(Component, Debug, Clone)]
+pub struct BuildQueue {
+    /// Unit type IDs waiting to be built (front = current).
+    pub queue: VecDeque<u32>,
+    /// Progress on the current item, in the range `[0, 1]`.
+    pub current_progress: SimFloat,
+    /// Where newly built units are spawned.
+    pub rally_point: SimVec3,
+}
+
+// ---------------------------------------------------------------------------
+// System
+// ---------------------------------------------------------------------------
+
+/// Advance factory production for one tick.
+///
+/// For each entity with (`BuildQueue`, `Allegiance`, `Position`):
+/// 1. Skip if the queue is empty.
+/// 2. Look up the current item's [`UnitBlueprint`] from [`UnitRegistry`].
+/// 3. Calculate build rate as `1 / build_time` (progress per frame).
+/// 4. Multiply by the team's `stall_ratio_metal` from [`EconomyState`].
+/// 5. Deduct per-frame metal and energy costs from the team's resources.
+/// 6. Accumulate `current_progress`.
+/// 7. When progress reaches 1.0, spawn the unit and advance the queue.
+pub fn factory_system(world: &mut World) {
+    // Collect factory entities and their relevant data so we can mutate the
+    // world freely afterwards.
+    struct FactoryWork {
+        queue_front: u32,
+        team: u8,
+        rally_point: SimVec3,
+    }
+
+    let mut work: Vec<(bevy_ecs::entity::Entity, FactoryWork)> = Vec::new();
+
+    {
+        let mut query = world.query::<(
+            bevy_ecs::entity::Entity,
+            &BuildQueue,
+            &Allegiance,
+            &Position,
+        )>();
+        for (entity, bq, allegiance, _pos) in query.iter(world) {
+            if let Some(&front) = bq.queue.front() {
+                work.push((
+                    entity,
+                    FactoryWork {
+                        queue_front: front,
+                        team: allegiance.team,
+                        rally_point: bq.rally_point,
+                    },
+                ));
+            }
+        }
+    }
+
+    // Process each factory.
+    for (entity, fw) in work {
+        // Look up blueprint.
+        let blueprint = {
+            let registry = world.resource::<UnitRegistry>();
+            registry
+                .blueprints
+                .iter()
+                .find(|bp| bp.unit_type_id == fw.queue_front)
+                .cloned()
+        };
+        let Some(blueprint) = blueprint else {
+            continue;
+        };
+
+        // Calculate build rate using ceiling division so that
+        // build_time * rate >= ONE even when SCALE isn't evenly divisible.
+        let bt = blueprint.build_time as i64;
+        let base_rate = SimFloat::from_raw((SimFloat::ONE.raw() + bt - 1) / bt);
+
+        // Get stall ratio for this team.
+        let stall_ratio = {
+            let economy = world.resource::<EconomyState>();
+            economy
+                .teams
+                .get(&fw.team)
+                .map(|t| t.stall_ratio_metal)
+                .unwrap_or(SimFloat::ZERO)
+        };
+
+        let effective_rate = base_rate * stall_ratio;
+
+        // Deduct resources from the team.
+        let metal_per_frame = blueprint.metal_cost * effective_rate;
+        let energy_per_frame = blueprint.energy_cost * effective_rate;
+
+        {
+            let mut economy = world.resource_mut::<EconomyState>();
+            if let Some(team_res) = economy.teams.get_mut(&fw.team) {
+                team_res.metal = (team_res.metal - metal_per_frame).max(SimFloat::ZERO);
+                team_res.energy = (team_res.energy - energy_per_frame).max(SimFloat::ZERO);
+            }
+        }
+
+        // Advance progress.
+        let mut bq = world.get_mut::<BuildQueue>(entity).unwrap();
+        bq.current_progress += effective_rate;
+
+        if bq.current_progress >= SimFloat::ONE {
+            bq.queue.pop_front();
+            bq.current_progress = SimFloat::ZERO;
+
+            // Spawn the completed unit at the rally point.
+            let rally = fw.rally_point;
+            spawn_unit(
+                world,
+                Position { pos: rally },
+                UnitType {
+                    id: blueprint.unit_type_id,
+                },
+                Allegiance { team: fw.team },
+                Health {
+                    current: blueprint.max_health,
+                    max: blueprint.max_health,
+                },
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::economy::{init_economy, EconomyState};
+    use crate::lifecycle::init_lifecycle;
+
+    /// Set up a world with economy, lifecycle, and a unit registry containing
+    /// one blueprint (unit_type_id=0, metal_cost=100, energy_cost=50,
+    /// build_time=10 frames, max_health=200).
+    fn setup() -> World {
+        let mut world = World::new();
+        init_lifecycle(&mut world);
+        init_economy(&mut world, &[1]);
+
+        let mut registry = UnitRegistry::default();
+        registry.blueprints.push(UnitBlueprint {
+            unit_type_id: 0,
+            metal_cost: SimFloat::from_int(100),
+            energy_cost: SimFloat::from_int(50),
+            build_time: 10,
+            max_health: SimFloat::from_int(200),
+        });
+        world.insert_resource(registry);
+        world
+    }
+
+    /// Spawn a factory entity with the given queue entries.
+    fn spawn_factory(world: &mut World, queue: &[u32], rally: SimVec3) -> bevy_ecs::entity::Entity {
+        world
+            .spawn((
+                BuildQueue {
+                    queue: queue.iter().copied().collect(),
+                    current_progress: SimFloat::ZERO,
+                    rally_point: rally,
+                },
+                Allegiance { team: 1 },
+                Position { pos: SimVec3::ZERO },
+            ))
+            .id()
+    }
+
+    /// Count entities that have a UnitType component (excluding the factory).
+    fn count_spawned_units(world: &mut World) -> usize {
+        let mut query = world.query::<&UnitType>();
+        query.iter(world).count()
+    }
+
+    #[test]
+    fn factory_builds_unit_over_n_frames() {
+        let mut world = setup();
+        let factory = spawn_factory(&mut world, &[0], SimVec3::ZERO);
+
+        // build_time = 10 frames, so after 9 ticks the unit should NOT be done.
+        for _ in 0..9 {
+            factory_system(&mut world);
+        }
+        assert_eq!(count_spawned_units(&mut world), 0);
+
+        // 10th tick should complete it.
+        factory_system(&mut world);
+        assert_eq!(count_spawned_units(&mut world), 1);
+
+        // Queue should be empty and progress reset.
+        let bq = world.get::<BuildQueue>(factory).unwrap();
+        assert!(bq.queue.is_empty());
+        assert_eq!(bq.current_progress, SimFloat::ZERO);
+    }
+
+    #[test]
+    fn stalled_economy_slows_production() {
+        let mut world = setup();
+        spawn_factory(&mut world, &[0], SimVec3::ZERO);
+
+        // Set stall_ratio_metal to 0.5 — production should take 20 frames.
+        {
+            let mut economy = world.resource_mut::<EconomyState>();
+            let team_res = economy.teams.get_mut(&1).unwrap();
+            team_res.stall_ratio_metal = SimFloat::HALF;
+        }
+
+        for _ in 0..19 {
+            factory_system(&mut world);
+        }
+        assert_eq!(count_spawned_units(&mut world), 0);
+
+        factory_system(&mut world);
+        assert_eq!(count_spawned_units(&mut world), 1);
+    }
+
+    #[test]
+    fn queue_processes_multiple_items() {
+        let mut world = setup();
+        spawn_factory(&mut world, &[0, 0], SimVec3::ZERO);
+
+        // First unit: 10 frames.
+        for _ in 0..10 {
+            factory_system(&mut world);
+        }
+        assert_eq!(count_spawned_units(&mut world), 1);
+
+        // Second unit: another 10 frames.
+        for _ in 0..10 {
+            factory_system(&mut world);
+        }
+        assert_eq!(count_spawned_units(&mut world), 2);
+    }
+
+    #[test]
+    fn no_resources_no_progress() {
+        let mut world = setup();
+        let factory = spawn_factory(&mut world, &[0], SimVec3::ZERO);
+
+        // Set stall ratio to zero — simulating complete stall.
+        {
+            let mut economy = world.resource_mut::<EconomyState>();
+            let team_res = economy.teams.get_mut(&1).unwrap();
+            team_res.stall_ratio_metal = SimFloat::ZERO;
+        }
+
+        for _ in 0..20 {
+            factory_system(&mut world);
+        }
+        assert_eq!(count_spawned_units(&mut world), 0);
+
+        let bq = world.get::<BuildQueue>(factory).unwrap();
+        assert_eq!(bq.current_progress, SimFloat::ZERO);
+    }
+
+    #[test]
+    fn spawned_unit_appears_at_rally_point() {
+        let mut world = setup();
+        let rally = SimVec3::new(
+            SimFloat::from_int(100),
+            SimFloat::ZERO,
+            SimFloat::from_int(200),
+        );
+        spawn_factory(&mut world, &[0], rally);
+
+        for _ in 0..10 {
+            factory_system(&mut world);
+        }
+
+        // Find the spawned unit (has UnitType component).
+        let mut query = world.query::<(&UnitType, &Position)>();
+        let positions: Vec<_> = query.iter(&world).collect();
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].1.pos, rally);
+    }
+}
