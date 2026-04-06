@@ -102,7 +102,7 @@ fn vs_main(
 
     // Scale the offset in clip space. Divide by w to keep screen-space
     // size roughly constant, then multiply back.
-    let offset = corner * size * 0.05;
+    let offset = corner * size * 0.004;
     let clip_pos = vec4<f32>(
         center_clip.x + offset.x * center_clip.w,
         center_clip.y + offset.y * center_clip.w,
