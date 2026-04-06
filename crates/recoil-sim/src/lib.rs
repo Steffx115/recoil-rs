@@ -14,6 +14,7 @@ pub mod map;
 pub mod movement;
 pub mod pathfinding;
 pub mod projectile;
+pub mod selection;
 pub mod sim_runner;
 pub mod spatial;
 pub mod targeting;
@@ -26,5 +27,6 @@ pub use components::{
     MovementParams, Position, SightRange, SimId, Target, Transport, UnitType, Velocity,
 };
 pub use fog::{fog_system, is_entity_visible, CellVisibility, FogOfWar};
+pub use selection::{screen_to_ground_raw, SelectionState};
 pub use spatial::SpatialGrid;
 pub use targeting::{FireEvent, FireEventQueue, WeaponRegistry};

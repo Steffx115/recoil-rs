@@ -12,14 +12,14 @@ use winit::window::{Window, WindowId};
 
 use recoil_math::{SimFloat, SimVec2, SimVec3};
 use recoil_render::camera::Camera;
+use recoil_render::gpu::GpuContext;
 use recoil_render::particles::ParticleSystem;
-use recoil_render::projectile_renderer::ProjectileInstance;
-use recoil_render::renderer::Renderer;
-use recoil_render::unit_renderer::UnitInstance;
+use recoil_render::projectile_renderer::{ProjectileInstance, ProjectileRenderer};
+use recoil_render::terrain::TerrainResources;
+use recoil_render::unit_renderer::{UnitInstance, UnitRenderer};
 
 use recoil_sim::collision::collision_system;
-use recoil_sim::combat_data::WeaponSet;
-use recoil_sim::combat_data::{ArmorClass, DamageTable, WeaponDef, WeaponInstance};
+use recoil_sim::combat_data::{ArmorClass, DamageTable, WeaponDef, WeaponInstance, WeaponSet};
 use recoil_sim::commands::{command_system, CommandQueue};
 use recoil_sim::components::Stunned;
 use recoil_sim::damage::{damage_system, stun_system};
@@ -72,16 +72,12 @@ const WORLD_SIZE: f32 = 600.0;
 const GRID_CELL_SIZE: i32 = 10;
 const GRID_DIM: i32 = 64;
 const SELECT_RADIUS: f32 = 20.0;
-
-/// Camera pan speed in world units per frame when holding a key.
 const CAMERA_PAN_SPEED: f32 = 5.0;
-/// Zoom factor per scroll notch.
 const ZOOM_SPEED: f32 = 0.1;
-/// Mouse rotate sensitivity (radians per pixel).
 const ROTATE_SENSITIVITY: f32 = 0.005;
 
 // ---------------------------------------------------------------------------
-// Sim state (extracted from the old eframe app)
+// Sim state
 // ---------------------------------------------------------------------------
 
 struct SimState {
@@ -114,12 +110,13 @@ impl SimState {
 
         init_lifecycle(&mut self.world);
 
-        let grid = SpatialGrid::new(SimFloat::from_int(GRID_CELL_SIZE), GRID_DIM, GRID_DIM);
-        self.world.insert_resource(grid);
-
-        let terrain = TerrainGrid::new(64, 64, SimFloat::ONE);
-        self.world.insert_resource(terrain);
-
+        self.world.insert_resource(SpatialGrid::new(
+            SimFloat::from_int(GRID_CELL_SIZE),
+            GRID_DIM,
+            GRID_DIM,
+        ));
+        self.world
+            .insert_resource(TerrainGrid::new(64, 64, SimFloat::ONE));
         self.world.insert_resource(DamageTable::default());
 
         let mut registry = WeaponRegistry { defs: Vec::new() };
@@ -252,19 +249,16 @@ impl SimState {
 }
 
 // ---------------------------------------------------------------------------
-// Camera controller state
+// Camera controller
 // ---------------------------------------------------------------------------
 
 struct CameraController {
     camera: Camera,
-    // Key held states
     forward: bool,
     backward: bool,
     left: bool,
     right: bool,
-    // Middle-mouse drag rotation
     rotating: bool,
-    last_mouse_pos: Option<(f64, f64)>,
 }
 
 impl CameraController {
@@ -284,55 +278,49 @@ impl CameraController {
             left: false,
             right: false,
             rotating: false,
-            last_mouse_pos: None,
         }
     }
 
-    /// Pan the camera based on held keys. Called once per frame.
     fn update(&mut self) {
-        // Compute forward/right directions on the XZ plane.
         let dx = self.camera.target[0] - self.camera.eye[0];
         let dz = self.camera.target[2] - self.camera.eye[2];
         let len = (dx * dx + dz * dz).sqrt().max(0.001);
         let fwd_x = dx / len;
         let fwd_z = dz / len;
-        // Right = cross(fwd, up) projected to XZ
         let right_x = fwd_z;
         let right_z = -fwd_x;
 
-        let mut move_x = 0.0f32;
-        let mut move_z = 0.0f32;
+        let mut mx = 0.0f32;
+        let mut mz = 0.0f32;
 
         if self.forward {
-            move_x += fwd_x;
-            move_z += fwd_z;
+            mx += fwd_x;
+            mz += fwd_z;
         }
         if self.backward {
-            move_x -= fwd_x;
-            move_z -= fwd_z;
+            mx -= fwd_x;
+            mz -= fwd_z;
         }
         if self.right {
-            move_x += right_x;
-            move_z += right_z;
+            mx += right_x;
+            mz += right_z;
         }
         if self.left {
-            move_x -= right_x;
-            move_z -= right_z;
+            mx -= right_x;
+            mz -= right_z;
         }
 
-        let speed = CAMERA_PAN_SPEED;
-        self.camera.eye[0] += move_x * speed;
-        self.camera.eye[2] += move_z * speed;
-        self.camera.target[0] += move_x * speed;
-        self.camera.target[2] += move_z * speed;
+        self.camera.eye[0] += mx * CAMERA_PAN_SPEED;
+        self.camera.eye[2] += mz * CAMERA_PAN_SPEED;
+        self.camera.target[0] += mx * CAMERA_PAN_SPEED;
+        self.camera.target[2] += mz * CAMERA_PAN_SPEED;
     }
 
     fn zoom(&mut self, delta: f32) {
         let dx = self.camera.eye[0] - self.camera.target[0];
         let dy = self.camera.eye[1] - self.camera.target[1];
         let dz = self.camera.eye[2] - self.camera.target[2];
-        let factor = 1.0 - delta * ZOOM_SPEED;
-        let factor = factor.clamp(0.1, 10.0);
+        let factor = (1.0 - delta * ZOOM_SPEED).clamp(0.1, 10.0);
         self.camera.eye[0] = self.camera.target[0] + dx * factor;
         self.camera.eye[1] = self.camera.target[1] + dy * factor;
         self.camera.eye[2] = self.camera.target[2] + dz * factor;
@@ -342,7 +330,6 @@ impl CameraController {
         let angle_x = -dx as f32 * ROTATE_SENSITIVITY;
         let angle_y = -dy as f32 * ROTATE_SENSITIVITY;
 
-        // Rotate eye around target on XZ plane (yaw)
         let ox = self.camera.eye[0] - self.camera.target[0];
         let oz = self.camera.eye[2] - self.camera.target[2];
         let cos_a = angle_x.cos();
@@ -350,13 +337,10 @@ impl CameraController {
         self.camera.eye[0] = self.camera.target[0] + ox * cos_a - oz * sin_a;
         self.camera.eye[2] = self.camera.target[2] + ox * sin_a + oz * cos_a;
 
-        // Pitch: adjust eye Y relative to target (clamp so we don't flip)
         let new_y = self.camera.eye[1] + angle_y * 100.0;
         self.camera.eye[1] = new_y.clamp(20.0, 800.0);
     }
 
-    /// Project a screen click onto the y=0 ground plane.
-    /// Returns (world_x, world_z) or None if the ray doesn't hit the ground.
     fn screen_to_ground(
         &self,
         screen_x: f32,
@@ -364,64 +348,47 @@ impl CameraController {
         screen_w: f32,
         screen_h: f32,
     ) -> Option<(f32, f32)> {
-        // Convert to NDC [-1, 1]
         let ndc_x = (2.0 * screen_x / screen_w) - 1.0;
         let ndc_y = 1.0 - (2.0 * screen_y / screen_h);
 
-        // Inverse view-projection
         let vp = self.camera.view_projection();
         let inv_vp = mat4_inverse(vp)?;
 
-        // Unproject near and far points
-        let near_ndc = [ndc_x, ndc_y, 0.0, 1.0];
-        let far_ndc = [ndc_x, ndc_y, 1.0, 1.0];
+        let near_w = mat4_mul_vec4(inv_vp, [ndc_x, ndc_y, 0.0, 1.0]);
+        let far_w = mat4_mul_vec4(inv_vp, [ndc_x, ndc_y, 1.0, 1.0]);
 
-        let near_world = mat4_mul_vec4(inv_vp, near_ndc);
-        let far_world = mat4_mul_vec4(inv_vp, far_ndc);
-
-        if near_world[3].abs() < 1e-10 || far_world[3].abs() < 1e-10 {
+        if near_w[3].abs() < 1e-10 || far_w[3].abs() < 1e-10 {
             return None;
         }
 
-        let near_pos = [
-            near_world[0] / near_world[3],
-            near_world[1] / near_world[3],
-            near_world[2] / near_world[3],
+        let np = [
+            near_w[0] / near_w[3],
+            near_w[1] / near_w[3],
+            near_w[2] / near_w[3],
         ];
-        let far_pos = [
-            far_world[0] / far_world[3],
-            far_world[1] / far_world[3],
-            far_world[2] / far_world[3],
-        ];
-
-        // Ray from near to far
-        let dir = [
-            far_pos[0] - near_pos[0],
-            far_pos[1] - near_pos[1],
-            far_pos[2] - near_pos[2],
+        let fp = [
+            far_w[0] / far_w[3],
+            far_w[1] / far_w[3],
+            far_w[2] / far_w[3],
         ];
 
-        // Intersect with y=0 plane
+        let dir = [fp[0] - np[0], fp[1] - np[1], fp[2] - np[2]];
         if dir[1].abs() < 1e-10 {
             return None;
         }
-        let t = -near_pos[1] / dir[1];
+        let t = -np[1] / dir[1];
         if t < 0.0 {
             return None;
         }
-
-        let x = near_pos[0] + dir[0] * t;
-        let z = near_pos[2] + dir[2] * t;
-        Some((x, z))
+        Some((np[0] + dir[0] * t, np[2] + dir[2] * t))
     }
 }
 
 // ---------------------------------------------------------------------------
-// Matrix helpers for ray-casting
+// Matrix helpers
 // ---------------------------------------------------------------------------
 
 fn mat4_mul_vec4(m: [[f32; 4]; 4], v: [f32; 4]) -> [f32; 4] {
-    // m is column-major
     let mut out = [0.0f32; 4];
     for row in 0..4 {
         out[row] = m[0][row] * v[0] + m[1][row] * v[1] + m[2][row] * v[2] + m[3][row] * v[3];
@@ -429,13 +396,11 @@ fn mat4_mul_vec4(m: [[f32; 4]; 4], v: [f32; 4]) -> [f32; 4] {
     out
 }
 
+#[allow(clippy::excessive_precision)]
 fn mat4_inverse(m: [[f32; 4]; 4]) -> Option<[[f32; 4]; 4]> {
-    // Flatten column-major to row-major for standard inversion, then back.
-    // We'll work with indices directly.
     let mut s = [0.0f32; 16];
     let mut inv = [0.0f32; 16];
 
-    // Column-major to flat row-major: s[row*4+col] = m[col][row]
     for col in 0..4 {
         for row in 0..4 {
             s[row * 4 + col] = m[col][row];
@@ -516,7 +481,6 @@ fn mat4_inverse(m: [[f32; 4]; 4]) -> Option<[[f32; 4]; 4]> {
         *v *= inv_det;
     }
 
-    // Back to column-major
     let mut result = [[0.0f32; 4]; 4];
     for col in 0..4 {
         for row in 0..4 {
@@ -527,20 +491,179 @@ fn mat4_inverse(m: [[f32; 4]; 4]) -> Option<[[f32; 4]; 4]> {
 }
 
 // ---------------------------------------------------------------------------
+// GPU render state (composed from recoil-render primitives)
+// ---------------------------------------------------------------------------
+
+struct RenderState {
+    gpu: GpuContext,
+    terrain: TerrainResources,
+    unit_renderer: UnitRenderer,
+    projectile_renderer: ProjectileRenderer,
+    camera: Camera,
+}
+
+impl RenderState {
+    fn new(window: Arc<Window>) -> anyhow::Result<Self> {
+        let gpu = pollster::block_on(GpuContext::new(window))?;
+
+        let camera = Camera {
+            aspect: gpu.config.width as f32 / gpu.config.height as f32,
+            ..Camera::default()
+        };
+
+        let terrain = TerrainResources::new(&gpu, &camera)?;
+        let unit_renderer =
+            UnitRenderer::new(&gpu.device, gpu.config.format, terrain.bind_group_layout());
+        let projectile_renderer =
+            ProjectileRenderer::new(&gpu.device, gpu.config.format, terrain.bind_group_layout());
+
+        Ok(Self {
+            gpu,
+            terrain,
+            unit_renderer,
+            projectile_renderer,
+            camera,
+        })
+    }
+
+    fn resize(&mut self, width: u32, height: u32) {
+        self.gpu.resize(width, height);
+        self.camera.aspect = width as f32 / height as f32;
+    }
+
+    fn update_camera(&mut self, cam: &Camera) {
+        self.camera = Camera {
+            eye: cam.eye,
+            target: cam.target,
+            up: cam.up,
+            fov_y: cam.fov_y,
+            aspect: cam.aspect,
+            near: cam.near,
+            far: cam.far,
+        };
+        self.terrain.update_camera(&self.gpu.queue, &self.camera);
+    }
+
+    fn update_units(&mut self, instances: &[UnitInstance]) {
+        self.unit_renderer
+            .prepare(&self.gpu.device, &self.gpu.queue, instances);
+    }
+
+    fn update_projectiles(&mut self, instances: &[ProjectileInstance]) {
+        self.projectile_renderer
+            .prepare(&self.gpu.device, &self.gpu.queue, instances);
+    }
+
+    /// Render the 3D scene and the egui overlay in a single frame.
+    fn render_frame(
+        &mut self,
+        egui_renderer: &mut egui_wgpu::Renderer,
+        egui_tris: &[egui::ClippedPrimitive],
+        egui_screen: &egui_wgpu::ScreenDescriptor,
+    ) -> anyhow::Result<()> {
+        let output = self
+            .gpu
+            .surface
+            .get_current_texture()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire swapchain texture: {}", e))?;
+
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("render_encoder"),
+            });
+
+        // --- 3D render pass (forget_lifetime for compatibility with sub-renderers) ---
+        {
+            let mut pass = encoder
+                .begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("main_pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.05,
+                                g: 0.05,
+                                b: 0.08,
+                                a: 1.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.gpu.depth_view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                })
+                .forget_lifetime();
+
+            // Terrain
+            pass.set_pipeline(&self.terrain.pipeline);
+            pass.set_bind_group(0, &self.terrain.camera_bind_group, &[]);
+            pass.set_vertex_buffer(0, self.terrain.vertex_buffer.slice(..));
+            pass.set_index_buffer(
+                self.terrain.index_buffer.slice(..),
+                wgpu::IndexFormat::Uint32,
+            );
+            pass.draw_indexed(0..self.terrain.index_count, 0, 0..1);
+
+            // Units
+            pass.set_bind_group(0, &self.terrain.camera_bind_group, &[]);
+            self.unit_renderer.render(&mut pass);
+
+            // Projectiles + particles
+            pass.set_bind_group(0, &self.terrain.camera_bind_group, &[]);
+            self.projectile_renderer.render(&mut pass);
+        }
+
+        // --- egui overlay pass (no depth, load existing color) ---
+        {
+            let mut pass = encoder
+                .begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("egui_pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                })
+                .forget_lifetime();
+
+            egui_renderer.render(&mut pass, egui_tris, egui_screen);
+        }
+
+        self.gpu.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Application
 // ---------------------------------------------------------------------------
 
-// Temporary storage for egui draw data between draw_egui() and the render pass.
-struct PendingEgui {
-    tris: Vec<egui::ClippedPrimitive>,
-    screen_desc: egui_wgpu::ScreenDescriptor,
-    textures_free: Vec<egui::TextureId>,
-}
-
 struct App {
-    // These are None until `resumed` is called.
     window: Option<Arc<Window>>,
-    renderer: Option<Renderer>,
+    render_state: Option<RenderState>,
     egui_winit: Option<egui_winit::State>,
     egui_renderer: Option<egui_wgpu::Renderer>,
 
@@ -548,24 +671,19 @@ struct App {
     camera_ctrl: CameraController,
     particle_system: ParticleSystem,
 
-    // FPS tracking
     last_frame_time: Instant,
     fps: f32,
     frame_time_accum: f32,
     frame_count_for_fps: u32,
 
-    // Mouse state
     cursor_pos: (f64, f64),
-
-    // egui draw data (populated between draw_egui and render)
-    pending_egui: Option<PendingEgui>,
 }
 
 impl App {
     fn new() -> Self {
         Self {
             window: None,
-            renderer: None,
+            render_state: None,
             egui_winit: None,
             egui_renderer: None,
 
@@ -579,14 +697,18 @@ impl App {
             frame_count_for_fps: 0,
 
             cursor_pos: (0.0, 0.0),
-            pending_egui: None,
         }
     }
 
     fn extract_unit_instances(&mut self) -> Vec<UnitInstance> {
         self.sim
             .world
-            .query_filtered::<(&Position, &Heading, &Allegiance, &CollisionRadius), Without<recoil_sim::Dead>>()
+            .query_filtered::<(
+                &Position,
+                &Heading,
+                &Allegiance,
+                &CollisionRadius,
+            ), Without<recoil_sim::Dead>>()
             .iter(&self.sim.world)
             .map(|(pos, heading, allegiance, _cr)| {
                 let team_color = if allegiance.team == 0 {
@@ -657,112 +779,12 @@ impl App {
             );
         }
     }
-
-    fn draw_egui(&mut self) {
-        let Some(ref window) = self.window else {
-            return;
-        };
-        let Some(ref renderer) = self.renderer else {
-            return;
-        };
-        let Some(ref mut egui_state) = self.egui_winit else {
-            return;
-        };
-        let Some(ref mut egui_renderer) = self.egui_renderer else {
-            return;
-        };
-
-        let raw_input = egui_state.take_egui_input(window);
-        let ctx = egui_state.egui_ctx().clone();
-        let full_output = ctx.run(raw_input, |ctx| {
-            // Top bar: FPS, frame, unit count
-            egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(format!("FPS: {:.0}", self.fps));
-                    ui.separator();
-                    ui.label(format!("Frame: {}", self.sim.frame_count));
-                    ui.separator();
-                    let uc = self.sim.unit_count();
-                    ui.label(format!("Units: {}", uc));
-                    ui.separator();
-                    if ui
-                        .button(if self.sim.paused { "Resume" } else { "Pause" })
-                        .clicked()
-                    {
-                        self.sim.paused = !self.sim.paused;
-                    }
-                    ui.add(egui::Slider::new(&mut self.sim.sim_speed, 1..=10).text("Speed"));
-                });
-            });
-
-            // Selected unit panel
-            egui::SidePanel::left("selected_panel")
-                .min_width(180.0)
-                .resizable(false)
-                .show(ctx, |ui| {
-                    ui.heading("Selected Unit");
-                    ui.separator();
-                    if let Some(entity) = self.sim.selected {
-                        if let Some(sim_id) = self.sim.world.get::<SimId>(entity) {
-                            ui.label(format!("SimId: {}", sim_id.id));
-                        }
-                        if let Some(health) = self.sim.world.get::<Health>(entity) {
-                            ui.label(format!(
-                                "HP: {:.0}/{:.0}",
-                                health.current.to_f32(),
-                                health.max.to_f32()
-                            ));
-                        }
-                        if let Some(pos) = self.sim.world.get::<Position>(entity) {
-                            ui.label(format!(
-                                "Pos: ({:.1}, {:.1})",
-                                pos.pos.x.to_f32(),
-                                pos.pos.z.to_f32()
-                            ));
-                        }
-                        if let Some(state) = self.sim.world.get::<MoveState>(entity) {
-                            ui.label(format!("State: {:?}", *state));
-                        }
-                        if self.sim.world.get::<Stunned>(entity).is_some() {
-                            ui.colored_label(egui::Color32::from_rgb(200, 100, 255), "STUNNED");
-                        }
-                        if let Some(target) = self.sim.world.get::<Target>(entity) {
-                            if target.entity.is_some() {
-                                ui.label("Target: engaged");
-                            }
-                        }
-                    } else {
-                        ui.label("No unit selected");
-                    }
-                });
-        });
-
-        egui_state.handle_platform_output(window, full_output.platform_output);
-
-        let tris = ctx.tessellate(full_output.shapes, ctx.pixels_per_point());
-        for (id, delta) in &full_output.textures_delta.set {
-            egui_renderer.update_texture(&renderer.gpu.device, &renderer.gpu.queue, *id, delta);
-        }
-
-        let screen_desc = egui_wgpu::ScreenDescriptor {
-            size_in_pixels: [renderer.gpu.config.width, renderer.gpu.config.height],
-            pixels_per_point: ctx.pixels_per_point(),
-        };
-
-        // Store paint jobs and screen descriptor for the render pass.
-        // We'll render after the main 3D pass.
-        self.pending_egui = Some(PendingEgui {
-            tris,
-            screen_desc,
-            textures_free: full_output.textures_delta.free.clone(),
-        });
-    }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
-            return; // Already initialized
+            return;
         }
 
         let attrs = Window::default_attributes()
@@ -774,10 +796,8 @@ impl ApplicationHandler for App {
                 .expect("Failed to create window"),
         );
 
-        let renderer =
-            pollster::block_on(Renderer::new(window.clone())).expect("Failed to create renderer");
+        let rs = RenderState::new(window.clone()).expect("Failed to init GPU");
 
-        // egui setup
         let egui_ctx = egui::Context::default();
         let egui_state = egui_winit::State::new(
             egui_ctx,
@@ -788,18 +808,13 @@ impl ApplicationHandler for App {
             None,
         );
 
-        let egui_renderer = egui_wgpu::Renderer::new(
-            &renderer.gpu.device,
-            renderer.gpu.config.format,
-            None, // no depth
-            1,    // sample count
-            false,
-        );
+        let egui_rend =
+            egui_wgpu::Renderer::new(&rs.gpu.device, rs.gpu.config.format, None, 1, false);
 
         self.window = Some(window);
-        self.egui_renderer = Some(egui_renderer);
+        self.egui_renderer = Some(egui_rend);
         self.egui_winit = Some(egui_state);
-        self.renderer = Some(renderer);
+        self.render_state = Some(rs);
     }
 
     fn window_event(
@@ -817,12 +832,10 @@ impl ApplicationHandler for App {
         }
 
         match event {
-            WindowEvent::CloseRequested => {
-                event_loop.exit();
-            }
+            WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
-                if let Some(ref mut renderer) = self.renderer {
-                    renderer.resize(size.width, size.height);
+                if let Some(ref mut rs) = self.render_state {
+                    rs.resize(size.width, size.height);
                     self.camera_ctrl.camera.aspect = size.width as f32 / size.height as f32;
                 }
             }
@@ -847,9 +860,7 @@ impl ApplicationHandler for App {
                     PhysicalKey::Code(KeyCode::KeyR) if pressed => {
                         self.sim.reset();
                     }
-                    PhysicalKey::Code(KeyCode::Escape) if pressed => {
-                        event_loop.exit();
-                    }
+                    PhysicalKey::Code(KeyCode::Escape) if pressed => event_loop.exit(),
                     _ => {}
                 }
             }
@@ -864,61 +875,56 @@ impl ApplicationHandler for App {
                 let old = self.cursor_pos;
                 self.cursor_pos = (position.x, position.y);
                 if self.camera_ctrl.rotating {
-                    let dx = position.x - old.0;
-                    let dy = position.y - old.1;
-                    self.camera_ctrl.rotate(dx, dy);
+                    self.camera_ctrl
+                        .rotate(position.x - old.0, position.y - old.1);
                 }
             }
-            WindowEvent::MouseInput { state, button, .. } => {
-                match button {
-                    MouseButton::Middle => {
-                        self.camera_ctrl.rotating = state == ElementState::Pressed;
+            WindowEvent::MouseInput { state, button, .. } => match button {
+                MouseButton::Middle => {
+                    self.camera_ctrl.rotating = state == ElementState::Pressed;
+                }
+                MouseButton::Left if state == ElementState::Released => {
+                    if let Some(ref rs) = self.render_state {
+                        let w = rs.gpu.config.width as f32;
+                        let h = rs.gpu.config.height as f32;
+                        if let Some((gx, gz)) = self.camera_ctrl.screen_to_ground(
+                            self.cursor_pos.0 as f32,
+                            self.cursor_pos.1 as f32,
+                            w,
+                            h,
+                        ) {
+                            self.sim.selected = self.sim.find_nearest_unit(gx, gz);
+                        }
                     }
-                    MouseButton::Left if state == ElementState::Released => {
-                        // Select nearest unit via ground-plane raycast
-                        if let Some(ref renderer) = self.renderer {
-                            let w = renderer.gpu.config.width as f32;
-                            let h = renderer.gpu.config.height as f32;
+                }
+                MouseButton::Right if state == ElementState::Released => {
+                    if let Some(sel) = self.sim.selected {
+                        if let Some(ref rs) = self.render_state {
+                            let w = rs.gpu.config.width as f32;
+                            let h = rs.gpu.config.height as f32;
                             if let Some((gx, gz)) = self.camera_ctrl.screen_to_ground(
                                 self.cursor_pos.0 as f32,
                                 self.cursor_pos.1 as f32,
                                 w,
                                 h,
                             ) {
-                                self.sim.selected = self.sim.find_nearest_unit(gx, gz);
-                            }
-                        }
-                    }
-                    MouseButton::Right if state == ElementState::Released => {
-                        // Move selected unit to ground position
-                        if let Some(sel) = self.sim.selected {
-                            if let Some(ref renderer) = self.renderer {
-                                let w = renderer.gpu.config.width as f32;
-                                let h = renderer.gpu.config.height as f32;
-                                if let Some((gx, gz)) = self.camera_ctrl.screen_to_ground(
-                                    self.cursor_pos.0 as f32,
-                                    self.cursor_pos.1 as f32,
-                                    w,
-                                    h,
-                                ) {
-                                    if self.sim.world.get::<MoveState>(sel).is_some() {
-                                        let target = SimVec3::new(
-                                            SimFloat::from_f32(gx),
-                                            SimFloat::ZERO,
-                                            SimFloat::from_f32(gz),
-                                        );
-                                        *self.sim.world.get_mut::<MoveState>(sel).unwrap() =
-                                            MoveState::MovingTo(target);
-                                    }
+                                if self.sim.world.get::<MoveState>(sel).is_some() {
+                                    let target = SimVec3::new(
+                                        SimFloat::from_f32(gx),
+                                        SimFloat::ZERO,
+                                        SimFloat::from_f32(gz),
+                                    );
+                                    *self.sim.world.get_mut::<MoveState>(sel).unwrap() =
+                                        MoveState::MovingTo(target);
                                 }
                             }
                         }
                     }
-                    _ => {}
                 }
-            }
+                _ => {}
+            },
             WindowEvent::RedrawRequested => {
-                // --- FPS tracking ---
+                // FPS tracking
                 let now = Instant::now();
                 let dt = now.duration_since(self.last_frame_time).as_secs_f32();
                 self.last_frame_time = now;
@@ -930,7 +936,7 @@ impl ApplicationHandler for App {
                     self.frame_count_for_fps = 0;
                 }
 
-                // --- Sim tick ---
+                // Sim tick
                 if !self.sim.paused {
                     for _ in 0..self.sim.sim_speed {
                         self.sim.sim_tick();
@@ -938,27 +944,25 @@ impl ApplicationHandler for App {
                     self.sim.frame_count += 1;
                 }
 
-                // --- Emit particles from impacts ---
+                // Particles from impacts
                 self.emit_impact_particles();
-
-                // --- Update particles ---
                 self.particle_system.update(dt);
 
-                // --- Camera ---
+                // Camera
                 self.camera_ctrl.update();
 
-                // --- Extract render data ---
+                // Extract render data
                 let unit_instances = self.extract_unit_instances();
                 let mut projectile_instances = self.extract_projectile_instances();
                 projectile_instances.extend(self.particle_system.instances());
 
-                // --- Update renderer ---
-                let renderer = self.renderer.as_mut().unwrap();
-                renderer.update_camera(&self.camera_ctrl.camera);
-                renderer.update_units(&unit_instances);
-                renderer.update_projectiles(&projectile_instances);
+                // Update GPU data
+                let rs = self.render_state.as_mut().unwrap();
+                rs.update_camera(&self.camera_ctrl.camera);
+                rs.update_units(&unit_instances);
+                rs.update_projectiles(&projectile_instances);
 
-                // --- egui ---
+                // Build egui frame
                 let window = self.window.as_ref().unwrap();
                 let egui_state = self.egui_winit.as_mut().unwrap();
                 let egui_renderer = self.egui_renderer.as_mut().unwrap();
@@ -966,12 +970,12 @@ impl ApplicationHandler for App {
                 let raw_input = egui_state.take_egui_input(window);
                 let ctx = egui_state.egui_ctx().clone();
 
-                let unit_count = self.sim.unit_count();
                 let fps = self.fps;
                 let frame_count = self.sim.frame_count;
+                let unit_count = self.sim.unit_count();
                 let paused = self.sim.paused;
 
-                // Gather selected info before the closure
+                // Gather selected unit info before the closure to avoid borrow issues.
                 let selected_info: Option<(u64, f32, f32, f32, f32, String, bool, bool)> =
                     self.sim.selected.and_then(|entity| {
                         let sim_id = self.sim.world.get::<SimId>(entity)?.id;
@@ -1024,20 +1028,20 @@ impl ApplicationHandler for App {
                         .show(ctx, |ui| {
                             ui.heading("Selected Unit");
                             ui.separator();
-                            if let Some((sid, hp, hp_max, px, pz, state, stunned, has_target)) =
-                                &selected_info
+                            if let Some((sid, hp, hp_max, px, pz, ref state, stunned, has_target)) =
+                                selected_info
                             {
                                 ui.label(format!("SimId: {}", sid));
                                 ui.label(format!("HP: {:.0}/{:.0}", hp, hp_max));
                                 ui.label(format!("Pos: ({:.1}, {:.1})", px, pz));
                                 ui.label(format!("State: {}", state));
-                                if *stunned {
+                                if stunned {
                                     ui.colored_label(
                                         egui::Color32::from_rgb(200, 100, 255),
                                         "STUNNED",
                                     );
                                 }
-                                if *has_target {
+                                if has_target {
                                     ui.label("Target: engaged");
                                 }
                             } else {
@@ -1055,59 +1059,19 @@ impl ApplicationHandler for App {
 
                 let tris = ctx.tessellate(full_output.shapes, ctx.pixels_per_point());
                 for (id, delta) in &full_output.textures_delta.set {
-                    egui_renderer.update_texture(
-                        &renderer.gpu.device,
-                        &renderer.gpu.queue,
-                        *id,
-                        delta,
-                    );
+                    egui_renderer.update_texture(&rs.gpu.device, &rs.gpu.queue, *id, delta);
                 }
 
                 let screen_desc = egui_wgpu::ScreenDescriptor {
-                    size_in_pixels: [renderer.gpu.config.width, renderer.gpu.config.height],
+                    size_in_pixels: [rs.gpu.config.width, rs.gpu.config.height],
                     pixels_per_point: ctx.pixels_per_point(),
                 };
 
-                // --- 3D render pass ---
-                if let Err(e) = renderer.render() {
+                // Render 3D + egui overlay in a single submission
+                if let Err(e) = rs.render_frame(egui_renderer, &tris, &screen_desc) {
                     tracing::error!("Render error: {}", e);
-                    return;
                 }
 
-                // --- egui overlay pass (separate submission after present) ---
-                // We need to render egui onto the swapchain texture. Since renderer.render()
-                // already presents, we need a different approach. Let's acquire a new frame
-                // for the egui overlay... Actually, that won't work.
-                //
-                // The correct approach: we need to NOT present in renderer.render(), and
-                // instead get the surface texture, do the 3D pass, do the egui pass, then
-                // present. But renderer.render() owns the present call.
-                //
-                // Since we can't modify recoil-render, we'll do the egui pass as a
-                // second submit on the same frame. We need to acquire a new surface texture.
-                // That also won't work — only one can be acquired at a time.
-                //
-                // The simplest solution: render egui into the NEXT frame's surface texture
-                // is wrong. Instead, let's just skip the egui GPU pass for now and use
-                // the renderer.render() as-is. Actually, we CAN submit egui commands after
-                // renderer.render() calls present — we just need to get a new texture.
-                // But wgpu gives one texture per frame.
-                //
-                // Correct approach: DON'T call renderer.render(). Instead, replicate
-                // the render pass manually using the renderer's public fields.
-
-                // Actually wait — let me re-read the renderer. It has `pub gpu` and
-                // `pub camera` fields, and `terrain()` returns TerrainResources.
-                // The internal render pass is in render(). We need to do our own
-                // render pass to add egui on top.
-
-                // Let's NOT call renderer.render() and instead do the pass ourselves.
-                // But we already called it above. Let me restructure.
-
-                // We'll handle this properly — see the restructured RedrawRequested below.
-                // For now this code won't reach here due to the early return above.
-
-                // Free textures
                 for id in &full_output.textures_delta.free {
                     egui_renderer.free_texture(id);
                 }
