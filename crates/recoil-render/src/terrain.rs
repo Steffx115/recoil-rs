@@ -155,7 +155,7 @@ impl TerrainResources {
         });
 
         // --- Mesh ---
-        let (vertices, indices) = generate_grid(64, 10.0); // 64*10=640 world units
+        let (vertices, indices) = generate_grid(128, 8.0); // 128*8=1024 world units (matches Small Duel map)
         let index_count = indices.len() as u32;
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

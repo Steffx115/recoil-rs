@@ -691,7 +691,7 @@ impl App {
             window: None,
             renderer: None,
             sim: SimState::new(),
-            camera_ctrl: CameraController::new(300.0, 300.0, 600.0),
+            camera_ctrl: CameraController::new(512.0, 512.0, 800.0),
             particle_system: ParticleSystem::new(4096),
             last_frame: Instant::now(),
             cursor_pos: [0.0; 2],
