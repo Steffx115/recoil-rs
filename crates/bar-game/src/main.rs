@@ -338,8 +338,12 @@ impl SimState {
                     [0.0, 1.0, 0.0]
                 };
                 ProjectileInstance {
-                    position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()],
-                    size: 2.0,
+                    position: [
+                        pos.pos.x.to_f32(),
+                        pos.pos.y.to_f32() + 5.0,
+                        pos.pos.z.to_f32(),
+                    ],
+                    size: 3.0,
                     velocity_dir: dir,
                     _pad: 0.0,
                     color: [1.0, 1.0, 0.3],

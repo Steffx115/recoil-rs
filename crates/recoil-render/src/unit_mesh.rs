@@ -51,12 +51,14 @@ impl UnitVertex {
 /// is applied per-instance in the shader.
 pub fn generate_unit_mesh() -> (Vec<UnitVertex>, Vec<u16>) {
     // Octahedron: 6 vertices at +/- along each axis, 8 triangular faces.
-    let top = [0.0f32, 1.5, 0.0];
-    let bottom = [0.0, -1.5, 0.0];
-    let front = [0.0, 0.0, 1.0];
-    let back = [0.0, 0.0, -1.0];
-    let left = [-1.0, 0.0, 0.0];
-    let right = [1.0, 0.0, 0.0];
+    // Scale factor so units are visible in the world (CollisionRadius ~8)
+    let s = 8.0f32;
+    let top = [0.0f32, 1.5 * s, 0.0];
+    let bottom = [0.0, -0.5 * s, 0.0]; // less below ground
+    let front = [0.0, 0.5 * s, s];
+    let back = [0.0, 0.5 * s, -s];
+    let left = [-s, 0.5 * s, 0.0];
+    let right = [s, 0.5 * s, 0.0];
 
     // 8 faces, each a triangle.
     let faces: [([f32; 3], [f32; 3], [f32; 3]); 8] = [
