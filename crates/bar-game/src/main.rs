@@ -800,6 +800,19 @@ impl ApplicationHandler for App {
                 // Gather render data
                 let mut instances = unit_instances(&mut self.game);
                 instances.extend(building_instances(&mut self.game));
+
+                // Ghost preview for building placement
+                if self.game.placement_mode.is_some() {
+                    if let Some((gx, gz)) = self.screen_to_ground() {
+                        instances.push(UnitInstance {
+                            position: [gx, 0.0, gz],
+                            heading: 0.0,
+                            team_color: [0.3, 0.9, 0.3], // green ghost
+                            _pad: 0.0,
+                        });
+                    }
+                }
+
                 let mut proj = projectile_instances(&mut self.game);
                 proj.extend(self.particle_system.instances());
 

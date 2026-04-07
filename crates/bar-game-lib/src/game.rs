@@ -373,6 +373,89 @@ impl GameState {
     pub fn queue_unit_in_factory(&mut self, factory_entity: Entity, unit_type_id: u32) {
         production::queue_unit(&mut self.world, factory_entity, unit_type_id);
     }
+
+    // -------------------------------------------------------------------
+    // Area commands
+    // -------------------------------------------------------------------
+
+    /// Issue area reclaim: selected builders reclaim all reclaimable entities in radius.
+    pub fn area_reclaim(&mut self, cx: f32, cz: f32, radius: f32) {
+        use recoil_sim::commands::{Command, CommandQueue};
+        use recoil_sim::construction::Reclaimable;
+
+        let radius_sq = radius * radius;
+        let targets: Vec<Entity> = self
+            .world
+            .query_filtered::<(Entity, &Position), bevy_ecs::query::With<Reclaimable>>()
+            .iter(&self.world)
+            .filter(|(_, p)| {
+                let dx = p.pos.x.to_f32() - cx;
+                let dz = p.pos.z.to_f32() - cz;
+                dx * dx + dz * dz <= radius_sq
+            })
+            .map(|(e, _)| e)
+            .collect();
+
+        for &sel in &self.selection.selected.clone() {
+            if let Some(mut cq) = self.world.get_mut::<CommandQueue>(sel) {
+                for &target in &targets {
+                    cq.push(Command::Reclaim(target));
+                }
+            }
+        }
+    }
+
+    /// Issue area repair: selected builders repair all damaged friendlies in radius.
+    pub fn area_repair(&mut self, cx: f32, cz: f32, radius: f32) {
+        use recoil_sim::commands::{Command, CommandQueue};
+
+        let radius_sq = radius * radius;
+        let targets: Vec<Entity> = self
+            .world
+            .query_filtered::<(Entity, &Position, &Health, &recoil_sim::Allegiance), Without<Dead>>()
+            .iter(&self.world)
+            .filter(|(_, p, hp, _)| {
+                let dx = p.pos.x.to_f32() - cx;
+                let dz = p.pos.z.to_f32() - cz;
+                dx * dx + dz * dz <= radius_sq && hp.current < hp.max
+            })
+            .map(|(e, _, _, _)| e)
+            .collect();
+
+        for &sel in &self.selection.selected.clone() {
+            if let Some(mut cq) = self.world.get_mut::<CommandQueue>(sel) {
+                for &target in &targets {
+                    cq.push(Command::Repair(target));
+                }
+            }
+        }
+    }
+
+    /// Issue area attack: selected combat units attack all enemies in radius.
+    pub fn area_attack(&mut self, cx: f32, cz: f32, radius: f32, my_team: u8) {
+        use recoil_sim::commands::{Command, CommandQueue};
+
+        let radius_sq = radius * radius;
+        let targets: Vec<Entity> = self
+            .world
+            .query_filtered::<(Entity, &Position, &recoil_sim::Allegiance), Without<Dead>>()
+            .iter(&self.world)
+            .filter(|(_, p, al)| {
+                let dx = p.pos.x.to_f32() - cx;
+                let dz = p.pos.z.to_f32() - cz;
+                dx * dx + dz * dz <= radius_sq && al.team != my_team
+            })
+            .map(|(e, _, _)| e)
+            .collect();
+
+        for &sel in &self.selection.selected.clone() {
+            if let Some(mut cq) = self.world.get_mut::<CommandQueue>(sel) {
+                for &target in &targets {
+                    cq.push(Command::Attack(target));
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
