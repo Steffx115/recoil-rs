@@ -11,4 +11,5 @@ wgpu = { workspace = true }
 winit = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
+thiserror = { workspace = true }
 bytemuck = { workspace = true }

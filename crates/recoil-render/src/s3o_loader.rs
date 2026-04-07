@@ -258,8 +258,169 @@ fn collect_piece(
 }
 
 // ---------------------------------------------------------------------------
+// Helpers: string reading
+// ---------------------------------------------------------------------------
+
+/// Read a null-terminated C string from the data buffer.
+fn read_cstr(data: &[u8], offset: usize) -> Result<String> {
+    ensure!(offset < data.len(), "cstr offset {offset} out of bounds");
+    let slice = &data[offset..];
+    let nul_pos = slice.iter().position(|&b| b == 0).unwrap_or(slice.len());
+    Ok(String::from_utf8_lossy(&slice[..nul_pos]).into_owned())
+}
+
+// ---------------------------------------------------------------------------
+// Piece tree loading
+// ---------------------------------------------------------------------------
+
+use crate::piece_tree::{PieceNode, S3oPieceTree};
+
+/// Recursively build piece tree nodes, storing vertices in piece-local space.
+fn collect_piece_tree(
+    data: &[u8],
+    piece_offset: usize,
+    pieces: &mut Vec<PieceNode>,
+    vertices: &mut Vec<UnitVertex>,
+    indices: &mut Vec<u16>,
+) -> Result<usize> {
+    let piece = parse_piece(data, piece_offset)?;
+
+    let piece_idx = pieces.len();
+    let name = read_cstr(data, piece.name_offset as usize)?;
+
+    let base_color = [0.7f32, 0.7, 0.7];
+    let vertex_stride = match piece.vertex_type {
+        0 => VERTEX_STANDARD_SIZE,
+        1 => VERTEX_TANGENT_SIZE,
+        other => anyhow::bail!("unsupported s3o vertex type {other}"),
+    };
+
+    let vertex_start = vertices.len() as u32;
+    let index_start = indices.len() as u32;
+
+    // Read vertices in piece-local space (no parent offset baked in).
+    let verts_start = piece.vertices_offset as usize;
+    for i in 0..piece.num_vertices as usize {
+        let vo = verts_start + i * vertex_stride;
+        let xpos = read_f32(data, vo)?;
+        let ypos = read_f32(data, vo + 4)?;
+        let zpos = read_f32(data, vo + 8)?;
+        let xnormal = read_f32(data, vo + 12)?;
+        let ynormal = read_f32(data, vo + 16)?;
+        let znormal = read_f32(data, vo + 20)?;
+
+        vertices.push(UnitVertex {
+            position: [xpos, ypos, zpos],
+            normal: [xnormal, ynormal, znormal],
+            color: base_color,
+        });
+    }
+
+    let vertex_end = vertices.len() as u32;
+
+    // Read indices.
+    let idx_start_offset = piece.indices_offset as usize;
+    let base_vertex = vertex_start;
+    match piece.primitive_type {
+        0 => {
+            for i in 0..piece.num_indices as usize {
+                let idx = read_u32(data, idx_start_offset + i * 4)?;
+                indices.push((base_vertex + idx) as u16);
+            }
+        }
+        1 => {
+            let mut strip_indices = Vec::with_capacity(piece.num_indices as usize);
+            for i in 0..piece.num_indices as usize {
+                strip_indices.push(read_u32(data, idx_start_offset + i * 4)?);
+            }
+            for i in 2..strip_indices.len() {
+                if i % 2 == 0 {
+                    indices.push((base_vertex + strip_indices[i - 2]) as u16);
+                    indices.push((base_vertex + strip_indices[i - 1]) as u16);
+                    indices.push((base_vertex + strip_indices[i]) as u16);
+                } else {
+                    indices.push((base_vertex + strip_indices[i - 1]) as u16);
+                    indices.push((base_vertex + strip_indices[i - 2]) as u16);
+                    indices.push((base_vertex + strip_indices[i]) as u16);
+                }
+            }
+        }
+        2 => {
+            ensure!(
+                piece.num_indices % 4 == 0,
+                "quad primitive type but index count {} not divisible by 4",
+                piece.num_indices
+            );
+            let mut quad_indices = Vec::with_capacity(piece.num_indices as usize);
+            for i in 0..piece.num_indices as usize {
+                quad_indices.push(read_u32(data, idx_start_offset + i * 4)?);
+            }
+            for chunk in quad_indices.chunks(4) {
+                indices.push((base_vertex + chunk[0]) as u16);
+                indices.push((base_vertex + chunk[1]) as u16);
+                indices.push((base_vertex + chunk[2]) as u16);
+                indices.push((base_vertex + chunk[0]) as u16);
+                indices.push((base_vertex + chunk[2]) as u16);
+                indices.push((base_vertex + chunk[3]) as u16);
+            }
+        }
+        other => anyhow::bail!("unsupported s3o primitive type {other}"),
+    }
+
+    let index_end = indices.len() as u32;
+
+    // Placeholder node (children will be filled below).
+    pieces.push(PieceNode {
+        name,
+        local_offset: [piece.xoffset, piece.yoffset, piece.zoffset],
+        vertex_range: vertex_start..vertex_end,
+        index_range: index_start..index_end,
+        children: Vec::new(),
+    });
+
+    // Recurse into children.
+    let children_start = piece.children_offset as usize;
+    for i in 0..piece.num_children as usize {
+        let child_offset = read_u32(data, children_start + i * 4)? as usize;
+        let child_idx = collect_piece_tree(data, child_offset, pieces, vertices, indices)?;
+        pieces[piece_idx].children.push(child_idx);
+    }
+
+    Ok(piece_idx)
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+/// Parse a .s3o model preserving the piece hierarchy.
+///
+/// Returns an [`S3oPieceTree`] with vertices in piece-local space and the
+/// full parent-child structure intact. Use [`flatten_with_transforms`] to
+/// produce a renderable vertex buffer with animation transforms applied.
+pub fn load_s3o_tree(data: &[u8]) -> Result<S3oPieceTree> {
+    let header = parse_header(data)?;
+
+    let mut pieces = Vec::new();
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+
+    if header.root_piece_offset > 0 || data.len() > HEADER_SIZE {
+        collect_piece_tree(
+            data,
+            header.root_piece_offset as usize,
+            &mut pieces,
+            &mut vertices,
+            &mut indices,
+        )?;
+    }
+
+    Ok(S3oPieceTree {
+        pieces,
+        vertices,
+        indices,
+    })
+}
 
 /// Parse a .s3o model from an in-memory byte slice.
 ///
@@ -497,5 +658,58 @@ mod tests {
             err.contains("version"),
             "error should mention version: {err}"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Piece tree loading tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn tree_single_piece_preserves_local_space() {
+        let verts: [[f32; 8]; 1] = [[1.0, 2.0, 3.0, 0.0, 1.0, 0.0, 0.0, 0.0]];
+        let indices = [0u32];
+
+        let data = build_s3o(&verts, &indices, [10.0, 20.0, 30.0]);
+        let tree = load_s3o_tree(&data).unwrap();
+
+        assert_eq!(tree.pieces.len(), 1);
+        assert_eq!(tree.pieces[0].name, "root");
+        assert_eq!(tree.pieces[0].local_offset, [10.0, 20.0, 30.0]);
+
+        // Vertices should be in piece-local space (no parent offset baked in).
+        assert_eq!(tree.vertices[0].position, [1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn tree_empty_piece() {
+        let data = build_s3o(&[], &[], [0.0, 0.0, 0.0]);
+        let tree = load_s3o_tree(&data).unwrap();
+        assert_eq!(tree.pieces.len(), 1);
+        assert!(tree.vertices.is_empty());
+        assert!(tree.indices.is_empty());
+    }
+
+    #[test]
+    fn tree_piece_name_extracted() {
+        let verts: [[f32; 8]; 1] = [[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]];
+        let data = build_s3o(&verts, &[0u32], [0.0, 0.0, 0.0]);
+        let tree = load_s3o_tree(&data).unwrap();
+        assert_eq!(tree.pieces[0].name, "root");
+    }
+
+    #[test]
+    fn tree_vertex_and_index_ranges() {
+        let verts: [[f32; 8]; 3] = [
+            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+        ];
+        let indices = [0u32, 1, 2];
+
+        let data = build_s3o(&verts, &indices, [0.0, 0.0, 0.0]);
+        let tree = load_s3o_tree(&data).unwrap();
+
+        assert_eq!(tree.pieces[0].vertex_range, 0..3);
+        assert_eq!(tree.pieces[0].index_range, 0..3);
     }
 }

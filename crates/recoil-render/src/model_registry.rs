@@ -9,6 +9,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::obj_loader;
+use crate::piece_tree::S3oPieceTree;
 use crate::s3o_loader;
 use crate::unit_mesh::{generate_unit_mesh, UnitVertex};
 
@@ -21,6 +22,7 @@ pub struct LoadedModel {
 /// Stores models keyed by `unit_type_id`, with a fallback default mesh.
 pub struct ModelRegistry {
     models: BTreeMap<u32, LoadedModel>,
+    trees: BTreeMap<u32, S3oPieceTree>,
     default_mesh: LoadedModel,
 }
 
@@ -30,6 +32,7 @@ impl ModelRegistry {
         let (vertices, indices) = generate_unit_mesh();
         Self {
             models: BTreeMap::new(),
+            trees: BTreeMap::new(),
             default_mesh: LoadedModel { vertices, indices },
         }
     }
@@ -64,6 +67,18 @@ impl ModelRegistry {
         self.models
             .insert(unit_type_id, LoadedModel { vertices, indices });
         Ok(())
+    }
+
+    /// Parse an s3o byte slice as a piece tree and register it.
+    pub fn load_s3o_tree(&mut self, unit_type_id: u32, data: &[u8]) -> Result<()> {
+        let tree = s3o_loader::load_s3o_tree(data)?;
+        self.trees.insert(unit_type_id, tree);
+        Ok(())
+    }
+
+    /// Get the piece tree for a unit type (if loaded as a tree).
+    pub fn get_tree(&self, unit_type_id: u32) -> Option<&S3oPieceTree> {
+        self.trees.get(&unit_type_id)
     }
 
     /// Get the model for a unit type. Returns the default mesh if no model has

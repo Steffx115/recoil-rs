@@ -1,3 +1,4 @@
+pub mod animation;
 pub mod collision;
 pub mod combat_data;
 pub mod commands;
@@ -22,6 +23,8 @@ pub mod targeting;
 pub mod unit_defs;
 
 pub use recoil_math::{SimFloat, SimVec2, SimVec3};
+
+pub use animation::{AnimationState, PieceAnimTransform};
 
 pub use commands::{command_system, Command, CommandQueue};
 pub use components::{
