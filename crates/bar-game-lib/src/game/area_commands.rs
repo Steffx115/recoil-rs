@@ -41,8 +41,12 @@ impl GameState {
         let radius_sq = radius * radius;
         let targets: Vec<bevy_ecs::entity::Entity> = self
             .world
-            .query_filtered::<(bevy_ecs::entity::Entity, &Position, &Health, &recoil_sim::Allegiance), Without<Dead>>(
-            )
+            .query_filtered::<(
+                bevy_ecs::entity::Entity,
+                &Position,
+                &Health,
+                &recoil_sim::Allegiance,
+            ), Without<Dead>>()
             .iter(&self.world)
             .filter(|(_, p, hp, _)| {
                 let dx = p.pos.x.to_f32() - cx;

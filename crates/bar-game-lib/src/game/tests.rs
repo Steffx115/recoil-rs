@@ -623,8 +623,7 @@ fn test_reclaim_wreckage() {
         game.tick();
         game.frame_count += 1;
 
-        if game.world.get::<Reclaimable>(wreck).is_none()
-            || game.world.get::<Dead>(wreck).is_some()
+        if game.world.get::<Reclaimable>(wreck).is_none() || game.world.get::<Dead>(wreck).is_some()
         {
             // Wreck was reclaimed — check that metal was gained
             let economy = game.world.resource::<EconomyState>();
@@ -1182,8 +1181,7 @@ fn test_determinism_world_checksum() {
             }
         }
 
-        let mut ai0 =
-            crate::ai::AiState::new(99, 0, 1, game.commander_team0, game.commander_team1);
+        let mut ai0 = crate::ai::AiState::new(99, 0, 1, game.commander_team0, game.commander_team1);
 
         let mut checksums = Vec::new();
         for _ in 0..frames {
@@ -1999,7 +1997,8 @@ fn ui_no_phantom_units_without_action() {
     // Count all alive entities at game start (should be 2 commanders only)
     let initial_alive: Vec<(u8, bool)> = game
         .world
-        .query_filtered::<(&recoil_sim::Allegiance, Option<&recoil_sim::MoveState>), Without<Dead>>()
+        .query_filtered::<(&recoil_sim::Allegiance, Option<&recoil_sim::MoveState>), Without<Dead>>(
+        )
         .iter(&game.world)
         .map(|(a, ms)| (a.team, ms.is_some()))
         .collect();
@@ -4477,9 +4476,7 @@ fn sim_factory_produces_one_unit_nothing_else() {
     // All pre-existing entities should have same HP (no combat happened)
     let health_after = all_health(&mut game);
     for (id, hp_before, max_before) in &health_before {
-        if let Some((_, hp_after, max_after)) =
-            health_after.iter().find(|(sid, _, _)| sid == id)
-        {
+        if let Some((_, hp_after, max_after)) = health_after.iter().find(|(sid, _, _)| sid == id) {
             assert_eq!(
                 *hp_before, *hp_after,
                 "Entity {} HP changed during production: {}->{}",
@@ -4496,9 +4493,7 @@ fn sim_factory_produces_one_unit_nothing_else() {
     // All pre-existing entity positions should be unchanged (idle, no combat)
     let positions_after = all_positions(&mut game);
     for (id, x_before, z_before) in &positions_before {
-        if let Some((_, x_after, z_after)) =
-            positions_after.iter().find(|(sid, _, _)| sid == id)
-        {
+        if let Some((_, x_after, z_after)) = positions_after.iter().find(|(sid, _, _)| sid == id) {
             assert_eq!(
                 *x_before, *x_after,
                 "Entity {} X position changed during production: {}->{}",
@@ -4913,8 +4908,7 @@ fn determinism_cross_system_2000_frames() {
             0,
         );
 
-        let mut ai0 =
-            crate::ai::AiState::new(99, 0, 1, game.commander_team0, game.commander_team1);
+        let mut ai0 = crate::ai::AiState::new(99, 0, 1, game.commander_team0, game.commander_team1);
 
         let mut checksums = Vec::new();
         for _ in 0..2000 {
@@ -5230,11 +5224,7 @@ fn entity_lifecycle_chain() {
 
     // Move commander near the wreck
     *game.world.get_mut::<recoil_sim::MoveState>(cmd).unwrap() =
-        recoil_sim::MoveState::MovingTo(SimVec3::new(
-            victim_pos.x,
-            SimFloat::ZERO,
-            victim_pos.z,
-        ));
+        recoil_sim::MoveState::MovingTo(SimVec3::new(victim_pos.x, SimFloat::ZERO, victim_pos.z));
 
     let metal_before_reclaim = {
         game.world
