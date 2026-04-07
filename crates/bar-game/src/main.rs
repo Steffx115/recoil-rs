@@ -119,7 +119,7 @@ impl App {
             })
             .collect();
 
-        let scale = 0.4;
+        let scale = 0.2;
         let mut loaded = 0;
         for (type_id, model_path) in &model_entries {
             let filename = model_path.strip_prefix("Units/").unwrap_or(model_path);
