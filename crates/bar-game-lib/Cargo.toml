@@ -1,0 +1,16 @@
+[package]
+name = "bar-game-lib"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "BAR game logic library — headless-capable, no rendering deps"
+
+[dependencies]
+recoil-math = { path = "../recoil-math" }
+recoil-sim = { path = "../recoil-sim" }
+anyhow = { workspace = true }
+bevy_ecs = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }
