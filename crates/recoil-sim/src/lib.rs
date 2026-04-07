@@ -26,7 +26,7 @@ pub use recoil_math::{SimFloat, SimVec2, SimVec3};
 
 pub use animation::{AnimationState, PieceAnimTransform};
 
-pub use commands::{command_system, Command, CommandQueue};
+pub use commands::{command_system, Command, CommandHandler, CommandQueue, CommandResult};
 pub use components::{
     Allegiance, BuildProgress, BuildingFootprint, Cloaked, CollisionRadius, Dead, Heading, Health,
     MoveState, MovementParams, Position, SightRange, SimId, Target, Transport, UnitType, Velocity,
