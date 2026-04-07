@@ -19,6 +19,15 @@ use crate::production;
 use crate::setup::{self, GameConfig};
 
 /// Top-level game state (headless-capable, no rendering).
+/// Result of a completed game.
+#[derive(Debug, Clone)]
+pub struct GameOver {
+    /// Winning team (None = draw).
+    pub winner: Option<u8>,
+    /// Human-readable reason.
+    pub reason: String,
+}
+
 pub struct GameState {
     pub world: World,
     pub paused: bool,
@@ -38,6 +47,8 @@ pub struct GameState {
     pub factory_team1: Option<Entity>,
     /// Seed for misc RNG.
     pub rng_seed: u64,
+    /// Set when the game ends.
+    pub game_over: Option<GameOver>,
 }
 
 impl GameState {
@@ -61,6 +72,7 @@ impl GameState {
             commander_team1: config.commander_team1,
             factory_team1: None,
             rng_seed: 12345,
+            game_over: None,
         }
     }
 
@@ -81,6 +93,7 @@ impl GameState {
             commander_team1: config.commander_team1,
             factory_team1: None,
             rng_seed: 12345,
+            game_over: None,
         }
     }
 
@@ -99,10 +112,58 @@ impl GameState {
         self.metal_spots = config.metal_spots;
         self.ai_state = AiState::new(42, 1, 0, config.commander_team1, config.commander_team0);
         self.rng_seed = self.rng_seed.wrapping_add(7);
+        self.game_over = None;
+    }
+
+    /// Returns true if the game has ended.
+    pub fn is_game_over(&self) -> bool {
+        self.game_over.is_some()
+    }
+
+    fn is_commander_dead(&self, cmd: Option<Entity>) -> bool {
+        match cmd {
+            None => true,
+            Some(e) => {
+                self.world.get_entity(e).is_err()
+                    || self.world.get::<Dead>(e).is_some()
+                    || self
+                        .world
+                        .get::<Health>(e)
+                        .map(|h| h.current <= SimFloat::ZERO)
+                        .unwrap_or(true)
+            }
+        }
+    }
+
+    fn check_game_over(&mut self) {
+        if self.game_over.is_some() {
+            return;
+        }
+        let t0_dead = self.is_commander_dead(self.commander_team0);
+        let t1_dead = self.is_commander_dead(self.commander_team1);
+        if t0_dead && t1_dead {
+            self.game_over = Some(GameOver {
+                winner: None,
+                reason: "Both commanders destroyed".into(),
+            });
+        } else if t1_dead {
+            self.game_over = Some(GameOver {
+                winner: Some(0),
+                reason: "Enemy commander destroyed".into(),
+            });
+        } else if t0_dead {
+            self.game_over = Some(GameOver {
+                winner: Some(1),
+                reason: "Your commander was destroyed".into(),
+            });
+        }
     }
 
     /// Run one simulation tick. Returns (impact_positions, death_positions) for rendering.
     pub fn tick(&mut self) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
+        if self.game_over.is_some() {
+            return (Vec::new(), Vec::new());
+        }
         // Snapshot entities with low health before sim_tick to detect deaths
         let pre_death: Vec<[f32; 3]> = self
             .world
@@ -161,6 +222,8 @@ impl GameState {
         } else {
             new_deaths
         };
+
+        self.check_game_over();
 
         (impact_positions, death_positions)
     }

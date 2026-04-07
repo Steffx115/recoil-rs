@@ -34,5 +34,5 @@ impl Lcg {
 
 // Re-export key types for convenience
 pub use building::PlacementType;
-pub use game::GameState;
+pub use game::{GameOver, GameState};
 pub use setup::GameConfig;
