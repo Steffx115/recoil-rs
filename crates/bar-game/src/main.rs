@@ -355,7 +355,16 @@ fn gather_ui_data(game: &mut GameState, fps: f32, vp: &[[f32; 4]; 4], screen_siz
     }
 }
 
-fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData) {
+/// Actions returned by the egui UI for the game to process.
+enum UiAction {
+    /// Build/place this unit type (builder selected).
+    Build(u32),
+    /// Queue this unit type (factory selected).
+    QueueUnit(u32),
+}
+
+fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData) -> Vec<UiAction> {
+    let mut actions = Vec::new();
     // --- Game Over overlay ---
     if let Some(ref go) = ui_data.game_over {
         egui::Area::new(egui::Id::new("game_over")).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
@@ -441,10 +450,17 @@ fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData) {
             if !opts.is_empty() {
                 ui.separator();
                 ui.label(egui::RichText::new(if ui_data.selected_is_factory { "Production" } else { "Build" }).strong());
-                egui::Grid::new("build_grid").num_columns(2).spacing([4.0, 4.0]).show(ui, |ui| {
-                    for (i, (key, name, _id)) in opts.iter().enumerate() {
+                let is_factory = ui_data.selected_is_factory;
+                egui::Grid::new("build_grid").num_columns(2).spacing([2.0, 2.0]).show(ui, |ui| {
+                    for (i, (key, name, id)) in opts.iter().enumerate() {
                         let label = format!("[{}] {}", key, name);
-                        ui.label(egui::RichText::new(label).small());
+                        if ui.small_button(&label).clicked() {
+                            if is_factory {
+                                actions.push(UiAction::QueueUnit(*id));
+                            } else {
+                                actions.push(UiAction::Build(*id));
+                            }
+                        }
                         if (i + 1) % 2 == 0 { ui.end_row(); }
                     }
                 });
@@ -519,6 +535,8 @@ fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData) {
                 }
             });
     }
+
+    actions
 }
 
 // ---------------------------------------------------------------------------
@@ -780,7 +798,14 @@ impl ApplicationHandler for App {
                             MouseButton::Right => {
                                 // Move all selected units
                                 let targets: Vec<Entity> = self.game.selection.selected.clone();
+                                if targets.is_empty() {
+                                    tracing::debug!("Right-click: no units selected");
+                                }
                                 for e in targets {
+                                    let has_ms = self.game.world.get::<recoil_sim::MoveState>(e).is_some();
+                                    if !has_ms {
+                                        tracing::warn!("Selected entity {:?} has no MoveState — cannot move", e);
+                                    }
                                     if let Some(ms) = self.game.world.get_mut::<recoil_sim::MoveState>(e) {
                                         *ms.into_inner() = recoil_sim::MoveState::MovingTo(
                                             recoil_math::SimVec3::new(
@@ -865,7 +890,10 @@ impl ApplicationHandler for App {
                     let egui_ctx = egui_state.egui_ctx().clone();
                     let vp_mat = cam.view_projection();
                     let ui_data = gather_ui_data(&mut self.game, fps, &vp_mat, self.window_size, self.camera_ctrl.center);
-                    let full_output = egui_ctx.run(raw_input, |ctx| draw_egui_ui(ctx, &ui_data));
+                    let mut ui_actions = Vec::new();
+                    let full_output = egui_ctx.run(raw_input, |ctx| {
+                        ui_actions = draw_egui_ui(ctx, &ui_data);
+                    });
                     egui_state.handle_platform_output(window, full_output.platform_output);
 
                     let tris = egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
@@ -895,6 +923,21 @@ impl ApplicationHandler for App {
                     renderer.gpu.queue.submit(bufs);
                     for id in &full_output.textures_delta.free { egui_renderer.free_texture(id); }
                     output.present();
+
+                    // Process UI actions
+                    for action in ui_actions {
+                        match action {
+                            UiAction::Build(id) => {
+                                self.game.handle_build_command(PlacementType(id));
+                            }
+                            UiAction::QueueUnit(id) => {
+                                if let Some(sel) = self.game.selected() {
+                                    bar_game_lib::production::queue_unit(&mut self.game.world, sel, id);
+                                }
+                            }
+                        }
+                    }
+
                     window.request_redraw();
                 }
             }
