@@ -148,10 +148,16 @@ impl Renderer {
         self.terrain.update_camera(&self.gpu.queue, &self.camera);
     }
 
-    /// Replace the unit mesh (e.g. load an .s3o model).
+    /// Replace the placeholder unit mesh (mesh_id=0).
     pub fn set_unit_mesh(&mut self, vertices: &[crate::unit_mesh::UnitVertex], indices: &[u16]) {
         self.unit_renderer
             .set_mesh(&self.gpu.device, vertices, indices);
+    }
+
+    /// Register a mesh for a specific mesh_id (e.g. a unit_type_id).
+    pub fn register_unit_mesh(&mut self, mesh_id: u32, vertices: &[crate::unit_mesh::UnitVertex], indices: &[u16]) {
+        self.unit_renderer
+            .register_mesh(&self.gpu.device, mesh_id, vertices, indices);
     }
 
     /// Upload unit instance data for the next frame.

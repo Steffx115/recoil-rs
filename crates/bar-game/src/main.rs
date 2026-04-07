@@ -127,15 +127,15 @@ impl FpsCounter {
 fn unit_instances(game: &mut GameState) -> Vec<UnitInstance> {
     let sel = game.selected();
     game.world
-        .query_filtered::<(Entity, &Position, &Heading, &Allegiance, &Health, Option<&BuildSite>), Without<Dead>>()
+        .query_filtered::<(Entity, &Position, &Heading, &Allegiance, &Health, &UnitType, Option<&BuildSite>), Without<Dead>>()
         .iter(&game.world)
-        .map(|(entity, pos, heading, al, hp, bs)| {
+        .map(|(entity, pos, heading, al, hp, ut, bs)| {
             let mut c = if al.team == 0 { [0.2f32, 0.5, 0.9] } else { [0.9f32, 0.2, 0.2] };
             if bs.is_some() { c[0] *= 0.5; c[1] *= 0.5; c[2] *= 0.5; }
             let f = (hp.current.to_f32() / hp.max.to_f32().max(1.0)).clamp(0.2, 1.0);
             c[0] *= f; c[1] *= f; c[2] *= f;
             if sel == Some(entity) { c[0] = (c[0]+0.3).min(1.0); c[1] = (c[1]+0.3).min(1.0); c[2] = (c[2]+0.3).min(1.0); }
-            UnitInstance { position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()], heading: heading.angle.to_f32(), team_color: c, _pad: 0.0 }
+            UnitInstance { position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()], heading: heading.angle.to_f32(), team_color: c, mesh_id: ut.id }
         })
         .collect()
 }
@@ -143,15 +143,15 @@ fn unit_instances(game: &mut GameState) -> Vec<UnitInstance> {
 fn building_instances(game: &mut GameState) -> Vec<UnitInstance> {
     let sel = game.selected();
     game.world
-        .query_filtered::<(Entity, &Position, &Allegiance, &Health, Option<&BuildSite>), (Without<Dead>, Without<Heading>)>()
+        .query_filtered::<(Entity, &Position, &Allegiance, &Health, &UnitType, Option<&BuildSite>), (Without<Dead>, Without<Heading>)>()
         .iter(&game.world)
-        .map(|(entity, pos, al, hp, bs)| {
+        .map(|(entity, pos, al, hp, ut, bs)| {
             let mut c = if al.team == 0 { [0.1f32, 0.8, 0.3] } else { [0.8f32, 0.1, 0.3] };
             if bs.is_some() { c[0] *= 0.5; c[1] *= 0.5; c[2] *= 0.5; }
             let f = (hp.current.to_f32() / hp.max.to_f32().max(1.0)).clamp(0.2, 1.0);
             c[0] *= f; c[1] *= f; c[2] *= f;
             if sel == Some(entity) { c[0] = (c[0]+0.3).min(1.0); c[1] = (c[1]+0.3).min(1.0); c[2] = (c[2]+0.3).min(1.0); }
-            UnitInstance { position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()], heading: 0.0, team_color: c, _pad: 0.0 }
+            UnitInstance { position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()], heading: 0.0, team_color: c, mesh_id: ut.id }
         })
         .collect()
 }
@@ -614,19 +614,47 @@ impl ApplicationHandler for App {
         let window = Arc::new(event_loop.create_window(attrs).expect("window"));
         let mut renderer = pollster::block_on(Renderer::new(Arc::clone(&window))).expect("renderer");
 
-        // Load S3O model
-        let s3o_path = Path::new("../Beyond-All-Reason-Sandbox/objects3d/Units/armpw.s3o");
-        if s3o_path.exists() {
-            if let Ok((mut verts, indices)) = recoil_render::load_s3o_file(s3o_path) {
-                let scale = 0.4;
-                for v in &mut verts {
-                    let (x, z) = (v.position[0], v.position[2]);
-                    v.position[0] = z * scale; v.position[1] *= scale; v.position[2] = -x * scale;
-                    let (nx, nz) = (v.normal[0], v.normal[2]);
-                    v.normal[0] = nz; v.normal[2] = -nx;
+        // Load S3O models for all unit types that have a model_path
+        let bar_models_dir = Path::new("../Beyond-All-Reason-Sandbox/objects3d/Units");
+        if bar_models_dir.exists() {
+            let registry = self.game.world.resource::<UnitDefRegistry>();
+            let model_entries: Vec<(u32, String)> = registry.defs.values()
+                .filter_map(|def| def.model_path.as_ref().map(|p| (def.unit_type_id, p.clone())))
+                .collect();
+
+            let scale = 0.4;
+            let mut loaded = 0;
+            for (type_id, model_path) in &model_entries {
+                // model_path from BAR is like "Units/ARMPW.s3o" — strip the "Units/" prefix
+                let filename = model_path.strip_prefix("Units/").unwrap_or(model_path);
+                let s3o_path = bar_models_dir.join(filename);
+                if !s3o_path.exists() { continue; }
+                if let Ok((mut verts, indices)) = recoil_render::load_s3o_file(&s3o_path) {
+                    for v in &mut verts {
+                        let (x, z) = (v.position[0], v.position[2]);
+                        v.position[0] = z * scale; v.position[1] *= scale; v.position[2] = -x * scale;
+                        let (nx, nz) = (v.normal[0], v.normal[2]);
+                        v.normal[0] = nz; v.normal[2] = -nx;
+                    }
+                    renderer.register_unit_mesh(*type_id, &verts, &indices);
+                    loaded += 1;
                 }
-                renderer.set_unit_mesh(&verts, &indices);
             }
+            // Also set the first loaded model as the placeholder (mesh_id=0)
+            if let Some((_first_id, _)) = model_entries.first() {
+                let filename = model_entries[0].1.strip_prefix("Units/").unwrap_or(&model_entries[0].1);
+                let s3o_path = bar_models_dir.join(filename);
+                if let Ok((mut verts, indices)) = recoil_render::load_s3o_file(&s3o_path) {
+                    for v in &mut verts {
+                        let (x, z) = (v.position[0], v.position[2]);
+                        v.position[0] = z * scale; v.position[1] *= scale; v.position[2] = -x * scale;
+                        let (nx, nz) = (v.normal[0], v.normal[2]);
+                        v.normal[0] = nz; v.normal[2] = -nx;
+                    }
+                    renderer.set_unit_mesh(&verts, &indices);
+                }
+            }
+            tracing::info!("Loaded {} S3O models for {} unit types", loaded, model_entries.len());
         }
 
         // egui
@@ -808,7 +836,7 @@ impl ApplicationHandler for App {
                             position: [gx, 0.0, gz],
                             heading: 0.0,
                             team_color: [0.3, 0.9, 0.3], // green ghost
-                            _pad: 0.0,
+                            mesh_id: 0,
                         });
                     }
                 }
