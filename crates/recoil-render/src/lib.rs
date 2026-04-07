@@ -23,6 +23,6 @@ pub use particles::{Particle, ParticleSystem};
 pub use projectile_renderer::{ProjectileInstance, ProjectileRenderer};
 pub use renderer::Renderer;
 pub use s3o_loader::{load_s3o, load_s3o_file};
-pub use terrain::{TerrainResources, TerrainVertex};
+pub use terrain::{generate_heightmap_grid, TerrainResources, TerrainVertex};
 pub use unit_mesh::UnitVertex;
 pub use unit_renderer::{UnitInstance, UnitRenderer};

@@ -172,6 +172,11 @@ impl Renderer {
             .prepare(&self.gpu.device, &self.gpu.queue, instances);
     }
 
+    /// Replace the terrain mesh with heightmap data.
+    pub fn set_terrain_mesh(&mut self, vertices: &[crate::terrain::TerrainVertex], indices: &[u32]) {
+        self.terrain.set_mesh(&self.gpu.device, vertices, indices);
+    }
+
     /// Access terrain resources (e.g. for custom draw calls).
     pub fn terrain(&self) -> &TerrainResources {
         &self.terrain
