@@ -47,6 +47,9 @@ ron = "0.8"
 anyhow = "1"
 thiserror = "2"
 
+# Image loading (DDS buildpics)
+image = { version = "0.25", default-features = false, features = ["dds"] }
+
 # Testing
 proptest = "1"
 criterion = { version = "0.5", features = ["html_reports"] }

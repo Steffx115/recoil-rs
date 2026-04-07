@@ -24,3 +24,7 @@ tracing-subscriber = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }
 ron = { workspace = true }
+image = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

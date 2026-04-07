@@ -34,11 +34,15 @@ use bar_game_lib::GameState;
 
 use egui_wgpu::ScreenDescriptor;
 
+mod icons;
+use icons::IconAtlas;
+
 // ---------------------------------------------------------------------------
 // Paths
 // ---------------------------------------------------------------------------
 
 const BAR_UNITS_PATH: &str = "../Beyond-All-Reason-Sandbox/units";
+const BAR_UNITPICS_PATH: &str = "../Beyond-All-Reason-Sandbox/unitpics";
 const MAP_MANIFEST_PATH: &str = "assets/maps/small_duel/manifest.ron";
 
 // ---------------------------------------------------------------------------
@@ -191,6 +195,25 @@ struct MinimapDot {
     is_building: bool,
 }
 
+/// Rich build option data for the build menu grid.
+struct BuildOption {
+    key: String,
+    name: String,
+    /// Icon lookup key (from `icon_path` stem or lowercased name).
+    icon_key: String,
+    unit_type_id: u32,
+    metal_cost: f64,
+    energy_cost: f64,
+    build_time: u32,
+}
+
+/// Entry in the factory production queue for display.
+struct QueueEntry {
+    name: String,
+    /// Icon lookup key (from `icon_path` stem or lowercased name).
+    icon_key: String,
+}
+
 struct UiData {
     metal: f32, metal_storage: f32, metal_income: f32, metal_expense: f32,
     energy: f32, energy_storage: f32, energy_income: f32, energy_expense: f32,
@@ -201,9 +224,13 @@ struct UiData {
     selected_is_factory: bool,
     selected_is_builder: bool,
     factory_queue_len: usize,
+    /// Progress of the currently building item (0..1), if any.
+    factory_progress: f32,
     placement_label: Option<String>,
-    builder_options: Vec<(String, String, u32)>,
-    factory_options: Vec<(String, String, u32)>,
+    builder_options: Vec<BuildOption>,
+    factory_options: Vec<BuildOption>,
+    /// Full factory production queue entries.
+    factory_queue: Vec<QueueEntry>,
     game_over: Option<bar_game_lib::GameOver>,
     health_bars: Vec<HealthBarInfo>,
     minimap_dots: Vec<MinimapDot>,
@@ -264,8 +291,10 @@ fn gather_ui_data(game: &mut GameState, fps: f32, vp: &[[f32; 4]; 4], screen_siz
     let mut selected_name = None;
     let mut selected_hp = None;
     let mut factory_queue_len = 0;
+    let mut factory_progress = 0.0f32;
     let mut builder_options = Vec::new();
     let mut factory_options = Vec::new();
+    let mut factory_queue = Vec::new();
 
     if let Some(sel) = game.selected() {
         if game.world.get_entity(sel).is_ok() {
@@ -283,13 +312,30 @@ fn gather_ui_data(game: &mut GameState, fps: f32, vp: &[[f32; 4]; 4], screen_siz
                     for (i, &bid) in list.iter().enumerate() {
                         if i >= keys.len() { break; }
                         if let Some(bd) = registry.get(bid) {
-                            target.push((keys[i].to_string(), bd.name.clone(), bid));
+                            let icon_key = icon_key_for_def(bd);
+                            target.push(BuildOption {
+                                key: keys[i].to_string(),
+                                name: bd.name.clone(),
+                                icon_key,
+                                unit_type_id: bid,
+                                metal_cost: bd.metal_cost,
+                                energy_cost: bd.energy_cost,
+                                build_time: bd.build_time,
+                            });
                         }
                     }
                 }
             }
             if let Some(bq) = game.world.get::<recoil_sim::factory::BuildQueue>(sel) {
                 factory_queue_len = bq.queue.len();
+                factory_progress = bq.current_progress.to_f32();
+                let registry = game.world.resource::<UnitDefRegistry>();
+                for &uid in &bq.queue {
+                    let def = registry.get(uid);
+                    let name = def.map(|d| d.name.clone()).unwrap_or_else(|| format!("#{}", uid));
+                    let icon_key = def.map(icon_key_for_def).unwrap_or_else(|| name.to_lowercase());
+                    factory_queue.push(QueueEntry { name, icon_key });
+                }
             }
         }
     }
@@ -345,14 +391,29 @@ fn gather_ui_data(game: &mut GameState, fps: f32, vp: &[[f32; 4]; 4], screen_siz
         blue_count, red_count,
         selected_name, selected_hp,
         selected_is_factory, selected_is_builder,
-        factory_queue_len, placement_label,
+        factory_queue_len, factory_progress,
+        placement_label,
         builder_options, factory_options,
+        factory_queue,
         game_over: game.game_over.clone(),
         health_bars,
         minimap_dots,
         cam_nx: cam_center[0] / MAP_SIZE,
         cam_nz: cam_center[1] / MAP_SIZE,
     }
+}
+
+/// Derive the icon lookup key for a unit def.
+///
+/// Prefers the file stem of `icon_path` (e.g. "armpw" from "armpw.dds"),
+/// falling back to the lowercased display name.
+fn icon_key_for_def(def: &recoil_sim::unit_defs::UnitDef) -> String {
+    def.icon_path
+        .as_ref()
+        .and_then(|p| std::path::Path::new(p).file_stem())
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_lowercase())
+        .unwrap_or_else(|| def.name.to_lowercase())
 }
 
 /// Actions returned by the egui UI for the game to process.
@@ -363,7 +424,7 @@ enum UiAction {
     QueueUnit(u32),
 }
 
-fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData) -> Vec<UiAction> {
+fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData, icon_atlas: &IconAtlas) -> Vec<UiAction> {
     let mut actions = Vec::new();
     // --- Game Over overlay ---
     if let Some(ref go) = ui_data.game_over {
@@ -411,11 +472,11 @@ fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData) -> Vec<UiAction> {
                 ui.label(egui::RichText::new(format!("Click to place {} | [Esc] Cancel", label)).color(egui::Color32::from_rgb(255, 200, 80)));
             } else if ui_data.selected_is_factory && !ui_data.factory_options.is_empty() {
                 ui.label("Queue:");
-                for (key, name, _) in &ui_data.factory_options { ui.label(format!("[{}]{}", key, name)); }
+                for opt in &ui_data.factory_options { ui.label(format!("[{}]{}", opt.key, opt.name)); }
                 if ui_data.factory_queue_len > 0 { ui.separator(); ui.label(format!("({} queued)", ui_data.factory_queue_len)); }
             } else if ui_data.selected_is_builder && !ui_data.builder_options.is_empty() {
                 ui.label("Build:");
-                for (key, name, _) in &ui_data.builder_options { ui.label(format!("[{}]{}", key, name)); }
+                for opt in &ui_data.builder_options { ui.label(format!("[{}]{}", opt.key, opt.name)); }
             } else if ui_data.selected_name.is_some() {
                 ui.label("[Right-click] Move | [A] Attack-move");
             } else {
@@ -443,7 +504,7 @@ fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData) -> Vec<UiAction> {
                 ui.label(format!("Queue: {}", ui_data.factory_queue_len));
             }
 
-            // Build menu grid (for builders)
+            // Build menu grid (for builders and factories)
             let opts = if ui_data.selected_is_builder { &ui_data.builder_options }
                 else if ui_data.selected_is_factory { &ui_data.factory_options }
                 else { &ui_data.builder_options };
@@ -452,16 +513,72 @@ fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData) -> Vec<UiAction> {
                 ui.label(egui::RichText::new(if ui_data.selected_is_factory { "Production" } else { "Build" }).strong());
                 let is_factory = ui_data.selected_is_factory;
                 egui::Grid::new("build_grid").num_columns(2).spacing([2.0, 2.0]).show(ui, |ui| {
-                    for (i, (key, name, id)) in opts.iter().enumerate() {
-                        let label = format!("[{}] {}", key, name);
-                        if ui.small_button(&label).clicked() {
+                    for (i, opt) in opts.iter().enumerate() {
+                        let response = if let Some(tex) = icon_atlas.get_icon(&opt.icon_key) {
+                            let img = egui::ImageButton::new(
+                                egui::load::SizedTexture::new(tex.id(), egui::vec2(64.0, 64.0)),
+                            );
+                            ui.add(img)
+                        } else {
+                            let label = format!("[{}] {}", opt.key, opt.name);
+                            ui.small_button(&label)
+                        };
+                        // Tooltip with unit name, costs, and build time
+                        let clicked = response.clicked();
+                        response.on_hover_ui(|ui| {
+                            ui.label(egui::RichText::new(&opt.name).strong());
+                            ui.label(format!("Metal: {:.0}", opt.metal_cost));
+                            ui.label(format!("Energy: {:.0}", opt.energy_cost));
+                            ui.label(format!("Build time: {}", opt.build_time));
+                        });
+                        if clicked {
                             if is_factory {
-                                actions.push(UiAction::QueueUnit(*id));
+                                actions.push(UiAction::QueueUnit(opt.unit_type_id));
                             } else {
-                                actions.push(UiAction::Build(*id));
+                                actions.push(UiAction::Build(opt.unit_type_id));
                             }
                         }
                         if (i + 1) % 2 == 0 { ui.end_row(); }
+                    }
+                });
+            }
+
+            // Factory production queue display (horizontal row of icons)
+            if ui_data.selected_is_factory && !ui_data.factory_queue.is_empty() {
+                ui.separator();
+                ui.label(egui::RichText::new("Queue").strong());
+                ui.horizontal_wrapped(|ui| {
+                    for (i, entry) in ui_data.factory_queue.iter().enumerate() {
+                        let is_current = i == 0;
+                        if let Some(tex) = icon_atlas.get_icon(&entry.icon_key) {
+                            let size = egui::vec2(32.0, 32.0);
+                            let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
+                            let img = egui::Image::new(egui::load::SizedTexture::new(tex.id(), size));
+                            img.paint_at(ui, rect);
+                            // Progress bar overlay on the currently-building item
+                            if is_current && ui_data.factory_progress > 0.0 {
+                                let progress = ui_data.factory_progress.clamp(0.0, 1.0);
+                                let bar_h = 3.0;
+                                let bg_rect = egui::Rect::from_min_size(
+                                    egui::pos2(rect.min.x, rect.max.y - bar_h),
+                                    egui::vec2(rect.width(), bar_h),
+                                );
+                                ui.painter().rect_filled(bg_rect, 0.0, egui::Color32::from_rgb(20, 20, 20));
+                                let bar_rect = egui::Rect::from_min_size(
+                                    egui::pos2(rect.min.x, rect.max.y - bar_h),
+                                    egui::vec2(rect.width() * progress, bar_h),
+                                );
+                                ui.painter().rect_filled(bar_rect, 0.0, egui::Color32::from_rgb(80, 200, 80));
+                            }
+                        } else {
+                            // Text fallback for queue items
+                            let label = if is_current {
+                                format!("[{}]", entry.name)
+                            } else {
+                                entry.name.clone()
+                            };
+                            let _ = ui.small_button(&label);
+                        }
                     }
                 });
             }
@@ -588,6 +705,7 @@ struct App {
     egui_state: Option<egui_winit::State>,
     egui_renderer: Option<egui_wgpu::Renderer>,
     fps_counter: FpsCounter,
+    icon_atlas: Option<IconAtlas>,
 }
 
 impl App {
@@ -611,6 +729,7 @@ impl App {
             egui_state: None,
             egui_renderer: None,
             fps_counter: FpsCounter::new(),
+            icon_atlas: None,
         }
     }
 
@@ -681,6 +800,13 @@ impl ApplicationHandler for App {
             Some(window.scale_factor() as f32), window.theme(),
             Some(renderer.gpu.device.limits().max_texture_dimension_2d as usize));
         let egui_renderer = egui_wgpu::Renderer::new(&renderer.gpu.device, renderer.gpu.config.format, None, 1, false);
+
+        // Load unit buildpic icons (DDS files from BAR)
+        let icon_atlas = IconAtlas::load_unitpics(
+            egui_state.egui_ctx(),
+            Path::new(BAR_UNITPICS_PATH),
+        );
+        self.icon_atlas = Some(icon_atlas);
 
         self.egui_state = Some(egui_state);
         self.egui_renderer = Some(egui_renderer);
@@ -890,9 +1016,11 @@ impl ApplicationHandler for App {
                     let egui_ctx = egui_state.egui_ctx().clone();
                     let vp_mat = cam.view_projection();
                     let ui_data = gather_ui_data(&mut self.game, fps, &vp_mat, self.window_size, self.camera_ctrl.center);
+                    let empty_atlas = IconAtlas::empty();
+                    let atlas = self.icon_atlas.as_ref().unwrap_or(&empty_atlas);
                     let mut ui_actions = Vec::new();
                     let full_output = egui_ctx.run(raw_input, |ctx| {
-                        ui_actions = draw_egui_ui(ctx, &ui_data);
+                        ui_actions = draw_egui_ui(ctx, &ui_data, atlas);
                     });
                     egui_state.handle_platform_output(window, full_output.platform_output);
 
