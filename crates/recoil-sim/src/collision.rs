@@ -174,12 +174,13 @@ mod tests {
         world.insert_resource(grid);
     }
 
-    /// Spawn a collidable unit at the given XZ position with the given radius.
+    /// Spawn a collidable mobile unit at the given XZ position with the given radius.
     fn spawn_unit(world: &mut World, x: i32, z: i32, radius: i32) -> Entity {
         world
             .spawn((
                 Position { pos: sv3(x, 0, z) },
                 CollisionRadius { radius: sf(radius) },
+                MoveState::Idle,
             ))
             .id()
     }
