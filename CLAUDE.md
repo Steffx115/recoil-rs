@@ -23,6 +23,10 @@ Use `--message-format=short` on cargo build/clippy during iterative fix loops.
 - **Headless tests with every change:** Always extend or adapt the headless game tests in `bar-game-lib` when changing game logic, building, economy, AI, or commands. These tests simulate the full game loop without rendering.
 - **Headless UI tests:** Always extend or adapt the UI interaction tests (prefixed `ui_`) in `bar-game-lib/src/game.rs` when changing input handling, selection, placement, or factory queuing. These tests use `click_select`, `click_move`, `handle_place`, etc. to simulate player actions and verify outcomes.
 
+## Binary Sync
+
+- **Keep the game binary up to date.** `crates/bar-game/src/main.rs` must always use `bar-game-lib::GameState` — never duplicate game logic in the binary. When game logic changes in `bar-game-lib`, update the binary in the same commit. The binary is a thin shell: window, renderer, input dispatch, egui overlay. All game state, tick loop, AI, building, economy, and selection live in `bar-game-lib`.
+
 ## Architecture Rules
 
 - All simulation math MUST use `SimFloat` from `recoil-math`. Never use f32/f64 in sim code.

@@ -2625,8 +2625,8 @@ mod tests {
         let mut game = make_test_game();
         let weapon_id = register_test_weapon(&mut game);
 
-        let _u1 = spawn_armed_unit(&mut game, 100, 100, 0, weapon_id, 500);
-        let _u2 = spawn_armed_unit(&mut game, 120, 100, 0, weapon_id, 500);
+        let u1 = spawn_armed_unit(&mut game, 100, 100, 0, weapon_id, 500);
+        let u2 = spawn_armed_unit(&mut game, 120, 100, 0, weapon_id, 500);
 
         // Click u1
         game.click_select(100.0, 100.0, 10.0);
