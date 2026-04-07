@@ -211,6 +211,15 @@ pub fn construction_system(world: &mut World) {
                 if let Some(mut health) = world.get_mut::<Health>(target) {
                     health.current = health.max;
                 }
+
+                // Clear builder's BuildTarget and stop movement so it doesn't
+                // keep walking toward the completed building.
+                world.entity_mut(builder_entity).remove::<BuildTarget>();
+                if let Some(mut ms) =
+                    world.get_mut::<crate::MoveState>(builder_entity)
+                {
+                    *ms = crate::MoveState::Idle;
+                }
             }
 
             continue;
@@ -236,6 +245,14 @@ pub fn construction_system(world: &mut World) {
 
                 // Mark target dead for cleanup.
                 world.entity_mut(target).insert(Dead);
+
+                // Clear builder's BuildTarget and stop movement.
+                world.entity_mut(builder_entity).remove::<BuildTarget>();
+                if let Some(mut ms) =
+                    world.get_mut::<crate::MoveState>(builder_entity)
+                {
+                    *ms = crate::MoveState::Idle;
+                }
             }
 
             continue;
@@ -363,6 +380,70 @@ mod tests {
         );
         let health = world.get::<Health>(nanoframe).unwrap();
         assert_eq!(health.current, health.max);
+    }
+
+    #[test]
+    fn builder_stops_and_clears_target_after_construction() {
+        use crate::components::MoveState;
+        use recoil_math::{SimFloat, SimVec3};
+
+        let mut world = setup(&[1]);
+
+        let building_pos = SimVec3::new(
+            SimFloat::from_int(100),
+            SimFloat::ZERO,
+            SimFloat::from_int(100),
+        );
+
+        // Spawn a nanoframe with BuildSite.
+        let nanoframe = world
+            .spawn((
+                Health {
+                    current: SimFloat::ZERO,
+                    max: SimFloat::from_int(100),
+                },
+                BuildSite {
+                    metal_cost: SimFloat::from_int(100),
+                    energy_cost: SimFloat::from_int(100),
+                    total_build_time: SimFloat::from_int(10),
+                    progress: SimFloat::ZERO,
+                },
+                Allegiance { team: 1 },
+                crate::components::Position { pos: building_pos },
+            ))
+            .id();
+
+        // Spawn a builder that is still moving toward the building.
+        let builder = world
+            .spawn((
+                Builder {
+                    build_power: SimFloat::from_int(10),
+                },
+                BuildTarget { target: nanoframe },
+                Allegiance { team: 1 },
+                crate::components::Position { pos: building_pos },
+                MoveState::MovingTo(building_pos),
+            ))
+            .id();
+
+        construction_system(&mut world);
+
+        // Building should be complete.
+        assert!(world.get::<BuildSite>(nanoframe).is_none());
+
+        // Builder's BuildTarget should be removed.
+        assert!(
+            world.get::<BuildTarget>(builder).is_none(),
+            "BuildTarget should be removed after construction completes"
+        );
+
+        // Builder's MoveState should be Idle.
+        let ms = world.get::<MoveState>(builder).unwrap();
+        assert_eq!(
+            *ms,
+            MoveState::Idle,
+            "Builder should stop moving after construction completes"
+        );
     }
 
     #[test]
