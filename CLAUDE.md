@@ -18,6 +18,11 @@ Use `--message-format=short` on cargo build/clippy during iterative fix loops.
 - If a session involves multiple stories, commit after each one completes (don't batch them all at the end).
 - Worktree agents must not check out branches in the main worktree.
 
+## Testing
+
+- **Headless tests with every change:** Always extend or adapt the headless game tests in `bar-game-lib` when changing game logic, building, economy, AI, or commands. These tests simulate the full game loop without rendering.
+- **Headless UI tests:** Always extend or adapt the UI interaction tests (prefixed `ui_`) in `bar-game-lib/src/game.rs` when changing input handling, selection, placement, or factory queuing. These tests use `click_select`, `click_move`, `handle_place`, etc. to simulate player actions and verify outcomes.
+
 ## Architecture Rules
 
 - All simulation math MUST use `SimFloat` from `recoil-math`. Never use f32/f64 in sim code.
