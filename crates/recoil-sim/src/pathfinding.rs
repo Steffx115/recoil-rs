@@ -469,6 +469,7 @@ fn collinear(a: SimVec2, b: SimVec2, c: SimVec2, terrain: &TerrainGrid) -> bool 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     /// Helper: create a fully passable `w x h` grid.
     fn open_grid(w: usize, h: usize) -> TerrainGrid {
@@ -839,5 +840,100 @@ mod tests {
         }
         // Restore should work without panic.
         unmark_building_footprint(&mut grid, &fp);
+    }
+
+    // ==================================================================
+    // Property-based tests (proptest)
+    // ==================================================================
+
+    const GRID_SIZE: usize = 20;
+
+    fn arb_coord() -> impl Strategy<Value = usize> {
+        0..GRID_SIZE
+    }
+
+    proptest! {
+        // ------------------------------------------------------------------
+        // P1. Any reachable goal produces a valid path (no impassable cells)
+        // ------------------------------------------------------------------
+        #[test]
+        fn prop_path_all_cells_passable(
+            sx in arb_coord(), sy in arb_coord(),
+            gx in arb_coord(), gy in arb_coord(),
+        ) {
+            let grid = open_grid(GRID_SIZE, GRID_SIZE);
+            if let Some(path) = find_path(&grid, pos(sx as i32, sy as i32), pos(gx as i32, gy as i32)) {
+                for p in &path {
+                    let cx = p.x.to_f64() as usize;
+                    let cy = p.y.to_f64() as usize;
+                    prop_assert!(
+                        grid.is_passable(cx, cy),
+                        "waypoint ({cx},{cy}) is impassable"
+                    );
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // P2. Path waypoints are within grid bounds
+        // ------------------------------------------------------------------
+        #[test]
+        fn prop_path_within_bounds(
+            sx in arb_coord(), sy in arb_coord(),
+            gx in arb_coord(), gy in arb_coord(),
+        ) {
+            let grid = open_grid(GRID_SIZE, GRID_SIZE);
+            if let Some(path) = find_path(&grid, pos(sx as i32, sy as i32), pos(gx as i32, gy as i32)) {
+                prop_assert!(!path.is_empty(), "path should not be empty");
+                for p in &path {
+                    let cx = p.x.to_f64() as usize;
+                    let cy = p.y.to_f64() as usize;
+                    prop_assert!(cx < GRID_SIZE && cy < GRID_SIZE,
+                        "waypoint ({},{}) out of grid bounds", cx, cy);
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // P3. Symmetry: path(A,B) exists iff path(B,A) exists
+        // ------------------------------------------------------------------
+        #[test]
+        fn prop_path_symmetry(
+            sx in arb_coord(), sy in arb_coord(),
+            gx in arb_coord(), gy in arb_coord(),
+        ) {
+            let grid = open_grid(GRID_SIZE, GRID_SIZE);
+            let ab = find_path(&grid, pos(sx as i32, sy as i32), pos(gx as i32, gy as i32));
+            let ba = find_path(&grid, pos(gx as i32, gy as i32), pos(sx as i32, sy as i32));
+            prop_assert_eq!(ab.is_some(), ba.is_some(),
+                "path({},{})->({},{}) exists={}, but reverse exists={}",
+                sx, sy, gx, gy, ab.is_some(), ba.is_some());
+        }
+
+        // ------------------------------------------------------------------
+        // P4. Out-of-bounds goals don't panic (clamped to grid)
+        // ------------------------------------------------------------------
+        #[test]
+        fn prop_oob_goals_no_panic(
+            sx in 0..50usize, sy in 0..50usize,
+            gx in 0..50usize, gy in 0..50usize,
+        ) {
+            let grid = open_grid(GRID_SIZE, GRID_SIZE);
+            // Coordinates may exceed grid bounds — should not panic
+            let _ = find_path(&grid, pos(sx as i32, sy as i32), pos(gx as i32, gy as i32));
+        }
+
+        // ------------------------------------------------------------------
+        // P5. Impassable start always returns None
+        // ------------------------------------------------------------------
+        #[test]
+        fn prop_impassable_start_returns_none(
+            gx in arb_coord(), gy in arb_coord(),
+        ) {
+            let mut grid = open_grid(GRID_SIZE, GRID_SIZE);
+            grid.set(0, 0, SimFloat::ZERO);
+            let result = find_path(&grid, pos(0, 0), pos(gx as i32, gy as i32));
+            prop_assert!(result.is_none(), "impassable start should return None");
+        }
     }
 }

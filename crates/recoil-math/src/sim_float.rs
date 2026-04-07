@@ -730,6 +730,21 @@ mod tests {
         }
 
         #[test]
+        fn prop_sub_self_is_zero(a in arb_simfloat()) {
+            prop_assert_eq!(a - a, SimFloat::ZERO);
+        }
+
+        #[test]
+        fn prop_div_self_is_one(a in arb_simfloat_nonzero()) {
+            prop_assert_eq!(a / a, SimFloat::ONE);
+        }
+
+        #[test]
+        fn prop_neg_neg_identity(a in arb_simfloat()) {
+            prop_assert_eq!(-(-a), a);
+        }
+
+        #[test]
         fn prop_mul_zero(a in arb_simfloat()) {
             prop_assert_eq!(a * SimFloat::ZERO, SimFloat::ZERO);
         }

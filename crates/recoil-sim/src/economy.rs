@@ -180,6 +180,7 @@ pub fn init_economy(world: &mut World, teams: &[u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     /// Helper: create a world with economy initialised for the given teams.
     fn setup(teams: &[u8]) -> World {
@@ -319,5 +320,122 @@ mod tests {
         let state = world.resource::<EconomyState>();
         // Should be clamped to storage (2000), not 2095.
         assert_eq!(state.teams[&1].metal, SimFloat::from_int(2000));
+    }
+
+    // ==================================================================
+    // Property-based tests (proptest)
+    // ==================================================================
+
+    fn arb_resource_rate() -> impl Strategy<Value = SimFloat> {
+        (0..500i32).prop_map(SimFloat::from_int)
+    }
+
+    proptest! {
+        // ------------------------------------------------------------------
+        // P1. Resources never go negative after economy_system tick
+        // ------------------------------------------------------------------
+        #[test]
+        fn prop_resources_never_negative(
+            income_m in arb_resource_rate(),
+            income_e in arb_resource_rate(),
+            expense_m in arb_resource_rate(),
+            expense_e in arb_resource_rate(),
+        ) {
+            let mut world = setup(&[1]);
+            world.spawn((
+                Allegiance { team: 1 },
+                ResourceProducer {
+                    metal_per_tick: income_m,
+                    energy_per_tick: income_e,
+                },
+            ));
+            world.spawn((
+                Allegiance { team: 1 },
+                ResourceConsumer {
+                    metal_per_tick: expense_m,
+                    energy_per_tick: expense_e,
+                },
+            ));
+
+            economy_system(&mut world);
+
+            let state = world.resource::<EconomyState>();
+            let r = &state.teams[&1];
+            prop_assert!(r.metal >= SimFloat::ZERO,
+                "metal went negative: {}", r.metal.to_f64());
+            prop_assert!(r.energy >= SimFloat::ZERO,
+                "energy went negative: {}", r.energy.to_f64());
+        }
+
+        // ------------------------------------------------------------------
+        // P2. Stall ratio is always in [0, 1]
+        // ------------------------------------------------------------------
+        #[test]
+        fn prop_stall_ratio_bounded(
+            income_m in arb_resource_rate(),
+            income_e in arb_resource_rate(),
+            expense_m in arb_resource_rate(),
+            expense_e in arb_resource_rate(),
+            initial_m in (0..2000i32).prop_map(SimFloat::from_int),
+            initial_e in (0..2000i32).prop_map(SimFloat::from_int),
+        ) {
+            let mut world = setup(&[1]);
+            {
+                let mut state = world.resource_mut::<EconomyState>();
+                let r = state.teams.get_mut(&1).unwrap();
+                r.metal = initial_m;
+                r.energy = initial_e;
+            }
+            world.spawn((
+                Allegiance { team: 1 },
+                ResourceProducer {
+                    metal_per_tick: income_m,
+                    energy_per_tick: income_e,
+                },
+            ));
+            world.spawn((
+                Allegiance { team: 1 },
+                ResourceConsumer {
+                    metal_per_tick: expense_m,
+                    energy_per_tick: expense_e,
+                },
+            ));
+
+            economy_system(&mut world);
+
+            let state = world.resource::<EconomyState>();
+            let r = &state.teams[&1];
+            prop_assert!(r.stall_ratio_metal >= SimFloat::ZERO && r.stall_ratio_metal <= SimFloat::ONE,
+                "metal stall ratio out of bounds: {}", r.stall_ratio_metal.to_f64());
+            prop_assert!(r.stall_ratio_energy >= SimFloat::ZERO && r.stall_ratio_energy <= SimFloat::ONE,
+                "energy stall ratio out of bounds: {}", r.stall_ratio_energy.to_f64());
+        }
+
+        // ------------------------------------------------------------------
+        // P3. Resources never exceed storage capacity
+        // ------------------------------------------------------------------
+        #[test]
+        fn prop_resources_capped_at_storage(
+            income_m in arb_resource_rate(),
+            income_e in arb_resource_rate(),
+        ) {
+            let mut world = setup(&[1]);
+            world.spawn((
+                Allegiance { team: 1 },
+                ResourceProducer {
+                    metal_per_tick: income_m,
+                    energy_per_tick: income_e,
+                },
+            ));
+
+            economy_system(&mut world);
+
+            let state = world.resource::<EconomyState>();
+            let r = &state.teams[&1];
+            prop_assert!(r.metal <= r.metal_storage,
+                "metal {} exceeds storage {}", r.metal.to_f64(), r.metal_storage.to_f64());
+            prop_assert!(r.energy <= r.energy_storage,
+                "energy {} exceeds storage {}", r.energy.to_f64(), r.energy_storage.to_f64());
+        }
     }
 }
