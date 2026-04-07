@@ -206,6 +206,24 @@ pub struct Transport {
 }
 
 // ---------------------------------------------------------------------------
+// Building footprint
+// ---------------------------------------------------------------------------
+
+/// Grid cells occupied by a building on the [`TerrainGrid`].
+///
+/// When the building is placed, these cells are marked impassable.
+/// When the building is destroyed (marked [`Dead`]), the cells are restored
+/// to their original traversal costs.
+#[derive(Component, Serialize, Deserialize, Debug, Clone)]
+pub struct BuildingFootprint {
+    /// Grid cells `(x, y)` that this building occupies.
+    pub cells: Vec<(usize, usize)>,
+    /// Original traversal cost of each cell (same order as `cells`),
+    /// so they can be restored when the building is removed.
+    pub original_costs: Vec<SimFloat>,
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

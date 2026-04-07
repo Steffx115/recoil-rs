@@ -6,8 +6,12 @@
 
 use std::collections::BTreeMap;
 
+use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Resource;
+use bevy_ecs::world::World;
 use recoil_math::{SimFloat, SimVec2};
+
+use crate::components::{BuildingFootprint, Dead};
 
 // ---------------------------------------------------------------------------
 // TerrainGrid
@@ -64,8 +68,99 @@ impl TerrainGrid {
 
     /// Returns `true` when the cell is in-bounds and its cost is greater than zero.
     #[inline]
-    fn is_passable(&self, x: usize, y: usize) -> bool {
+    pub fn is_passable(&self, x: usize, y: usize) -> bool {
         self.get(x, y).is_some_and(|c| c > SimFloat::ZERO)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Building footprint helpers
+// ---------------------------------------------------------------------------
+
+/// Compute grid cells covered by a building at `pos` with the given
+/// `collision_radius`.  The footprint is a square of side `radius * 2`
+/// centred on the building position (clamped to grid bounds).
+pub fn footprint_cells(
+    grid: &TerrainGrid,
+    pos: SimVec2,
+    collision_radius: SimFloat,
+) -> Vec<(usize, usize)> {
+    let cx = pos.x.to_f64();
+    let cz = pos.y.to_f64(); // SimVec2.y maps to world Z
+    let r = collision_radius.to_f64();
+
+    let min_x = ((cx - r).floor().max(0.0)) as usize;
+    let max_x = ((cx + r).ceil() as usize).min(grid.width().saturating_sub(1));
+    let min_y = ((cz - r).floor().max(0.0)) as usize;
+    let max_y = ((cz + r).ceil() as usize).min(grid.height().saturating_sub(1));
+
+    let mut cells = Vec::new();
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            cells.push((x, y));
+        }
+    }
+    cells
+}
+
+/// Mark building footprint cells as impassable on the terrain grid.
+///
+/// Returns a [`BuildingFootprint`] component storing the cells and their
+/// original costs so they can be restored later.
+pub fn mark_building_footprint(
+    grid: &mut TerrainGrid,
+    pos: SimVec2,
+    collision_radius: SimFloat,
+) -> BuildingFootprint {
+    let cells = footprint_cells(grid, pos, collision_radius);
+    let original_costs: Vec<SimFloat> = cells
+        .iter()
+        .map(|&(x, y)| grid.get(x, y).unwrap_or(SimFloat::ONE))
+        .collect();
+
+    for &(x, y) in &cells {
+        grid.set(x, y, SimFloat::ZERO);
+    }
+
+    BuildingFootprint {
+        cells,
+        original_costs,
+    }
+}
+
+/// Restore terrain grid cells from a building footprint (when building is
+/// destroyed or reclaimed).
+pub fn unmark_building_footprint(grid: &mut TerrainGrid, footprint: &BuildingFootprint) {
+    for (i, &(x, y)) in footprint.cells.iter().enumerate() {
+        if x < grid.width() && y < grid.height() {
+            let cost = footprint
+                .original_costs
+                .get(i)
+                .copied()
+                .unwrap_or(SimFloat::ONE);
+            grid.set(x, y, cost);
+        }
+    }
+}
+
+/// System: restore terrain cells for buildings that have been marked [`Dead`].
+///
+/// Must run **before** [`cleanup_dead`](crate::lifecycle::cleanup_dead) so the
+/// footprint data is still available when we need it.
+pub fn footprint_cleanup_system(world: &mut World) {
+    let dead_footprints: Vec<(Entity, BuildingFootprint)> = world
+        .query_filtered::<(Entity, &BuildingFootprint), bevy_ecs::query::With<Dead>>()
+        .iter(world)
+        .map(|(e, fp)| (e, fp.clone()))
+        .collect();
+
+    if dead_footprints.is_empty() {
+        return;
+    }
+
+    let mut grid = world.resource_mut::<TerrainGrid>();
+    for (_entity, footprint) in &dead_footprints {
+        unmark_building_footprint(&mut grid, footprint);
     }
 }
 
@@ -528,5 +623,221 @@ mod tests {
             let py = p.y.to_f64() as usize;
             assert_eq!(py, 0, "should prefer cheap row, got y={py}");
         }
+    }
+
+    // ==================================================================
+    // Building footprint tests
+    // ==================================================================
+
+    // ------------------------------------------------------------------
+    // 8. footprint_cells computes correct cell set
+    // ------------------------------------------------------------------
+    #[test]
+    fn footprint_cells_basic() {
+        let grid = open_grid(20, 20);
+        let center = pos(10, 10);
+        let radius = SimFloat::from_int(2);
+        let cells = footprint_cells(&grid, center, radius);
+        // Radius 2 → covers cells from (8,8) to (12,12) = 5×5 = 25 cells.
+        assert!(
+            cells.len() >= 16,
+            "expected >=16 footprint cells, got {}",
+            cells.len()
+        );
+        // All cells should be within the grid.
+        for &(x, y) in &cells {
+            assert!(x < 20 && y < 20, "cell ({x},{y}) out of bounds");
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 9. mark_building_footprint makes cells impassable
+    // ------------------------------------------------------------------
+    #[test]
+    fn mark_footprint_makes_cells_impassable() {
+        let mut grid = open_grid(20, 20);
+        let center = pos(10, 10);
+        let radius = SimFloat::from_int(2);
+        let fp = mark_building_footprint(&mut grid, center, radius);
+        // All footprint cells should now be impassable.
+        for &(x, y) in &fp.cells {
+            assert!(
+                !grid.is_passable(x, y),
+                "cell ({x},{y}) should be impassable after marking"
+            );
+        }
+        // Original costs should all be ONE (from open_grid).
+        for &cost in &fp.original_costs {
+            assert_eq!(cost, SimFloat::ONE);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 10. unmark_building_footprint restores original costs
+    // ------------------------------------------------------------------
+    #[test]
+    fn unmark_footprint_restores_costs() {
+        let mut grid = open_grid(20, 20);
+        // Set some cells to non-default cost first.
+        grid.set(10, 10, SimFloat::from_int(3));
+        grid.set(11, 10, SimFloat::from_int(5));
+
+        let center = pos(10, 10);
+        let radius = SimFloat::from_int(2);
+        let fp = mark_building_footprint(&mut grid, center, radius);
+
+        // Cells should be impassable now.
+        assert!(!grid.is_passable(10, 10));
+        assert!(!grid.is_passable(11, 10));
+
+        // Unmark — should restore original costs.
+        unmark_building_footprint(&mut grid, &fp);
+        assert_eq!(grid.get(10, 10), Some(SimFloat::from_int(3)));
+        assert_eq!(grid.get(11, 10), Some(SimFloat::from_int(5)));
+        assert!(grid.is_passable(10, 10));
+        assert!(grid.is_passable(11, 10));
+    }
+
+    // ------------------------------------------------------------------
+    // 11. A* paths around a building footprint
+    // ------------------------------------------------------------------
+    #[test]
+    fn path_around_building_footprint() {
+        let mut grid = open_grid(20, 20);
+        // Place a building at (10,5) with radius 3 — blocks cells ~(7,2)..(13,8).
+        let center = pos(10, 5);
+        let radius = SimFloat::from_int(3);
+        let _fp = mark_building_footprint(&mut grid, center, radius);
+
+        // Path from (0,5) to (19,5) should detour around the building.
+        let path = find_path(&grid, pos(0, 5), pos(19, 5)).expect("path should exist");
+        assert!(path.len() > 2, "expected detour, got {path:?}");
+
+        // No waypoint should land on an impassable cell.
+        for p in &path {
+            let gx = p.x.to_f64() as usize;
+            let gy = p.y.to_f64() as usize;
+            assert!(
+                grid.is_passable(gx, gy),
+                "waypoint ({gx},{gy}) is impassable — path goes through building"
+            );
+        }
+
+        // Path should reach column 19.
+        let last = path.last().unwrap();
+        assert_eq!(last.x, SimFloat::from_int(19) + SimFloat::HALF);
+    }
+
+    // ------------------------------------------------------------------
+    // 12. Path between two buildings finds gap
+    // ------------------------------------------------------------------
+    #[test]
+    fn path_between_two_buildings() {
+        let mut grid = open_grid(30, 20);
+        // Building A blocking upper half at column 10.
+        let _fp_a = mark_building_footprint(
+            &mut grid,
+            pos(10, 3),
+            SimFloat::from_int(3),
+        );
+        // Building B blocking lower half at column 10.
+        let _fp_b = mark_building_footprint(
+            &mut grid,
+            pos(10, 16),
+            SimFloat::from_int(3),
+        );
+        // Gap at rows ~7..13 should allow passage.
+        let path = find_path(&grid, pos(0, 10), pos(20, 10)).expect("path through gap");
+        assert!(path.len() >= 2);
+        let last = path.last().unwrap();
+        assert_eq!(last.x, SimFloat::from_int(20) + SimFloat::HALF);
+    }
+
+    // ------------------------------------------------------------------
+    // 13. footprint_cleanup_system restores terrain on death
+    // ------------------------------------------------------------------
+    #[test]
+    fn footprint_cleanup_on_death() {
+        use bevy_ecs::world::World;
+
+        let mut world = World::new();
+        let mut grid = open_grid(20, 20);
+        let center = pos(10, 10);
+        let radius = SimFloat::from_int(2);
+        let fp = mark_building_footprint(&mut grid, center, radius);
+        let fp_cells = fp.cells.clone();
+
+        world.insert_resource(grid);
+
+        // Spawn a "building" with footprint, then mark it dead.
+        let _building = world.spawn((fp, Dead)).id();
+
+        // All footprint cells should be impassable.
+        {
+            let g = world.resource::<TerrainGrid>();
+            for &(x, y) in &fp_cells {
+                assert!(!g.is_passable(x, y));
+            }
+        }
+
+        // Run cleanup system.
+        footprint_cleanup_system(&mut world);
+
+        // Cells should now be passable again.
+        {
+            let g = world.resource::<TerrainGrid>();
+            for &(x, y) in &fp_cells {
+                assert!(g.is_passable(x, y), "cell ({x},{y}) should be restored");
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 14. Path recalculation after building destroyed
+    // ------------------------------------------------------------------
+    #[test]
+    fn path_recalculates_after_building_destroyed() {
+        let mut grid = open_grid(20, 10);
+
+        // Block column 10 completely with a building.
+        let center = pos(10, 5);
+        let radius = SimFloat::from_int(5);
+        let fp = mark_building_footprint(&mut grid, center, radius);
+
+        // Path from left to right should detour (or be partial).
+        let path_blocked = find_path(&grid, pos(0, 5), pos(19, 5));
+        // Might find a long detour or partial path.
+
+        // Now "destroy" the building — restore terrain.
+        unmark_building_footprint(&mut grid, &fp);
+
+        // Path should now be direct.
+        let path_clear = find_path(&grid, pos(0, 5), pos(19, 5)).expect("path after destroy");
+        let last = path_clear.last().unwrap();
+        assert_eq!(last.x, SimFloat::from_int(19) + SimFloat::HALF);
+
+        // Clear path should be shorter than blocked path (if blocked had one).
+        if let Some(blocked) = path_blocked {
+            assert!(
+                path_clear.len() <= blocked.len(),
+                "clear path should be no longer than blocked detour"
+            );
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 15. Footprint at grid edge clamps correctly
+    // ------------------------------------------------------------------
+    #[test]
+    fn footprint_at_grid_edge() {
+        let mut grid = open_grid(10, 10);
+        // Building at corner (0,0) with radius 3 — should clamp to grid bounds.
+        let fp = mark_building_footprint(&mut grid, pos(0, 0), SimFloat::from_int(3));
+        assert!(!fp.cells.is_empty());
+        for &(x, y) in &fp.cells {
+            assert!(x < 10 && y < 10, "cell ({x},{y}) out of bounds");
+        }
+        // Restore should work without panic.
+        unmark_building_footprint(&mut grid, &fp);
     }
 }

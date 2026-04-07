@@ -17,7 +17,7 @@ use crate::factory::{factory_system, UnitRegistry};
 use crate::fog::{fog_system, FogOfWar};
 use crate::lifecycle::{cleanup_dead, init_lifecycle};
 use crate::movement::movement_system;
-use crate::pathfinding::TerrainGrid;
+use crate::pathfinding::{footprint_cleanup_system, TerrainGrid};
 use crate::projectile::{projectile_movement_system, spawn_projectile_system, ImpactEventQueue};
 use crate::spatial::SpatialGrid;
 use crate::targeting::{reload_system, targeting_system, FireEventQueue, WeaponRegistry};
@@ -38,7 +38,8 @@ use crate::{SimFloat, SimVec2};
 /// 11. [`stun_system`]
 /// 12. [`fog_system`] (if [`FogOfWar`] resource exists)
 /// 13. [`factory_system`] (if [`UnitRegistry`] resource exists)
-/// 14. [`cleanup_dead`]
+/// 14. [`footprint_cleanup_system`] (restore terrain for dead buildings)
+/// 15. [`cleanup_dead`]
 pub fn sim_tick(world: &mut World) {
     // 1. Rebuild spatial grid (exclude Dead entities)
     {
@@ -108,7 +109,10 @@ pub fn sim_tick(world: &mut World) {
         factory_system(world);
     }
 
-    // 14. Cleanup dead entities
+    // 14. Restore terrain grid for dead buildings (before despawn)
+    footprint_cleanup_system(world);
+
+    // 15. Cleanup dead entities
     cleanup_dead(world);
 }
 
@@ -754,6 +758,207 @@ mod tests {
                 "full stress desync at sample {i} (frame {})",
                 i * 100
             );
+        }
+    }
+
+    // ==================================================================
+    // Building footprint + pathfinding integration tests (RR-102)
+    // ==================================================================
+
+    use crate::commands::Command;
+    use crate::components::Dead;
+    use crate::pathfinding::mark_building_footprint;
+
+    // ---- Test: unit paths around a building in full sim tick ----
+
+    #[test]
+    fn test_unit_paths_around_building() {
+        let mut world = World::new();
+        init_sim_world(&mut world);
+
+        // Place a "building" blocking the direct path at column 15.
+        let building_pos = SimVec2::new(SimFloat::from_int(15), SimFloat::from_int(10));
+        let fp = {
+            let mut grid = world.resource_mut::<TerrainGrid>();
+            mark_building_footprint(&mut grid, building_pos, SimFloat::from_int(4))
+        };
+
+        // Spawn the building entity with footprint + collision.
+        let _building = world
+            .spawn((
+                Position {
+                    pos: SimVec3::new(
+                        SimFloat::from_int(15),
+                        SimFloat::ZERO,
+                        SimFloat::from_int(10),
+                    ),
+                },
+                CollisionRadius {
+                    radius: SimFloat::from_int(4),
+                },
+                fp,
+            ))
+            .id();
+
+        // Spawn a unit at (5, 10) that needs to reach (25, 10).
+        let unit = spawn_full_unit(
+            &mut world,
+            SimFloat::from_int(5),
+            SimFloat::from_int(10),
+            1,
+        );
+        world.entity_mut(unit).insert(CommandQueue::default());
+        world
+            .get_mut::<CommandQueue>(unit)
+            .unwrap()
+            .push(Command::Move(SimVec3::new(
+                SimFloat::from_int(25),
+                SimFloat::ZERO,
+                SimFloat::from_int(10),
+            )));
+
+        // Run several ticks.
+        for _ in 0..200 {
+            sim_tick(&mut world);
+        }
+
+        // Unit should have moved past column 15 (the building).
+        let unit_pos = world.get::<Position>(unit).unwrap().pos;
+        assert!(
+            unit_pos.x > SimFloat::from_int(20),
+            "unit should have pathed around building, x = {}",
+            unit_pos.x.to_f64()
+        );
+    }
+
+    // ---- Test: building destruction restores terrain ----
+
+    #[test]
+    fn test_building_death_restores_terrain() {
+        let mut world = World::new();
+        init_sim_world(&mut world);
+
+        let building_pos = SimVec2::new(SimFloat::from_int(10), SimFloat::from_int(10));
+        let fp = {
+            let mut grid = world.resource_mut::<TerrainGrid>();
+            mark_building_footprint(&mut grid, building_pos, SimFloat::from_int(2))
+        };
+        let fp_cells = fp.cells.clone();
+
+        let building = world
+            .spawn((
+                Position {
+                    pos: SimVec3::new(
+                        SimFloat::from_int(10),
+                        SimFloat::ZERO,
+                        SimFloat::from_int(10),
+                    ),
+                },
+                Health {
+                    current: SimFloat::from_int(100),
+                    max: SimFloat::from_int(100),
+                },
+                fp,
+            ))
+            .id();
+
+        // Verify cells are blocked.
+        {
+            let grid = world.resource::<TerrainGrid>();
+            for &(x, y) in &fp_cells {
+                assert!(!grid.is_passable(x, y));
+            }
+        }
+
+        // Kill the building.
+        world.entity_mut(building).insert(Dead);
+        sim_tick(&mut world);
+
+        // Building should be despawned.
+        assert!(world.get_entity(building).is_err());
+
+        // Terrain should be restored.
+        {
+            let grid = world.resource::<TerrainGrid>();
+            for &(x, y) in &fp_cells {
+                assert!(
+                    grid.is_passable(x, y),
+                    "cell ({x},{y}) should be passable after building death"
+                );
+            }
+        }
+    }
+
+    // ---- Test: pathfinding determinism with buildings ----
+
+    #[test]
+    fn test_pathfinding_with_buildings_determinism() {
+        fn run() -> Vec<u64> {
+            let mut world = World::new();
+            init_sim_world(&mut world);
+
+            // Place several buildings to create a maze-like layout.
+            let buildings = [
+                (15, 5, 3),
+                (15, 15, 3),
+                (15, 25, 3),
+                (30, 10, 4),
+                (30, 20, 4),
+            ];
+            for &(bx, bz, r) in &buildings {
+                let bp = SimVec2::new(SimFloat::from_int(bx), SimFloat::from_int(bz));
+                let fp = {
+                    let mut grid = world.resource_mut::<TerrainGrid>();
+                    mark_building_footprint(&mut grid, bp, SimFloat::from_int(r))
+                };
+                world.spawn((
+                    Position {
+                        pos: SimVec3::new(
+                            SimFloat::from_int(bx),
+                            SimFloat::ZERO,
+                            SimFloat::from_int(bz),
+                        ),
+                    },
+                    CollisionRadius {
+                        radius: SimFloat::from_int(r),
+                    },
+                    fp,
+                ));
+            }
+
+            // Spawn 10 units that path through the building maze.
+            let mut rng = SeededRng(42);
+            for _ in 0..10 {
+                let x = rng.next_simfloat(2, 10);
+                let z = rng.next_simfloat(2, 30);
+                let entity = spawn_full_unit(&mut world, x, z, 1);
+                world.entity_mut(entity).insert(CommandQueue::default());
+                let tx = rng.next_simfloat(40, 60);
+                let tz = rng.next_simfloat(2, 30);
+                world
+                    .get_mut::<CommandQueue>(entity)
+                    .unwrap()
+                    .push(Command::Move(SimVec3::new(
+                        tx,
+                        SimFloat::ZERO,
+                        tz,
+                    )));
+            }
+
+            let mut checksums = Vec::new();
+            for _ in 0..300 {
+                sim_tick(&mut world);
+                checksums.push(world_checksum(&mut world));
+            }
+            checksums
+        }
+
+        let a = run();
+        let b = run();
+
+        assert_eq!(a.len(), b.len());
+        for (i, (ca, cb)) in a.iter().zip(b.iter()).enumerate() {
+            assert_eq!(ca, cb, "building pathfinding desync at frame {i}");
         }
     }
 }

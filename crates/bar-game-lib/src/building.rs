@@ -19,9 +19,10 @@ use recoil_sim::construction::{BuildSite, BuildTarget, Builder};
 use recoil_sim::economy::{EconomyState, ResourceProducer};
 use recoil_sim::factory::BuildQueue;
 use recoil_sim::unit_defs::UnitDefRegistry;
+use recoil_sim::pathfinding::{mark_building_footprint, TerrainGrid};
 use recoil_sim::{
     Allegiance, CollisionRadius, Dead, Heading, Health, MoveState, MovementParams, Position,
-    SightRange, Target, UnitType, Velocity,
+    SightRange, SimVec2, Target, UnitType, Velocity,
 };
 
 // ---------------------------------------------------------------------------
@@ -124,6 +125,14 @@ pub fn place_building(
             },
         ))
         .id();
+
+    // Mark building footprint on the terrain grid.
+    {
+        let building_pos = SimVec2::new(SimFloat::from_f32(x), SimFloat::from_f32(z));
+        let mut grid = world.resource_mut::<TerrainGrid>();
+        let footprint = mark_building_footprint(&mut grid, building_pos, collision_r);
+        world.entity_mut(build_site_entity).insert(footprint);
+    }
 
     // Assign the builder.
     if let Some(cmd) = builder_entity {

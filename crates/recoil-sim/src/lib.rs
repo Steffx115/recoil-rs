@@ -25,8 +25,8 @@ pub use recoil_math::{SimFloat, SimVec2, SimVec3};
 
 pub use commands::{command_system, Command, CommandQueue};
 pub use components::{
-    Allegiance, BuildProgress, Cloaked, CollisionRadius, Dead, Heading, Health, MoveState,
-    MovementParams, Position, SightRange, SimId, Target, Transport, UnitType, Velocity,
+    Allegiance, BuildProgress, BuildingFootprint, Cloaked, CollisionRadius, Dead, Heading, Health,
+    MoveState, MovementParams, Position, SightRange, SimId, Target, Transport, UnitType, Velocity,
 };
 pub use fog::{fog_system, is_entity_visible, CellVisibility, FogOfWar};
 pub use selection::{screen_to_ground_raw, SelectionState};

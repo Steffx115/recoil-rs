@@ -11,8 +11,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::prelude::{Component, With, World};
 use serde::{Deserialize, Serialize};
 
-use crate::components::MoveState;
-use crate::SimVec3;
+use crate::components::{MoveState, Position};
+use crate::pathfinding::{find_path, TerrainGrid};
+use crate::{SimFloat, SimVec2, SimVec3};
 
 // ---------------------------------------------------------------------------
 // Entity serde helper (single Entity as u64)
@@ -98,6 +99,61 @@ impl CommandQueue {
 }
 
 // ---------------------------------------------------------------------------
+// Pathfinding integration
+// ---------------------------------------------------------------------------
+
+/// Compute an A* path from the entity's current position to `target`.
+///
+/// If a path with multiple waypoints is found, the current `Move(target)`
+/// command is replaced with a sequence of `Move(waypoint)` commands in the
+/// entity's [`CommandQueue`].  Returns the position of the **first waypoint**
+/// that the entity should start moving toward.
+///
+/// Falls back to the original `target` when pathfinding is unavailable or
+/// finds no detour.
+fn compute_pathfinding_waypoints(world: &mut World, entity: Entity, target: SimVec3) -> SimVec3 {
+    let unit_pos = match world.get::<Position>(entity) {
+        Some(p) => p.pos,
+        None => return target,
+    };
+
+    let terrain = match world.get_resource::<TerrainGrid>() {
+        Some(t) => t,
+        None => return target,
+    };
+
+    let start = SimVec2::new(unit_pos.x, unit_pos.z);
+    let goal = SimVec2::new(target.x, target.z);
+
+    let path = match find_path(terrain, start, goal) {
+        Some(p) if p.len() > 2 => p,
+        _ => return target, // straight line or no path — use direct move
+    };
+
+    // path[0] is near start (skip it), path[1..last-1] are intermediate
+    // waypoints, path[last] is near goal.  We replace the current Move with
+    // intermediate waypoints followed by the original target so the unit
+    // arrives at the precise requested position.
+    let q = world.get_mut::<CommandQueue>(entity).unwrap();
+    let q = q.into_inner();
+    q.commands.pop_front(); // remove the current Move(target)
+
+    // Push intermediate waypoints (skip first = start, skip last = use original target).
+    let intermediates = &path[1..path.len() - 1];
+    // Insert in reverse so they end up in order at the front.
+    q.commands
+        .push_front(Command::Move(target)); // final destination
+    for wp in intermediates.iter().rev() {
+        let wp3 = SimVec3::new(wp.x, SimFloat::ZERO, wp.y);
+        q.commands.push_front(Command::Move(wp3));
+    }
+
+    // First waypoint to move toward.
+    let first = &path[1];
+    SimVec3::new(first.x, SimFloat::ZERO, first.y)
+}
+
+// ---------------------------------------------------------------------------
 // command_system
 // ---------------------------------------------------------------------------
 
@@ -126,37 +182,14 @@ pub fn command_system(world: &mut World) {
                 let state = world.get::<MoveState>(entity).unwrap().clone();
                 match state {
                     MoveState::Idle | MoveState::Arriving => {
-                        // Check if we already set MovingTo for this command.
-                        // If state is Idle and we previously set MovingTo,
-                        // the movement system has transitioned us through
-                        // Arriving -> Idle, meaning we arrived.
-                        // But on the very first tick we need to *set* MovingTo.
-                        // We distinguish by checking if state was already Idle
-                        // before we ever touched it.  A simple approach: if
-                        // MoveState is not MovingTo(pos), set it.  If it is
-                        // Idle and we've been commanding Move(pos), we arrived.
-                        //
-                        // Simpler logic: always set MovingTo.  If movement_system
-                        // already set us Idle (arrived), advance first.
-                        //
-                        // Convention: movement_system runs AFTER command_system
-                        // in the tick.  So if MoveState is Idle and our command
-                        // is Move, either (a) this is the first tick, or
-                        // (b) we arrived (went Arriving -> Idle last tick).
-                        // We can't easily distinguish (a) from (b) without
-                        // extra bookkeeping.  Instead, we always set MovingTo;
-                        // if we already arrived, the movement system will snap
-                        // us back to Arriving on the same tick (distance ≤
-                        // threshold) and next tick we advance.
-                        //
-                        // Actually, simplest correct approach:
-                        // - If Arriving: that means movement_system just told
-                        //   us we arrived.  Advance queue.
-                        // - If Idle: set MovingTo(pos).
                         if state == MoveState::Arriving {
                             world.get_mut::<CommandQueue>(entity).unwrap().advance();
                         } else {
-                            *world.get_mut::<MoveState>(entity).unwrap() = MoveState::MovingTo(pos);
+                            // Compute A* path if terrain grid is available.
+                            let first_target =
+                                compute_pathfinding_waypoints(world, entity, pos);
+                            *world.get_mut::<MoveState>(entity).unwrap() =
+                                MoveState::MovingTo(first_target);
                         }
                     }
                     MoveState::MovingTo(_) => {
@@ -461,5 +494,208 @@ mod tests {
         command_system(&mut world);
 
         assert_eq!(*world.get::<MoveState>(e).unwrap(), MoveState::Idle);
+    }
+
+    // ==================================================================
+    // Pathfinding-integrated move tests
+    // ==================================================================
+
+    use crate::pathfinding::{mark_building_footprint, TerrainGrid};
+    use crate::components::Position;
+
+    /// Spawn an entity with position, command queue, and move state.
+    fn spawn_with_pos_and_queue(
+        world: &mut World,
+        pos: SimVec3,
+        state: MoveState,
+    ) -> Entity {
+        world
+            .spawn((
+                Position { pos },
+                CommandQueue::default(),
+                state,
+            ))
+            .id()
+    }
+
+    // ---- Move command uses pathfinding around buildings ----
+
+    #[test]
+    fn move_command_paths_around_building() {
+        let mut world = World::new();
+
+        // Set up terrain grid with a building blocking the direct path.
+        let mut grid = TerrainGrid::new(30, 20, SimFloat::ONE);
+        let building_pos = SimVec2::new(SimFloat::from_int(15), SimFloat::from_int(5));
+        let _fp = mark_building_footprint(
+            &mut grid,
+            building_pos,
+            SimFloat::from_int(3),
+        );
+        world.insert_resource(grid);
+
+        // Spawn unit at (5,5) wanting to move to (25,5).
+        let start = SimVec3::new(
+            SimFloat::from_int(5),
+            SimFloat::ZERO,
+            SimFloat::from_int(5),
+        );
+        let target = SimVec3::new(
+            SimFloat::from_int(25),
+            SimFloat::ZERO,
+            SimFloat::from_int(5),
+        );
+        let e = spawn_with_pos_and_queue(&mut world, start, MoveState::Idle);
+        world
+            .get_mut::<CommandQueue>(e)
+            .unwrap()
+            .push(Command::Move(target));
+
+        // Process command — should compute path and expand into waypoints.
+        command_system(&mut world);
+
+        // Should be moving (not idle).
+        let state = world.get::<MoveState>(e).unwrap().clone();
+        assert!(
+            matches!(state, MoveState::MovingTo(_)),
+            "should be moving, got {state:?}"
+        );
+
+        // Queue should have been expanded with intermediate waypoints.
+        let q = world.get::<CommandQueue>(e).unwrap();
+        assert!(
+            q.commands.len() >= 2,
+            "queue should have waypoints, got {} commands",
+            q.commands.len()
+        );
+
+        // Last command in queue should be Move(original_target).
+        let last_cmd = q.commands.back().unwrap();
+        assert!(
+            matches!(last_cmd, Command::Move(p) if *p == target),
+            "last command should be Move to original target"
+        );
+    }
+
+    // ---- Move without obstacles goes direct (no waypoint expansion) ----
+
+    #[test]
+    fn move_command_direct_without_obstacles() {
+        let mut world = World::new();
+
+        // Open terrain — no obstacles.
+        let grid = TerrainGrid::new(30, 20, SimFloat::ONE);
+        world.insert_resource(grid);
+
+        let start = SimVec3::new(
+            SimFloat::from_int(5),
+            SimFloat::ZERO,
+            SimFloat::from_int(5),
+        );
+        let target = SimVec3::new(
+            SimFloat::from_int(10),
+            SimFloat::ZERO,
+            SimFloat::from_int(5),
+        );
+        let e = spawn_with_pos_and_queue(&mut world, start, MoveState::Idle);
+        world
+            .get_mut::<CommandQueue>(e)
+            .unwrap()
+            .push(Command::Move(target));
+
+        command_system(&mut world);
+
+        // On an open grid, A* produces a path of ~2 waypoints (start, end)
+        // which triggers the straight-line fallback (path.len() <= 2).
+        // The unit should be moving to the target directly.
+        let state = world.get::<MoveState>(e).unwrap().clone();
+        assert!(
+            matches!(state, MoveState::MovingTo(_)),
+            "should be moving"
+        );
+    }
+
+    // ---- Move without terrain grid falls back to direct move ----
+
+    #[test]
+    fn move_command_no_terrain_grid() {
+        let mut world = World::new();
+        // No TerrainGrid resource inserted.
+
+        let start = SimVec3::new(
+            SimFloat::from_int(5),
+            SimFloat::ZERO,
+            SimFloat::from_int(5),
+        );
+        let target = SimVec3::new(
+            SimFloat::from_int(25),
+            SimFloat::ZERO,
+            SimFloat::from_int(5),
+        );
+        let e = spawn_with_pos_and_queue(&mut world, start, MoveState::Idle);
+        world
+            .get_mut::<CommandQueue>(e)
+            .unwrap()
+            .push(Command::Move(target));
+
+        command_system(&mut world);
+
+        // Should fall back to direct MovingTo.
+        assert_eq!(
+            *world.get::<MoveState>(e).unwrap(),
+            MoveState::MovingTo(target)
+        );
+    }
+
+    // ---- Shift-queued moves after pathfinding still work ----
+
+    #[test]
+    fn shift_queue_preserved_after_pathfinding() {
+        let mut world = World::new();
+
+        let mut grid = TerrainGrid::new(30, 20, SimFloat::ONE);
+        let building_pos = SimVec2::new(SimFloat::from_int(15), SimFloat::from_int(5));
+        let _fp = mark_building_footprint(
+            &mut grid,
+            building_pos,
+            SimFloat::from_int(3),
+        );
+        world.insert_resource(grid);
+
+        let start = SimVec3::new(
+            SimFloat::from_int(5),
+            SimFloat::ZERO,
+            SimFloat::from_int(5),
+        );
+        let target_a = SimVec3::new(
+            SimFloat::from_int(25),
+            SimFloat::ZERO,
+            SimFloat::from_int(5),
+        );
+        let target_b = SimVec3::new(
+            SimFloat::from_int(25),
+            SimFloat::ZERO,
+            SimFloat::from_int(15),
+        );
+
+        let e = spawn_with_pos_and_queue(&mut world, start, MoveState::Idle);
+        {
+            let mut q = world.get_mut::<CommandQueue>(e).unwrap();
+            q.push(Command::Move(target_a));
+            q.push(Command::Move(target_b)); // shift-queued
+        }
+
+        command_system(&mut world);
+
+        // The queue should contain waypoints for target_a PLUS Move(target_b).
+        let q = world.get::<CommandQueue>(e).unwrap();
+        let cmds: Vec<_> = q.commands.iter().collect();
+
+        // Find target_b in the queue — it should be the very last command.
+        let has_target_b = cmds.iter().any(|c| matches!(c, Command::Move(p) if *p == target_b));
+        assert!(
+            has_target_b,
+            "shift-queued Move(target_b) should still be in queue"
+        );
     }
 }
