@@ -47,6 +47,92 @@ pub struct BuildTarget {
 }
 
 // ---------------------------------------------------------------------------
+// ConstructionTarget trait
+// ---------------------------------------------------------------------------
+
+/// Result of applying build power to a construction target.
+pub struct BuildResult {
+    /// Whether the target reached completion this tick.
+    pub completed: bool,
+    /// Metal consumed this tick.
+    pub metal_consumed: SimFloat,
+    /// Energy consumed this tick.
+    pub energy_consumed: SimFloat,
+}
+
+/// Unified interface for entities that accept builder work (nanoframes and
+/// reclaimable wreckage). Allows `construction_system` to dispatch without
+/// branching on component type.
+pub trait ConstructionTarget {
+    /// Apply `build_power` worth of work, scaled by the economy `stall` ratio
+    /// (1.0 = no stall). Returns completion status and resource cost.
+    fn accept_build_power(&mut self, power: SimFloat, stall: SimFloat) -> BuildResult;
+
+    /// The (metal, energy) cost of this target. For reclaimables the cost is
+    /// zero (reclaiming produces resources, not consumes them).
+    fn resource_cost(&self) -> (SimFloat, SimFloat);
+}
+
+impl ConstructionTarget for BuildSite {
+    fn accept_build_power(&mut self, power: SimFloat, stall: SimFloat) -> BuildResult {
+        let progress_delta = power / self.total_build_time;
+        let metal_needed = self.metal_cost * progress_delta;
+        let energy_needed = self.energy_cost * progress_delta;
+
+        let effective_delta = progress_delta * stall;
+        let effective_metal = metal_needed * stall;
+        let effective_energy = energy_needed * stall;
+
+        self.progress += effective_delta;
+        let completed = if self.progress >= SimFloat::ONE {
+            self.progress = SimFloat::ONE;
+            true
+        } else {
+            false
+        };
+
+        BuildResult {
+            completed,
+            metal_consumed: effective_metal,
+            energy_consumed: effective_energy,
+        }
+    }
+
+    fn resource_cost(&self) -> (SimFloat, SimFloat) {
+        (self.metal_cost, self.energy_cost)
+    }
+}
+
+impl ConstructionTarget for Reclaimable {
+    fn accept_build_power(&mut self, power: SimFloat, _stall: SimFloat) -> BuildResult {
+        let progress_delta = if self.metal_value > SimFloat::ZERO {
+            power / self.metal_value
+        } else {
+            SimFloat::ONE
+        };
+
+        self.reclaim_progress += progress_delta;
+        let completed = if self.reclaim_progress >= SimFloat::ONE {
+            self.reclaim_progress = SimFloat::ONE;
+            true
+        } else {
+            false
+        };
+
+        // Reclaim does not consume resources.
+        BuildResult {
+            completed,
+            metal_consumed: SimFloat::ZERO,
+            energy_consumed: SimFloat::ZERO,
+        }
+    }
+
+    fn resource_cost(&self) -> (SimFloat, SimFloat) {
+        (SimFloat::ZERO, SimFloat::ZERO)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // construction_system
 // ---------------------------------------------------------------------------
 
@@ -95,56 +181,31 @@ pub fn construction_system(world: &mut World) {
 
         // --- BuildSite target (construction) ---
         if world.get::<BuildSite>(target).is_some() {
-            let site = world.get::<BuildSite>(target).unwrap();
-            let total_build_time = site.total_build_time;
-            let metal_cost = site.metal_cost;
-            let energy_cost = site.energy_cost;
-
-            // Progress increment this tick: build_power / total_build_time.
-            let progress_delta = build_power / total_build_time;
-
-            // Resource cost for this tick's work.
-            let metal_needed = metal_cost * progress_delta;
-            let energy_needed = energy_cost * progress_delta;
-
-            // Apply stall from economy.
-            let (stall_metal, stall_energy) = {
+            // Fetch economy stall for this team.
+            let stall = {
                 let state = world.resource::<EconomyState>();
                 if let Some(res) = state.teams.get(&team) {
-                    (res.stall_ratio_metal, res.stall_ratio_energy)
+                    res.stall_ratio_metal.min(res.stall_ratio_energy)
                 } else {
-                    (SimFloat::ONE, SimFloat::ONE)
+                    SimFloat::ONE
                 }
             };
 
-            // Effective stall is the minimum of both resource stalls.
-            let stall = stall_metal.min(stall_energy);
-            let effective_delta = progress_delta * stall;
-            let effective_metal = metal_needed * stall;
-            let effective_energy = energy_needed * stall;
+            let result = {
+                let mut site = world.get_mut::<BuildSite>(target).unwrap();
+                site.accept_build_power(build_power, stall)
+            };
 
             // Deduct resources from team.
             {
                 let mut state = world.resource_mut::<EconomyState>();
                 if let Some(res) = state.teams.get_mut(&team) {
-                    res.metal = (res.metal - effective_metal).max(SimFloat::ZERO);
-                    res.energy = (res.energy - effective_energy).max(SimFloat::ZERO);
+                    res.metal = (res.metal - result.metal_consumed).max(SimFloat::ZERO);
+                    res.energy = (res.energy - result.energy_consumed).max(SimFloat::ZERO);
                 }
             }
 
-            // Update progress.
-            let completed = {
-                let mut site = world.get_mut::<BuildSite>(target).unwrap();
-                site.progress += effective_delta;
-                if site.progress >= SimFloat::ONE {
-                    site.progress = SimFloat::ONE;
-                    true
-                } else {
-                    false
-                }
-            };
-
-            if completed {
+            if result.completed {
                 // Remove BuildSite, set Health to max.
                 world.entity_mut(target).remove::<BuildSite>();
                 if let Some(mut health) = world.get_mut::<Health>(target) {
@@ -157,31 +218,14 @@ pub fn construction_system(world: &mut World) {
 
         // --- Reclaimable target (reclaim) ---
         if world.get::<Reclaimable>(target).is_some() {
-            let reclaimable = world.get::<Reclaimable>(target).unwrap();
-            let metal_value = reclaimable.metal_value;
+            let metal_value = world.get::<Reclaimable>(target).unwrap().metal_value;
 
-            // Reclaim progress: build_power contributes toward total reclaim.
-            // We normalise so that reclaim_progress goes from 0 to 1 over
-            // (metal_value / build_power) ticks. Each tick adds
-            // build_power / metal_value progress.
-            let progress_delta = if metal_value > SimFloat::ZERO {
-                build_power / metal_value
-            } else {
-                SimFloat::ONE
-            };
-
-            let completed = {
+            let result = {
                 let mut reclaimable = world.get_mut::<Reclaimable>(target).unwrap();
-                reclaimable.reclaim_progress += progress_delta;
-                if reclaimable.reclaim_progress >= SimFloat::ONE {
-                    reclaimable.reclaim_progress = SimFloat::ONE;
-                    true
-                } else {
-                    false
-                }
+                reclaimable.accept_build_power(build_power, SimFloat::ONE)
             };
 
-            if completed {
+            if result.completed {
                 // Add metal to team resources.
                 {
                     let mut state = world.resource_mut::<EconomyState>();

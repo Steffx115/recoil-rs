@@ -26,9 +26,21 @@ impl UnitInstance {
         array_stride: std::mem::size_of::<UnitInstance>() as wgpu::BufferAddress,
         step_mode: wgpu::VertexStepMode::Instance,
         attributes: &[
-            wgpu::VertexAttribute { offset: 0, shader_location: 3, format: wgpu::VertexFormat::Float32x3 },
-            wgpu::VertexAttribute { offset: 12, shader_location: 4, format: wgpu::VertexFormat::Float32 },
-            wgpu::VertexAttribute { offset: 16, shader_location: 5, format: wgpu::VertexFormat::Float32x3 },
+            wgpu::VertexAttribute {
+                offset: 0,
+                shader_location: 3,
+                format: wgpu::VertexFormat::Float32x3,
+            },
+            wgpu::VertexAttribute {
+                offset: 12,
+                shader_location: 4,
+                format: wgpu::VertexFormat::Float32,
+            },
+            wgpu::VertexAttribute {
+                offset: 16,
+                shader_location: 5,
+                format: wgpu::VertexFormat::Float32x3,
+            },
             // mesh_id not passed to shader — used CPU-side for draw grouping only
         ],
     };
@@ -177,19 +189,22 @@ impl UnitRenderer {
         // Placeholder mesh (id=0)
         let (vertices, indices) = generate_unit_mesh();
         let mut meshes = BTreeMap::new();
-        meshes.insert(0, MeshData {
-            vertex_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("unit_mesh_0_vb"),
-                contents: bytemuck::cast_slice(&vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            }),
-            index_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("unit_mesh_0_ib"),
-                contents: bytemuck::cast_slice(&indices),
-                usage: wgpu::BufferUsages::INDEX,
-            }),
-            index_count: indices.len() as u32,
-        });
+        meshes.insert(
+            0,
+            MeshData {
+                vertex_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("unit_mesh_0_vb"),
+                    contents: bytemuck::cast_slice(&vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                }),
+                index_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("unit_mesh_0_ib"),
+                    contents: bytemuck::cast_slice(&indices),
+                    usage: wgpu::BufferUsages::INDEX,
+                }),
+                index_count: indices.len() as u32,
+            },
+        );
 
         let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("unit_instance_buffer"),
@@ -236,7 +251,11 @@ impl UnitRenderer {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
-            multisample: wgpu::MultisampleState { count: 1, mask: !0, alpha_to_coverage_enabled: false },
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
             multiview: None,
             cache: None,
         });
@@ -251,20 +270,29 @@ impl UnitRenderer {
     }
 
     /// Register a mesh for a given mesh_id. Overwrites if already present.
-    pub fn register_mesh(&mut self, device: &wgpu::Device, mesh_id: u32, vertices: &[UnitVertex], indices: &[u16]) {
-        self.meshes.insert(mesh_id, MeshData {
-            vertex_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("unit_mesh_{}_vb", mesh_id)),
-                contents: bytemuck::cast_slice(vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            }),
-            index_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("unit_mesh_{}_ib", mesh_id)),
-                contents: bytemuck::cast_slice(indices),
-                usage: wgpu::BufferUsages::INDEX,
-            }),
-            index_count: indices.len() as u32,
-        });
+    pub fn register_mesh(
+        &mut self,
+        device: &wgpu::Device,
+        mesh_id: u32,
+        vertices: &[UnitVertex],
+        indices: &[u16],
+    ) {
+        self.meshes.insert(
+            mesh_id,
+            MeshData {
+                vertex_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some(&format!("unit_mesh_{}_vb", mesh_id)),
+                    contents: bytemuck::cast_slice(vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                }),
+                index_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some(&format!("unit_mesh_{}_ib", mesh_id)),
+                    contents: bytemuck::cast_slice(indices),
+                    usage: wgpu::BufferUsages::INDEX,
+                }),
+                index_count: indices.len() as u32,
+            },
+        );
     }
 
     /// Replace the placeholder mesh (id=0). Backwards-compatible with old API.
@@ -298,7 +326,11 @@ impl UnitRenderer {
                 let count = i as u32 - start;
                 if count > 0 {
                     // Fall back to placeholder (0) if mesh_id not registered.
-                    let mid = if self.meshes.contains_key(&current_mesh) { current_mesh } else { 0 };
+                    let mid = if self.meshes.contains_key(&current_mesh) {
+                        current_mesh
+                    } else {
+                        0
+                    };
                     self.draw_groups.push((mid, start, count));
                 }
                 start = i as u32;
@@ -308,7 +340,11 @@ impl UnitRenderer {
         // Last group.
         let count = sorted.len() as u32 - start;
         if count > 0 {
-            let mid = if self.meshes.contains_key(&current_mesh) { current_mesh } else { 0 };
+            let mid = if self.meshes.contains_key(&current_mesh) {
+                current_mesh
+            } else {
+                0
+            };
             self.draw_groups.push((mid, start, count));
         }
 

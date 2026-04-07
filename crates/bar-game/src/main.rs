@@ -65,7 +65,14 @@ struct CameraController {
 
 impl CameraController {
     fn new(cx: f32, cz: f32, height: f32) -> Self {
-        Self { center: [cx, cz], height, forward: false, left: false, backward: false, right: false }
+        Self {
+            center: [cx, cz],
+            height,
+            forward: false,
+            left: false,
+            backward: false,
+            right: false,
+        }
     }
 
     fn process_key(&mut self, key: KeyCode, pressed: bool) {
@@ -84,15 +91,27 @@ impl CameraController {
 
     fn update(&mut self) {
         let speed = PAN_SPEED * (self.height / 400.0);
-        if self.forward { self.center[1] -= speed; }
-        if self.backward { self.center[1] += speed; }
-        if self.left { self.center[0] -= speed; }
-        if self.right { self.center[0] += speed; }
+        if self.forward {
+            self.center[1] -= speed;
+        }
+        if self.backward {
+            self.center[1] += speed;
+        }
+        if self.left {
+            self.center[0] -= speed;
+        }
+        if self.right {
+            self.center[0] += speed;
+        }
     }
 
     fn camera(&self, aspect: f32) -> Camera {
         Camera {
-            eye: [self.center[0], self.height, self.center[1] + self.height * 0.75],
+            eye: [
+                self.center[0],
+                self.height,
+                self.center[1] + self.height * 0.75,
+            ],
             target: [self.center[0], 0.0, self.center[1]],
             up: [0.0, 1.0, 0.0],
             fov_y: std::f32::consts::FRAC_PI_4,
@@ -112,15 +131,29 @@ struct FpsCounter {
 }
 
 impl FpsCounter {
-    fn new() -> Self { Self { frame_times: VecDeque::with_capacity(120) } }
+    fn new() -> Self {
+        Self {
+            frame_times: VecDeque::with_capacity(120),
+        }
+    }
 
     fn tick(&mut self) -> f32 {
         let now = Instant::now();
         self.frame_times.push_back(now);
-        while self.frame_times.len() > 100 { self.frame_times.pop_front(); }
-        if self.frame_times.len() < 2 { return 0.0; }
-        let elapsed = now.duration_since(*self.frame_times.front().unwrap()).as_secs_f32();
-        if elapsed > 0.0 { (self.frame_times.len() - 1) as f32 / elapsed } else { 0.0 }
+        while self.frame_times.len() > 100 {
+            self.frame_times.pop_front();
+        }
+        if self.frame_times.len() < 2 {
+            return 0.0;
+        }
+        let elapsed = now
+            .duration_since(*self.frame_times.front().unwrap())
+            .as_secs_f32();
+        if elapsed > 0.0 {
+            (self.frame_times.len() - 1) as f32 / elapsed
+        } else {
+            0.0
+        }
     }
 }
 
@@ -131,15 +164,42 @@ impl FpsCounter {
 fn unit_instances(game: &mut GameState) -> Vec<UnitInstance> {
     let sel = game.selected();
     game.world
-        .query_filtered::<(Entity, &Position, &Heading, &Allegiance, &Health, &UnitType, Option<&BuildSite>), Without<Dead>>()
+        .query_filtered::<(
+            Entity,
+            &Position,
+            &Heading,
+            &Allegiance,
+            &Health,
+            &UnitType,
+            Option<&BuildSite>,
+        ), Without<Dead>>()
         .iter(&game.world)
         .map(|(entity, pos, heading, al, hp, ut, bs)| {
-            let mut c = if al.team == 0 { [0.2f32, 0.5, 0.9] } else { [0.9f32, 0.2, 0.2] };
-            if bs.is_some() { c[0] *= 0.5; c[1] *= 0.5; c[2] *= 0.5; }
+            let mut c = if al.team == 0 {
+                [0.2f32, 0.5, 0.9]
+            } else {
+                [0.9f32, 0.2, 0.2]
+            };
+            if bs.is_some() {
+                c[0] *= 0.5;
+                c[1] *= 0.5;
+                c[2] *= 0.5;
+            }
             let f = (hp.current.to_f32() / hp.max.to_f32().max(1.0)).clamp(0.2, 1.0);
-            c[0] *= f; c[1] *= f; c[2] *= f;
-            if sel == Some(entity) { c[0] = (c[0]+0.3).min(1.0); c[1] = (c[1]+0.3).min(1.0); c[2] = (c[2]+0.3).min(1.0); }
-            UnitInstance { position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()], heading: heading.angle.to_f32(), team_color: c, mesh_id: ut.id }
+            c[0] *= f;
+            c[1] *= f;
+            c[2] *= f;
+            if sel == Some(entity) {
+                c[0] = (c[0] + 0.3).min(1.0);
+                c[1] = (c[1] + 0.3).min(1.0);
+                c[2] = (c[2] + 0.3).min(1.0);
+            }
+            UnitInstance {
+                position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()],
+                heading: heading.angle.to_f32(),
+                team_color: c,
+                mesh_id: ut.id,
+            }
         })
         .collect()
 }
@@ -147,28 +207,61 @@ fn unit_instances(game: &mut GameState) -> Vec<UnitInstance> {
 fn building_instances(game: &mut GameState) -> Vec<UnitInstance> {
     let sel = game.selected();
     game.world
-        .query_filtered::<(Entity, &Position, &Allegiance, &Health, &UnitType, Option<&BuildSite>), (Without<Dead>, Without<Heading>)>()
+        .query_filtered::<(
+            Entity,
+            &Position,
+            &Allegiance,
+            &Health,
+            &UnitType,
+            Option<&BuildSite>,
+        ), (Without<Dead>, Without<Heading>)>()
         .iter(&game.world)
         .map(|(entity, pos, al, hp, ut, bs)| {
-            let mut c = if al.team == 0 { [0.1f32, 0.8, 0.3] } else { [0.8f32, 0.1, 0.3] };
-            if bs.is_some() { c[0] *= 0.5; c[1] *= 0.5; c[2] *= 0.5; }
+            let mut c = if al.team == 0 {
+                [0.1f32, 0.8, 0.3]
+            } else {
+                [0.8f32, 0.1, 0.3]
+            };
+            if bs.is_some() {
+                c[0] *= 0.5;
+                c[1] *= 0.5;
+                c[2] *= 0.5;
+            }
             let f = (hp.current.to_f32() / hp.max.to_f32().max(1.0)).clamp(0.2, 1.0);
-            c[0] *= f; c[1] *= f; c[2] *= f;
-            if sel == Some(entity) { c[0] = (c[0]+0.3).min(1.0); c[1] = (c[1]+0.3).min(1.0); c[2] = (c[2]+0.3).min(1.0); }
-            UnitInstance { position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()], heading: 0.0, team_color: c, mesh_id: ut.id }
+            c[0] *= f;
+            c[1] *= f;
+            c[2] *= f;
+            if sel == Some(entity) {
+                c[0] = (c[0] + 0.3).min(1.0);
+                c[1] = (c[1] + 0.3).min(1.0);
+                c[2] = (c[2] + 0.3).min(1.0);
+            }
+            UnitInstance {
+                position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()],
+                heading: 0.0,
+                team_color: c,
+                mesh_id: ut.id,
+            }
         })
         .collect()
 }
 
 fn projectile_instances(game: &mut GameState) -> Vec<ProjectileInstance> {
     use recoil_sim::projectile::Projectile;
-    game.world.query::<(&Position, &Velocity, &Projectile)>()
+    game.world
+        .query::<(&Position, &Velocity, &Projectile)>()
         .iter(&game.world)
         .map(|(pos, vel, _)| ProjectileInstance {
-            position: [pos.pos.x.to_f32(), pos.pos.y.to_f32() + 2.0, pos.pos.z.to_f32()],
+            position: [
+                pos.pos.x.to_f32(),
+                pos.pos.y.to_f32() + 2.0,
+                pos.pos.z.to_f32(),
+            ],
             size: 2.0,
             velocity_dir: [vel.vel.x.to_f32(), vel.vel.y.to_f32(), vel.vel.z.to_f32()],
-            _pad: 0.0, color: [1.0, 0.8, 0.2], _pad2: 0.0,
+            _pad: 0.0,
+            color: [1.0, 0.8, 0.2],
+            _pad2: 0.0,
         })
         .collect()
 }
@@ -215,10 +308,19 @@ struct QueueEntry {
 }
 
 struct UiData {
-    metal: f32, metal_storage: f32, metal_income: f32, metal_expense: f32,
-    energy: f32, energy_storage: f32, energy_income: f32, energy_expense: f32,
-    frame_count: u64, fps: f32, paused: bool,
-    blue_count: usize, red_count: usize,
+    metal: f32,
+    metal_storage: f32,
+    metal_income: f32,
+    metal_expense: f32,
+    energy: f32,
+    energy_storage: f32,
+    energy_income: f32,
+    energy_expense: f32,
+    frame_count: u64,
+    fps: f32,
+    paused: bool,
+    blue_count: usize,
+    red_count: usize,
     selected_name: Option<String>,
     selected_hp: Option<(f32, f32)>,
     selected_is_factory: bool,
@@ -240,11 +342,20 @@ struct UiData {
 }
 
 /// Project a world position to screen coordinates.
-fn world_to_screen(vp: &[[f32; 4]; 4], wx: f32, wy: f32, wz: f32, sw: f32, sh: f32) -> Option<(f32, f32)> {
-    let x = vp[0][0]*wx + vp[1][0]*wy + vp[2][0]*wz + vp[3][0];
-    let y = vp[0][1]*wx + vp[1][1]*wy + vp[2][1]*wz + vp[3][1];
-    let w = vp[0][3]*wx + vp[1][3]*wy + vp[2][3]*wz + vp[3][3];
-    if w.abs() < 1e-6 { return None; }
+fn world_to_screen(
+    vp: &[[f32; 4]; 4],
+    wx: f32,
+    wy: f32,
+    wz: f32,
+    sw: f32,
+    sh: f32,
+) -> Option<(f32, f32)> {
+    let x = vp[0][0] * wx + vp[1][0] * wy + vp[2][0] * wz + vp[3][0];
+    let y = vp[0][1] * wx + vp[1][1] * wy + vp[2][1] * wz + vp[3][1];
+    let w = vp[0][3] * wx + vp[1][3] * wy + vp[2][3] * wz + vp[3][3];
+    if w.abs() < 1e-6 {
+        return None;
+    }
     let ndc_x = x / w;
     let ndc_y = y / w;
     // NDC is -1..1, convert to screen pixels.
@@ -259,22 +370,49 @@ fn world_to_screen(vp: &[[f32; 4]; 4], wx: f32, wy: f32, wz: f32, sw: f32, sh: f
 
 const MAP_SIZE: f32 = 1024.0; // world units
 
-fn gather_ui_data(game: &mut GameState, fps: f32, vp: &[[f32; 4]; 4], screen_size: [f32; 2], cam_center: [f32; 2]) -> UiData {
+fn gather_ui_data(
+    game: &mut GameState,
+    fps: f32,
+    vp: &[[f32; 4]; 4],
+    screen_size: [f32; 2],
+    cam_center: [f32; 2],
+) -> UiData {
     let (metal, metal_storage, energy, energy_storage) = {
         let eco = game.world.resource::<EconomyState>();
-        eco.teams.get(&0).map(|r| (r.metal.to_f32(), r.metal_storage.to_f32(), r.energy.to_f32(), r.energy_storage.to_f32())).unwrap_or_default()
+        eco.teams
+            .get(&0)
+            .map(|r| {
+                (
+                    r.metal.to_f32(),
+                    r.metal_storage.to_f32(),
+                    r.energy.to_f32(),
+                    r.energy_storage.to_f32(),
+                )
+            })
+            .unwrap_or_default()
     };
     let (metal_income, energy_income) = {
         use recoil_sim::economy::ResourceProducer;
         let (mut mi, mut ei) = (0.0f32, 0.0f32);
-        for (prod, al) in game.world.query_filtered::<(&ResourceProducer, &Allegiance), Without<Dead>>().iter(&game.world) {
-            if al.team == 0 { mi += prod.metal_per_tick.to_f32(); ei += prod.energy_per_tick.to_f32(); }
+        for (prod, al) in game
+            .world
+            .query_filtered::<(&ResourceProducer, &Allegiance), Without<Dead>>()
+            .iter(&game.world)
+        {
+            if al.team == 0 {
+                mi += prod.metal_per_tick.to_f32();
+                ei += prod.energy_per_tick.to_f32();
+            }
         }
         (mi, ei)
     };
     let (metal_expense, energy_expense) = {
         let (mut me, mut ee) = (0.0f32, 0.0f32);
-        for (bs, al) in game.world.query_filtered::<(&BuildSite, &Allegiance), Without<Dead>>().iter(&game.world) {
+        for (bs, al) in game
+            .world
+            .query_filtered::<(&BuildSite, &Allegiance), Without<Dead>>()
+            .iter(&game.world)
+        {
             if al.team == 0 && bs.total_build_time > SimFloat::ZERO {
                 me += bs.metal_cost.to_f32() / bs.total_build_time.to_f32();
                 ee += bs.energy_cost.to_f32() / bs.total_build_time.to_f32();
@@ -283,8 +421,18 @@ fn gather_ui_data(game: &mut GameState, fps: f32, vp: &[[f32; 4]; 4], screen_siz
         (me, ee)
     };
 
-    let blue_count = game.world.query_filtered::<&Allegiance, Without<Dead>>().iter(&game.world).filter(|a| a.team == 0).count();
-    let red_count = game.world.query_filtered::<&Allegiance, Without<Dead>>().iter(&game.world).filter(|a| a.team == 1).count();
+    let blue_count = game
+        .world
+        .query_filtered::<&Allegiance, Without<Dead>>()
+        .iter(&game.world)
+        .filter(|a| a.team == 0)
+        .count();
+    let red_count = game
+        .world
+        .query_filtered::<&Allegiance, Without<Dead>>()
+        .iter(&game.world)
+        .filter(|a| a.team == 1)
+        .count();
 
     let selected_is_factory = game.selected_is_factory();
     let selected_is_builder = game.selected_is_builder();
@@ -303,14 +451,27 @@ fn gather_ui_data(game: &mut GameState, fps: f32, vp: &[[f32; 4]; 4], screen_siz
             }
             if let Some(ut) = game.world.get::<UnitType>(sel) {
                 let registry = game.world.resource::<UnitDefRegistry>();
-                selected_name = Some(registry.get(ut.id).map(|d| d.name.clone()).unwrap_or_else(|| format!("#{}", ut.id)));
+                selected_name = Some(
+                    registry
+                        .get(ut.id)
+                        .map(|d| d.name.clone())
+                        .unwrap_or_else(|| format!("#{}", ut.id)),
+                );
 
-                let keys = ["1","2","3","4","5","6","7","8","9","0"];
+                let keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
                 if let Some(def) = registry.get(ut.id) {
                     let list = &def.can_build;
-                    let target = if selected_is_builder { &mut builder_options } else if selected_is_factory { &mut factory_options } else { &mut builder_options };
+                    let target = if selected_is_builder {
+                        &mut builder_options
+                    } else if selected_is_factory {
+                        &mut factory_options
+                    } else {
+                        &mut builder_options
+                    };
                     for (i, &bid) in list.iter().enumerate() {
-                        if i >= keys.len() { break; }
+                        if i >= keys.len() {
+                            break;
+                        }
                         if let Some(bd) = registry.get(bid) {
                             let icon_key = icon_key_for_def(bd);
                             target.push(BuildOption {
@@ -332,8 +493,12 @@ fn gather_ui_data(game: &mut GameState, fps: f32, vp: &[[f32; 4]; 4], screen_siz
                 let registry = game.world.resource::<UnitDefRegistry>();
                 for &uid in &bq.queue {
                     let def = registry.get(uid);
-                    let name = def.map(|d| d.name.clone()).unwrap_or_else(|| format!("#{}", uid));
-                    let icon_key = def.map(icon_key_for_def).unwrap_or_else(|| name.to_lowercase());
+                    let name = def
+                        .map(|d| d.name.clone())
+                        .unwrap_or_else(|| format!("#{}", uid));
+                    let icon_key = def
+                        .map(icon_key_for_def)
+                        .unwrap_or_else(|| name.to_lowercase());
                     factory_queue.push(QueueEntry { name, icon_key });
                 }
             }
@@ -346,7 +511,8 @@ fn gather_ui_data(game: &mut GameState, fps: f32, vp: &[[f32; 4]; 4], screen_siz
     });
 
     // --- Health bars: project world positions to screen ---
-    let selected_set: std::collections::HashSet<Entity> = game.selection.selected.iter().copied().collect();
+    let selected_set: std::collections::HashSet<Entity> =
+        game.selection.selected.iter().copied().collect();
     let mut health_bars = Vec::new();
     for (entity, pos, hp, _al, bs) in game.world
         .query_filtered::<(Entity, &Position, &Health, &Allegiance, Option<&BuildSite>), Without<Dead>>()
@@ -372,7 +538,8 @@ fn gather_ui_data(game: &mut GameState, fps: f32, vp: &[[f32; 4]; 4], screen_siz
 
     // --- Minimap dots ---
     let mut minimap_dots = Vec::new();
-    for (pos, al, heading) in game.world
+    for (pos, al, heading) in game
+        .world
         .query_filtered::<(&Position, &Allegiance, Option<&Heading>), Without<Dead>>()
         .iter(&game.world)
     {
@@ -385,15 +552,28 @@ fn gather_ui_data(game: &mut GameState, fps: f32, vp: &[[f32; 4]; 4], screen_siz
     }
 
     UiData {
-        metal, metal_storage, metal_income, metal_expense,
-        energy, energy_storage, energy_income, energy_expense,
-        frame_count: game.frame_count, fps, paused: game.paused,
-        blue_count, red_count,
-        selected_name, selected_hp,
-        selected_is_factory, selected_is_builder,
-        factory_queue_len, factory_progress,
+        metal,
+        metal_storage,
+        metal_income,
+        metal_expense,
+        energy,
+        energy_storage,
+        energy_income,
+        energy_expense,
+        frame_count: game.frame_count,
+        fps,
+        paused: game.paused,
+        blue_count,
+        red_count,
+        selected_name,
+        selected_hp,
+        selected_is_factory,
+        selected_is_builder,
+        factory_queue_len,
+        factory_progress,
         placement_label,
-        builder_options, factory_options,
+        builder_options,
+        factory_options,
         factory_queue,
         game_over: game.game_over.clone(),
         health_bars,
@@ -428,40 +608,84 @@ fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData, icon_atlas: &IconAtlas) -
     let mut actions = Vec::new();
     // --- Game Over overlay ---
     if let Some(ref go) = ui_data.game_over {
-        egui::Area::new(egui::Id::new("game_over")).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
-            egui::Frame::popup(ui.style()).inner_margin(20.0).show(ui, |ui| {
-                let (text, color) = match go.winner {
-                    Some(0) => ("VICTORY", egui::Color32::GREEN),
-                    Some(_) => ("DEFEAT", egui::Color32::RED),
-                    None => ("DRAW", egui::Color32::YELLOW),
-                };
-                ui.label(egui::RichText::new(text).heading().strong().color(color));
-                ui.label(&go.reason);
-                ui.label(format!("Frame: {}", ui_data.frame_count));
-                ui.label(egui::RichText::new("[R] Restart").small());
+        egui::Area::new(egui::Id::new("game_over"))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style())
+                    .inner_margin(20.0)
+                    .show(ui, |ui| {
+                        let (text, color) = match go.winner {
+                            Some(0) => ("VICTORY", egui::Color32::GREEN),
+                            Some(_) => ("DEFEAT", egui::Color32::RED),
+                            None => ("DRAW", egui::Color32::YELLOW),
+                        };
+                        ui.label(egui::RichText::new(text).heading().strong().color(color));
+                        ui.label(&go.reason);
+                        ui.label(format!("Frame: {}", ui_data.frame_count));
+                        ui.label(egui::RichText::new("[R] Restart").small());
+                    });
             });
-        });
     }
 
     // --- Top bar ---
     egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
         ui.horizontal(|ui| {
-            let mf = if ui_data.metal_storage > 0.0 { ui_data.metal / ui_data.metal_storage } else { 0.0 };
-            ui.label(egui::RichText::new("Metal:").strong().color(egui::Color32::from_rgb(100, 200, 100)));
-            ui.add_sized([200.0, 18.0], egui::ProgressBar::new(mf)
-                .text(format!("{:.0}/{:.0} +{:.1} -{:.1}", ui_data.metal, ui_data.metal_storage, ui_data.metal_income, ui_data.metal_expense))
-                .fill(egui::Color32::from_rgb(60, 160, 60)));
+            let mf = if ui_data.metal_storage > 0.0 {
+                ui_data.metal / ui_data.metal_storage
+            } else {
+                0.0
+            };
+            ui.label(
+                egui::RichText::new("Metal:")
+                    .strong()
+                    .color(egui::Color32::from_rgb(100, 200, 100)),
+            );
+            ui.add_sized(
+                [200.0, 18.0],
+                egui::ProgressBar::new(mf)
+                    .text(format!(
+                        "{:.0}/{:.0} +{:.1} -{:.1}",
+                        ui_data.metal,
+                        ui_data.metal_storage,
+                        ui_data.metal_income,
+                        ui_data.metal_expense
+                    ))
+                    .fill(egui::Color32::from_rgb(60, 160, 60)),
+            );
             ui.separator();
-            let ef = if ui_data.energy_storage > 0.0 { ui_data.energy / ui_data.energy_storage } else { 0.0 };
-            ui.label(egui::RichText::new("Energy:").strong().color(egui::Color32::from_rgb(220, 200, 50)));
-            ui.add_sized([200.0, 18.0], egui::ProgressBar::new(ef)
-                .text(format!("{:.0}/{:.0} +{:.1} -{:.1}", ui_data.energy, ui_data.energy_storage, ui_data.energy_income, ui_data.energy_expense))
-                .fill(egui::Color32::from_rgb(180, 160, 30)));
+            let ef = if ui_data.energy_storage > 0.0 {
+                ui_data.energy / ui_data.energy_storage
+            } else {
+                0.0
+            };
+            ui.label(
+                egui::RichText::new("Energy:")
+                    .strong()
+                    .color(egui::Color32::from_rgb(220, 200, 50)),
+            );
+            ui.add_sized(
+                [200.0, 18.0],
+                egui::ProgressBar::new(ef)
+                    .text(format!(
+                        "{:.0}/{:.0} +{:.1} -{:.1}",
+                        ui_data.energy,
+                        ui_data.energy_storage,
+                        ui_data.energy_income,
+                        ui_data.energy_expense
+                    ))
+                    .fill(egui::Color32::from_rgb(180, 160, 30)),
+            );
             ui.separator();
             ui.label(format!("B:{} R:{}", ui_data.blue_count, ui_data.red_count));
             ui.separator();
             ui.label(format!("F:{} FPS:{:.0}", ui_data.frame_count, ui_data.fps));
-            if ui_data.paused { ui.label(egui::RichText::new("PAUSED").strong().color(egui::Color32::YELLOW)); }
+            if ui_data.paused {
+                ui.label(
+                    egui::RichText::new("PAUSED")
+                        .strong()
+                        .color(egui::Color32::YELLOW),
+                );
+            }
         });
     });
 
@@ -469,14 +693,24 @@ fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData, icon_atlas: &IconAtlas) -
     egui::TopBottomPanel::bottom("bottom_bar").show(ctx, |ui| {
         ui.horizontal_wrapped(|ui| {
             if let Some(label) = &ui_data.placement_label {
-                ui.label(egui::RichText::new(format!("Click to place {} | [Esc] Cancel", label)).color(egui::Color32::from_rgb(255, 200, 80)));
+                ui.label(
+                    egui::RichText::new(format!("Click to place {} | [Esc] Cancel", label))
+                        .color(egui::Color32::from_rgb(255, 200, 80)),
+                );
             } else if ui_data.selected_is_factory && !ui_data.factory_options.is_empty() {
                 ui.label("Queue:");
-                for opt in &ui_data.factory_options { ui.label(format!("[{}]{}", opt.key, opt.name)); }
-                if ui_data.factory_queue_len > 0 { ui.separator(); ui.label(format!("({} queued)", ui_data.factory_queue_len)); }
+                for opt in &ui_data.factory_options {
+                    ui.label(format!("[{}]{}", opt.key, opt.name));
+                }
+                if ui_data.factory_queue_len > 0 {
+                    ui.separator();
+                    ui.label(format!("({} queued)", ui_data.factory_queue_len));
+                }
             } else if ui_data.selected_is_builder && !ui_data.builder_options.is_empty() {
                 ui.label("Build:");
-                for opt in &ui_data.builder_options { ui.label(format!("[{}]{}", opt.key, opt.name)); }
+                for opt in &ui_data.builder_options {
+                    ui.label(format!("[{}]{}", opt.key, opt.name));
+                }
             } else if ui_data.selected_name.is_some() {
                 ui.label("[Right-click] Move | [A] Attack-move");
             } else {
@@ -486,137 +720,179 @@ fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData, icon_atlas: &IconAtlas) -
     });
 
     // --- Left panel: selection info + build menu grid ---
-    egui::SidePanel::left("info_panel").default_width(180.0).resizable(false).show(ctx, |ui| {
-        ui.heading("Selection");
-        ui.separator();
-        if let Some(ref name) = ui_data.selected_name {
-            ui.label(egui::RichText::new(name).strong());
-            if let Some((hp, max_hp)) = ui_data.selected_hp {
-                let frac = if max_hp > 0.0 { hp / max_hp } else { 0.0 };
-                let color = if frac > 0.5 { egui::Color32::from_rgb(60, 200, 60) }
-                    else if frac > 0.25 { egui::Color32::from_rgb(220, 180, 40) }
-                    else { egui::Color32::from_rgb(220, 50, 50) };
-                ui.label(format!("HP: {:.0} / {:.0}", hp, max_hp));
-                ui.add_sized([160.0, 14.0], egui::ProgressBar::new(frac).fill(color));
-            }
-            if ui_data.selected_is_factory && ui_data.factory_queue_len > 0 {
-                ui.separator();
-                ui.label(format!("Queue: {}", ui_data.factory_queue_len));
-            }
+    egui::SidePanel::left("info_panel")
+        .default_width(180.0)
+        .resizable(false)
+        .show(ctx, |ui| {
+            ui.heading("Selection");
+            ui.separator();
+            if let Some(ref name) = ui_data.selected_name {
+                ui.label(egui::RichText::new(name).strong());
+                if let Some((hp, max_hp)) = ui_data.selected_hp {
+                    let frac = if max_hp > 0.0 { hp / max_hp } else { 0.0 };
+                    let color = if frac > 0.5 {
+                        egui::Color32::from_rgb(60, 200, 60)
+                    } else if frac > 0.25 {
+                        egui::Color32::from_rgb(220, 180, 40)
+                    } else {
+                        egui::Color32::from_rgb(220, 50, 50)
+                    };
+                    ui.label(format!("HP: {:.0} / {:.0}", hp, max_hp));
+                    ui.add_sized([160.0, 14.0], egui::ProgressBar::new(frac).fill(color));
+                }
+                if ui_data.selected_is_factory && ui_data.factory_queue_len > 0 {
+                    ui.separator();
+                    ui.label(format!("Queue: {}", ui_data.factory_queue_len));
+                }
 
-            // Build menu grid (for builders and factories)
-            let opts = if ui_data.selected_is_builder { &ui_data.builder_options }
-                else if ui_data.selected_is_factory { &ui_data.factory_options }
-                else { &ui_data.builder_options };
-            if !opts.is_empty() {
-                ui.separator();
-                ui.label(egui::RichText::new(if ui_data.selected_is_factory { "Production" } else { "Build" }).strong());
-                let is_factory = ui_data.selected_is_factory;
-                egui::Grid::new("build_grid").num_columns(2).spacing([2.0, 2.0]).show(ui, |ui| {
-                    for (i, opt) in opts.iter().enumerate() {
-                        let response = if let Some(tex) = icon_atlas.get_icon(&opt.icon_key) {
-                            let img = egui::ImageButton::new(
-                                egui::load::SizedTexture::new(tex.id(), egui::vec2(64.0, 64.0)),
-                            );
-                            ui.add(img)
+                // Build menu grid (for builders and factories)
+                let opts = if ui_data.selected_is_builder {
+                    &ui_data.builder_options
+                } else if ui_data.selected_is_factory {
+                    &ui_data.factory_options
+                } else {
+                    &ui_data.builder_options
+                };
+                if !opts.is_empty() {
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new(if ui_data.selected_is_factory {
+                            "Production"
                         } else {
-                            let label = format!("[{}] {}", opt.key, opt.name);
-                            ui.small_button(&label)
-                        };
-                        // Tooltip with unit name, costs, and build time
-                        let clicked = response.clicked();
-                        response.on_hover_ui(|ui| {
-                            ui.label(egui::RichText::new(&opt.name).strong());
-                            ui.label(format!("Metal: {:.0}", opt.metal_cost));
-                            ui.label(format!("Energy: {:.0}", opt.energy_cost));
-                            ui.label(format!("Build time: {}", opt.build_time));
+                            "Build"
+                        })
+                        .strong(),
+                    );
+                    let is_factory = ui_data.selected_is_factory;
+                    egui::Grid::new("build_grid")
+                        .num_columns(2)
+                        .spacing([2.0, 2.0])
+                        .show(ui, |ui| {
+                            for (i, opt) in opts.iter().enumerate() {
+                                let response = if let Some(tex) = icon_atlas.get_icon(&opt.icon_key)
+                                {
+                                    let img =
+                                        egui::ImageButton::new(egui::load::SizedTexture::new(
+                                            tex.id(),
+                                            egui::vec2(64.0, 64.0),
+                                        ));
+                                    ui.add(img)
+                                } else {
+                                    let label = format!("[{}] {}", opt.key, opt.name);
+                                    ui.small_button(&label)
+                                };
+                                // Tooltip with unit name, costs, and build time
+                                let clicked = response.clicked();
+                                response.on_hover_ui(|ui| {
+                                    ui.label(egui::RichText::new(&opt.name).strong());
+                                    ui.label(format!("Metal: {:.0}", opt.metal_cost));
+                                    ui.label(format!("Energy: {:.0}", opt.energy_cost));
+                                    ui.label(format!("Build time: {}", opt.build_time));
+                                });
+                                if clicked {
+                                    if is_factory {
+                                        actions.push(UiAction::QueueUnit(opt.unit_type_id));
+                                    } else {
+                                        actions.push(UiAction::Build(opt.unit_type_id));
+                                    }
+                                }
+                                if (i + 1) % 2 == 0 {
+                                    ui.end_row();
+                                }
+                            }
                         });
-                        if clicked {
-                            if is_factory {
-                                actions.push(UiAction::QueueUnit(opt.unit_type_id));
-                            } else {
-                                actions.push(UiAction::Build(opt.unit_type_id));
-                            }
-                        }
-                        if (i + 1) % 2 == 0 { ui.end_row(); }
-                    }
-                });
-            }
+                }
 
-            // Factory production queue display (horizontal row of icons)
-            if ui_data.selected_is_factory && !ui_data.factory_queue.is_empty() {
-                ui.separator();
-                ui.label(egui::RichText::new("Queue").strong());
-                ui.horizontal_wrapped(|ui| {
-                    for (i, entry) in ui_data.factory_queue.iter().enumerate() {
-                        let is_current = i == 0;
-                        if let Some(tex) = icon_atlas.get_icon(&entry.icon_key) {
-                            let size = egui::vec2(32.0, 32.0);
-                            let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
-                            let img = egui::Image::new(egui::load::SizedTexture::new(tex.id(), size));
-                            img.paint_at(ui, rect);
-                            // Progress bar overlay on the currently-building item
-                            if is_current && ui_data.factory_progress > 0.0 {
-                                let progress = ui_data.factory_progress.clamp(0.0, 1.0);
-                                let bar_h = 3.0;
-                                let bg_rect = egui::Rect::from_min_size(
-                                    egui::pos2(rect.min.x, rect.max.y - bar_h),
-                                    egui::vec2(rect.width(), bar_h),
-                                );
-                                ui.painter().rect_filled(bg_rect, 0.0, egui::Color32::from_rgb(20, 20, 20));
-                                let bar_rect = egui::Rect::from_min_size(
-                                    egui::pos2(rect.min.x, rect.max.y - bar_h),
-                                    egui::vec2(rect.width() * progress, bar_h),
-                                );
-                                ui.painter().rect_filled(bar_rect, 0.0, egui::Color32::from_rgb(80, 200, 80));
-                            }
-                        } else {
-                            // Text fallback for queue items
-                            let label = if is_current {
-                                format!("[{}]", entry.name)
+                // Factory production queue display (horizontal row of icons)
+                if ui_data.selected_is_factory && !ui_data.factory_queue.is_empty() {
+                    ui.separator();
+                    ui.label(egui::RichText::new("Queue").strong());
+                    ui.horizontal_wrapped(|ui| {
+                        for (i, entry) in ui_data.factory_queue.iter().enumerate() {
+                            let is_current = i == 0;
+                            if let Some(tex) = icon_atlas.get_icon(&entry.icon_key) {
+                                let size = egui::vec2(32.0, 32.0);
+                                let (rect, _response) =
+                                    ui.allocate_exact_size(size, egui::Sense::hover());
+                                let img =
+                                    egui::Image::new(egui::load::SizedTexture::new(tex.id(), size));
+                                img.paint_at(ui, rect);
+                                // Progress bar overlay on the currently-building item
+                                if is_current && ui_data.factory_progress > 0.0 {
+                                    let progress = ui_data.factory_progress.clamp(0.0, 1.0);
+                                    let bar_h = 3.0;
+                                    let bg_rect = egui::Rect::from_min_size(
+                                        egui::pos2(rect.min.x, rect.max.y - bar_h),
+                                        egui::vec2(rect.width(), bar_h),
+                                    );
+                                    ui.painter().rect_filled(
+                                        bg_rect,
+                                        0.0,
+                                        egui::Color32::from_rgb(20, 20, 20),
+                                    );
+                                    let bar_rect = egui::Rect::from_min_size(
+                                        egui::pos2(rect.min.x, rect.max.y - bar_h),
+                                        egui::vec2(rect.width() * progress, bar_h),
+                                    );
+                                    ui.painter().rect_filled(
+                                        bar_rect,
+                                        0.0,
+                                        egui::Color32::from_rgb(80, 200, 80),
+                                    );
+                                }
                             } else {
-                                entry.name.clone()
-                            };
-                            let _ = ui.small_button(&label);
+                                // Text fallback for queue items
+                                let label = if is_current {
+                                    format!("[{}]", entry.name)
+                                } else {
+                                    entry.name.clone()
+                                };
+                                let _ = ui.small_button(&label);
+                            }
                         }
-                    }
-                });
+                    });
+                }
+            } else {
+                ui.label("No unit selected");
             }
-        } else {
-            ui.label("No unit selected");
-        }
-    });
+        });
 
     // --- Right panel: minimap ---
-    egui::SidePanel::right("minimap_panel").default_width(160.0).resizable(false).show(ctx, |ui| {
-        ui.heading("Map");
-        let size = egui::vec2(150.0, 150.0);
-        let (response, painter) = ui.allocate_painter(size, egui::Sense::click());
-        let rect = response.rect;
+    egui::SidePanel::right("minimap_panel")
+        .default_width(160.0)
+        .resizable(false)
+        .show(ctx, |ui| {
+            ui.heading("Map");
+            let size = egui::vec2(150.0, 150.0);
+            let (response, painter) = ui.allocate_painter(size, egui::Sense::click());
+            let rect = response.rect;
 
-        // Background
-        painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(20, 30, 20));
+            // Background
+            painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(20, 30, 20));
 
-        // Unit dots
-        for dot in &ui_data.minimap_dots {
-            let x = rect.min.x + dot.nx * rect.width();
-            let y = rect.min.y + dot.nz * rect.height();
-            let color = if dot.team == 0 { egui::Color32::from_rgb(60, 120, 255) }
-                else { egui::Color32::from_rgb(255, 60, 60) };
-            let radius = if dot.is_building { 3.0 } else { 2.0 };
-            painter.circle_filled(egui::pos2(x, y), radius, color);
-        }
+            // Unit dots
+            for dot in &ui_data.minimap_dots {
+                let x = rect.min.x + dot.nx * rect.width();
+                let y = rect.min.y + dot.nz * rect.height();
+                let color = if dot.team == 0 {
+                    egui::Color32::from_rgb(60, 120, 255)
+                } else {
+                    egui::Color32::from_rgb(255, 60, 60)
+                };
+                let radius = if dot.is_building { 3.0 } else { 2.0 };
+                painter.circle_filled(egui::pos2(x, y), radius, color);
+            }
 
-        // Camera indicator
-        let cx = rect.min.x + ui_data.cam_nx * rect.width();
-        let cy = rect.min.y + ui_data.cam_nz * rect.height();
-        painter.rect_stroke(
-            egui::Rect::from_center_size(egui::pos2(cx, cy), egui::vec2(20.0, 15.0)),
-            0.0,
-            egui::Stroke::new(1.0, egui::Color32::WHITE),
-            egui::StrokeKind::Outside,
-        );
-    });
+            // Camera indicator
+            let cx = rect.min.x + ui_data.cam_nx * rect.width();
+            let cy = rect.min.y + ui_data.cam_nz * rect.height();
+            painter.rect_stroke(
+                egui::Rect::from_center_size(egui::pos2(cx, cy), egui::vec2(20.0, 15.0)),
+                0.0,
+                egui::Stroke::new(1.0, egui::Color32::WHITE),
+                egui::StrokeKind::Outside,
+            );
+        });
 
     // --- Health bars (floating above units) ---
     for hb in &ui_data.health_bars {
@@ -625,32 +901,49 @@ fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData, icon_atlas: &IconAtlas) -
         let x = hb.screen_x - bar_w * 0.5;
         let y = hb.screen_y - bar_h;
 
-        let color = if hb.hp_frac > 0.5 { egui::Color32::from_rgb(60, 200, 60) }
-            else if hb.hp_frac > 0.25 { egui::Color32::from_rgb(220, 180, 40) }
-            else { egui::Color32::from_rgb(220, 50, 50) };
+        let color = if hb.hp_frac > 0.5 {
+            egui::Color32::from_rgb(60, 200, 60)
+        } else if hb.hp_frac > 0.25 {
+            egui::Color32::from_rgb(220, 180, 40)
+        } else {
+            egui::Color32::from_rgb(220, 50, 50)
+        };
 
-        let outline = if hb.is_selected { egui::Color32::WHITE } else { egui::Color32::from_rgb(40, 40, 40) };
+        let outline = if hb.is_selected {
+            egui::Color32::WHITE
+        } else {
+            egui::Color32::from_rgb(40, 40, 40)
+        };
 
-        egui::Area::new(egui::Id::new(("hb", (hb.screen_x * 100.0) as i32, (hb.screen_y * 100.0) as i32)))
-            .fixed_pos(egui::pos2(x, y))
-            .interactable(false)
-            .show(ctx, |ui| {
-                let (_, painter) = ui.allocate_painter(egui::vec2(bar_w, bar_h), egui::Sense::hover());
-                let r = painter.clip_rect();
-                painter.rect_filled(r, 1.0, egui::Color32::from_rgb(30, 30, 30));
-                let filled = egui::Rect::from_min_size(r.min, egui::vec2(bar_w * hb.hp_frac, bar_h));
-                painter.rect_filled(filled, 1.0, color);
-                painter.rect_stroke(r, 1.0, egui::Stroke::new(0.5, outline), egui::StrokeKind::Outside);
+        egui::Area::new(egui::Id::new((
+            "hb",
+            (hb.screen_x * 100.0) as i32,
+            (hb.screen_y * 100.0) as i32,
+        )))
+        .fixed_pos(egui::pos2(x, y))
+        .interactable(false)
+        .show(ctx, |ui| {
+            let (_, painter) = ui.allocate_painter(egui::vec2(bar_w, bar_h), egui::Sense::hover());
+            let r = painter.clip_rect();
+            painter.rect_filled(r, 1.0, egui::Color32::from_rgb(30, 30, 30));
+            let filled = egui::Rect::from_min_size(r.min, egui::vec2(bar_w * hb.hp_frac, bar_h));
+            painter.rect_filled(filled, 1.0, color);
+            painter.rect_stroke(
+                r,
+                1.0,
+                egui::Stroke::new(0.5, outline),
+                egui::StrokeKind::Outside,
+            );
 
-                // Build progress bar (below health bar)
-                if let Some(bf) = hb.build_frac {
-                    let (_, bp) = ui.allocate_painter(egui::vec2(bar_w, 2.0), egui::Sense::hover());
-                    let br = bp.clip_rect();
-                    bp.rect_filled(br, 0.0, egui::Color32::from_rgb(20, 20, 20));
-                    let bf_rect = egui::Rect::from_min_size(br.min, egui::vec2(bar_w * bf, 2.0));
-                    bp.rect_filled(bf_rect, 0.0, egui::Color32::from_rgb(80, 80, 220));
-                }
-            });
+            // Build progress bar (below health bar)
+            if let Some(bf) = hb.build_frac {
+                let (_, bp) = ui.allocate_painter(egui::vec2(bar_w, 2.0), egui::Sense::hover());
+                let br = bp.clip_rect();
+                bp.rect_filled(br, 0.0, egui::Color32::from_rgb(20, 20, 20));
+                let bf_rect = egui::Rect::from_min_size(br.min, egui::vec2(bar_w * bf, 2.0));
+                bp.rect_filled(bf_rect, 0.0, egui::Color32::from_rgb(80, 80, 220));
+            }
+        });
     }
 
     actions
@@ -662,29 +955,87 @@ fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData, icon_atlas: &IconAtlas) -
 
 fn mat4_inverse(m: [[f32; 4]; 4]) -> Option<[[f32; 4]; 4]> {
     let mut a = [0.0f32; 16];
-    for col in 0..4 { for row in 0..4 { a[row * 4 + col] = m[col][row]; } }
+    for col in 0..4 {
+        for row in 0..4 {
+            a[row * 4 + col] = m[col][row];
+        }
+    }
     let mut inv = [0.0f32; 16];
-    inv[0]  =  a[5]*a[10]*a[15] - a[5]*a[11]*a[14] - a[9]*a[6]*a[15] + a[9]*a[7]*a[14] + a[13]*a[6]*a[11] - a[13]*a[7]*a[10];
-    inv[4]  = -a[4]*a[10]*a[15] + a[4]*a[11]*a[14] + a[8]*a[6]*a[15] - a[8]*a[7]*a[14] - a[12]*a[6]*a[11] + a[12]*a[7]*a[10];
-    inv[8]  =  a[4]*a[9]*a[15]  - a[4]*a[11]*a[13] - a[8]*a[5]*a[15] + a[8]*a[7]*a[13] + a[12]*a[5]*a[11] - a[12]*a[7]*a[9];
-    inv[12] = -a[4]*a[9]*a[14]  + a[4]*a[10]*a[13] + a[8]*a[5]*a[14] - a[8]*a[6]*a[13] - a[12]*a[5]*a[10] + a[12]*a[6]*a[9];
-    inv[1]  = -a[1]*a[10]*a[15] + a[1]*a[11]*a[14] + a[9]*a[2]*a[15] - a[9]*a[3]*a[14] - a[13]*a[2]*a[11] + a[13]*a[3]*a[10];
-    inv[5]  =  a[0]*a[10]*a[15] - a[0]*a[11]*a[14] - a[8]*a[2]*a[15] + a[8]*a[3]*a[14] + a[12]*a[2]*a[11] - a[12]*a[3]*a[10];
-    inv[9]  = -a[0]*a[9]*a[15]  + a[0]*a[11]*a[13] + a[8]*a[1]*a[15] - a[8]*a[3]*a[13] - a[12]*a[1]*a[11] + a[12]*a[3]*a[9];
-    inv[13] =  a[0]*a[9]*a[14]  - a[0]*a[10]*a[13] - a[8]*a[1]*a[14] + a[8]*a[2]*a[13] + a[12]*a[1]*a[10] - a[12]*a[2]*a[9];
-    inv[2]  =  a[1]*a[6]*a[15] - a[1]*a[7]*a[14] - a[5]*a[2]*a[15] + a[5]*a[3]*a[14] + a[13]*a[2]*a[7] - a[13]*a[3]*a[6];
-    inv[6]  = -a[0]*a[6]*a[15] + a[0]*a[7]*a[14] + a[4]*a[2]*a[15] - a[4]*a[3]*a[14] - a[12]*a[2]*a[7] + a[12]*a[3]*a[6];
-    inv[10] =  a[0]*a[5]*a[15] - a[0]*a[7]*a[13] - a[4]*a[1]*a[15] + a[4]*a[3]*a[13] + a[12]*a[1]*a[7] - a[12]*a[3]*a[5];
-    inv[14] = -a[0]*a[5]*a[14] + a[0]*a[6]*a[13] + a[4]*a[1]*a[14] - a[4]*a[2]*a[13] - a[12]*a[1]*a[6] + a[12]*a[2]*a[5];
-    inv[3]  = -a[1]*a[6]*a[11] + a[1]*a[7]*a[10] + a[5]*a[2]*a[11] - a[5]*a[3]*a[10] - a[9]*a[2]*a[7] + a[9]*a[3]*a[6];
-    inv[7]  =  a[0]*a[6]*a[11] - a[0]*a[7]*a[10] - a[4]*a[2]*a[11] + a[4]*a[3]*a[10] + a[8]*a[2]*a[7] - a[8]*a[3]*a[6];
-    inv[11] = -a[0]*a[5]*a[11] + a[0]*a[7]*a[9]  + a[4]*a[1]*a[11] - a[4]*a[3]*a[9]  - a[8]*a[1]*a[7] + a[8]*a[3]*a[5];
-    inv[15] =  a[0]*a[5]*a[10] - a[0]*a[6]*a[9]  - a[4]*a[1]*a[10] + a[4]*a[2]*a[9]  + a[8]*a[1]*a[6] - a[8]*a[2]*a[5];
-    let det = a[0]*inv[0] + a[1]*inv[4] + a[2]*inv[8] + a[3]*inv[12];
-    if det.abs() < 1e-10 { return None; }
+    inv[0] = a[5] * a[10] * a[15] - a[5] * a[11] * a[14] - a[9] * a[6] * a[15]
+        + a[9] * a[7] * a[14]
+        + a[13] * a[6] * a[11]
+        - a[13] * a[7] * a[10];
+    inv[4] = -a[4] * a[10] * a[15] + a[4] * a[11] * a[14] + a[8] * a[6] * a[15]
+        - a[8] * a[7] * a[14]
+        - a[12] * a[6] * a[11]
+        + a[12] * a[7] * a[10];
+    inv[8] = a[4] * a[9] * a[15] - a[4] * a[11] * a[13] - a[8] * a[5] * a[15]
+        + a[8] * a[7] * a[13]
+        + a[12] * a[5] * a[11]
+        - a[12] * a[7] * a[9];
+    inv[12] = -a[4] * a[9] * a[14] + a[4] * a[10] * a[13] + a[8] * a[5] * a[14]
+        - a[8] * a[6] * a[13]
+        - a[12] * a[5] * a[10]
+        + a[12] * a[6] * a[9];
+    inv[1] = -a[1] * a[10] * a[15] + a[1] * a[11] * a[14] + a[9] * a[2] * a[15]
+        - a[9] * a[3] * a[14]
+        - a[13] * a[2] * a[11]
+        + a[13] * a[3] * a[10];
+    inv[5] = a[0] * a[10] * a[15] - a[0] * a[11] * a[14] - a[8] * a[2] * a[15]
+        + a[8] * a[3] * a[14]
+        + a[12] * a[2] * a[11]
+        - a[12] * a[3] * a[10];
+    inv[9] = -a[0] * a[9] * a[15] + a[0] * a[11] * a[13] + a[8] * a[1] * a[15]
+        - a[8] * a[3] * a[13]
+        - a[12] * a[1] * a[11]
+        + a[12] * a[3] * a[9];
+    inv[13] = a[0] * a[9] * a[14] - a[0] * a[10] * a[13] - a[8] * a[1] * a[14]
+        + a[8] * a[2] * a[13]
+        + a[12] * a[1] * a[10]
+        - a[12] * a[2] * a[9];
+    inv[2] = a[1] * a[6] * a[15] - a[1] * a[7] * a[14] - a[5] * a[2] * a[15]
+        + a[5] * a[3] * a[14]
+        + a[13] * a[2] * a[7]
+        - a[13] * a[3] * a[6];
+    inv[6] = -a[0] * a[6] * a[15] + a[0] * a[7] * a[14] + a[4] * a[2] * a[15]
+        - a[4] * a[3] * a[14]
+        - a[12] * a[2] * a[7]
+        + a[12] * a[3] * a[6];
+    inv[10] = a[0] * a[5] * a[15] - a[0] * a[7] * a[13] - a[4] * a[1] * a[15]
+        + a[4] * a[3] * a[13]
+        + a[12] * a[1] * a[7]
+        - a[12] * a[3] * a[5];
+    inv[14] = -a[0] * a[5] * a[14] + a[0] * a[6] * a[13] + a[4] * a[1] * a[14]
+        - a[4] * a[2] * a[13]
+        - a[12] * a[1] * a[6]
+        + a[12] * a[2] * a[5];
+    inv[3] = -a[1] * a[6] * a[11] + a[1] * a[7] * a[10] + a[5] * a[2] * a[11]
+        - a[5] * a[3] * a[10]
+        - a[9] * a[2] * a[7]
+        + a[9] * a[3] * a[6];
+    inv[7] = a[0] * a[6] * a[11] - a[0] * a[7] * a[10] - a[4] * a[2] * a[11]
+        + a[4] * a[3] * a[10]
+        + a[8] * a[2] * a[7]
+        - a[8] * a[3] * a[6];
+    inv[11] = -a[0] * a[5] * a[11] + a[0] * a[7] * a[9] + a[4] * a[1] * a[11]
+        - a[4] * a[3] * a[9]
+        - a[8] * a[1] * a[7]
+        + a[8] * a[3] * a[5];
+    inv[15] = a[0] * a[5] * a[10] - a[0] * a[6] * a[9] - a[4] * a[1] * a[10]
+        + a[4] * a[2] * a[9]
+        + a[8] * a[1] * a[6]
+        - a[8] * a[2] * a[5];
+    let det = a[0] * inv[0] + a[1] * inv[4] + a[2] * inv[8] + a[3] * inv[12];
+    if det.abs() < 1e-10 {
+        return None;
+    }
     let inv_det = 1.0 / det;
     let mut result = [[0.0f32; 4]; 4];
-    for col in 0..4 { for row in 0..4 { result[col][row] = inv[row * 4 + col] * inv_det; } }
+    for col in 0..4 {
+        for row in 0..4 {
+            result[col][row] = inv[row * 4 + col] * inv_det;
+        }
+    }
     Some(result)
 }
 
@@ -711,7 +1062,8 @@ struct App {
 impl App {
     fn new() -> Self {
         let game = GameState::new(Path::new(BAR_UNITS_PATH), Path::new(MAP_MANIFEST_PATH));
-        let (cx, cz) = game.commander_team0
+        let (cx, cz) = game
+            .commander_team0
             .and_then(|e| game.world.get::<Position>(e))
             .map(|p| (p.pos.x.to_f32(), p.pos.z.to_f32()))
             .unwrap_or((512.0, 512.0));
@@ -734,29 +1086,46 @@ impl App {
     }
 
     fn screen_to_ground(&self) -> Option<(f32, f32)> {
-        let cam = self.camera_ctrl.camera(self.window_size[0] / self.window_size[1]);
+        let cam = self
+            .camera_ctrl
+            .camera(self.window_size[0] / self.window_size[1]);
         let vp = cam.view_projection();
         let inv_vp = mat4_inverse(vp)?;
-        screen_to_ground_raw(self.cursor_pos[0], self.cursor_pos[1], self.window_size[0], self.window_size[1], &inv_vp)
+        screen_to_ground_raw(
+            self.cursor_pos[0],
+            self.cursor_pos[1],
+            self.window_size[0],
+            self.window_size[1],
+            &inv_vp,
+        )
     }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() { return; }
+        if self.window.is_some() {
+            return;
+        }
 
         let attrs = WindowAttributes::default()
             .with_title("Recoil RTS")
             .with_inner_size(PhysicalSize::new(1280u32, 720u32));
         let window = Arc::new(event_loop.create_window(attrs).expect("window"));
-        let mut renderer = pollster::block_on(Renderer::new(Arc::clone(&window))).expect("renderer");
+        let mut renderer =
+            pollster::block_on(Renderer::new(Arc::clone(&window))).expect("renderer");
 
         // Load S3O models for all unit types that have a model_path
         let bar_models_dir = Path::new("../Beyond-All-Reason-Sandbox/objects3d/Units");
         if bar_models_dir.exists() {
             let registry = self.game.world.resource::<UnitDefRegistry>();
-            let model_entries: Vec<(u32, String)> = registry.defs.values()
-                .filter_map(|def| def.model_path.as_ref().map(|p| (def.unit_type_id, p.clone())))
+            let model_entries: Vec<(u32, String)> = registry
+                .defs
+                .values()
+                .filter_map(|def| {
+                    def.model_path
+                        .as_ref()
+                        .map(|p| (def.unit_type_id, p.clone()))
+                })
                 .collect();
 
             let scale = 0.4;
@@ -765,13 +1134,18 @@ impl ApplicationHandler for App {
                 // model_path from BAR is like "Units/ARMPW.s3o" — strip the "Units/" prefix
                 let filename = model_path.strip_prefix("Units/").unwrap_or(model_path);
                 let s3o_path = bar_models_dir.join(filename);
-                if !s3o_path.exists() { continue; }
+                if !s3o_path.exists() {
+                    continue;
+                }
                 if let Ok((mut verts, indices)) = recoil_render::load_s3o_file(&s3o_path) {
                     for v in &mut verts {
                         let (x, z) = (v.position[0], v.position[2]);
-                        v.position[0] = z * scale; v.position[1] *= scale; v.position[2] = -x * scale;
+                        v.position[0] = z * scale;
+                        v.position[1] *= scale;
+                        v.position[2] = -x * scale;
                         let (nx, nz) = (v.normal[0], v.normal[2]);
-                        v.normal[0] = nz; v.normal[2] = -nx;
+                        v.normal[0] = nz;
+                        v.normal[2] = -nx;
                     }
                     renderer.register_unit_mesh(*type_id, &verts, &indices);
                     loaded += 1;
@@ -779,33 +1153,52 @@ impl ApplicationHandler for App {
             }
             // Also set the first loaded model as the placeholder (mesh_id=0)
             if let Some((_first_id, _)) = model_entries.first() {
-                let filename = model_entries[0].1.strip_prefix("Units/").unwrap_or(&model_entries[0].1);
+                let filename = model_entries[0]
+                    .1
+                    .strip_prefix("Units/")
+                    .unwrap_or(&model_entries[0].1);
                 let s3o_path = bar_models_dir.join(filename);
                 if let Ok((mut verts, indices)) = recoil_render::load_s3o_file(&s3o_path) {
                     for v in &mut verts {
                         let (x, z) = (v.position[0], v.position[2]);
-                        v.position[0] = z * scale; v.position[1] *= scale; v.position[2] = -x * scale;
+                        v.position[0] = z * scale;
+                        v.position[1] *= scale;
+                        v.position[2] = -x * scale;
                         let (nx, nz) = (v.normal[0], v.normal[2]);
-                        v.normal[0] = nz; v.normal[2] = -nx;
+                        v.normal[0] = nz;
+                        v.normal[2] = -nx;
                     }
                     renderer.set_unit_mesh(&verts, &indices);
                 }
             }
-            tracing::info!("Loaded {} S3O models for {} unit types", loaded, model_entries.len());
+            tracing::info!(
+                "Loaded {} S3O models for {} unit types",
+                loaded,
+                model_entries.len()
+            );
         }
 
         // egui
         let egui_ctx = egui::Context::default();
-        let egui_state = egui_winit::State::new(egui_ctx, egui::ViewportId::ROOT, &*window,
-            Some(window.scale_factor() as f32), window.theme(),
-            Some(renderer.gpu.device.limits().max_texture_dimension_2d as usize));
-        let egui_renderer = egui_wgpu::Renderer::new(&renderer.gpu.device, renderer.gpu.config.format, None, 1, false);
+        let egui_state = egui_winit::State::new(
+            egui_ctx,
+            egui::ViewportId::ROOT,
+            &*window,
+            Some(window.scale_factor() as f32),
+            window.theme(),
+            Some(renderer.gpu.device.limits().max_texture_dimension_2d as usize),
+        );
+        let egui_renderer = egui_wgpu::Renderer::new(
+            &renderer.gpu.device,
+            renderer.gpu.config.format,
+            None,
+            1,
+            false,
+        );
 
         // Load unit buildpic icons (DDS files from BAR)
-        let icon_atlas = IconAtlas::load_unitpics(
-            egui_state.egui_ctx(),
-            Path::new(BAR_UNITPICS_PATH),
-        );
+        let icon_atlas =
+            IconAtlas::load_unitpics(egui_state.egui_ctx(), Path::new(BAR_UNITPICS_PATH));
         self.icon_atlas = Some(icon_atlas);
 
         self.egui_state = Some(egui_state);
@@ -817,7 +1210,9 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         // egui first
         if let (Some(es), Some(w)) = (self.egui_state.as_mut(), self.window.as_ref()) {
-            if es.on_window_event(w, &event).consumed { return; }
+            if es.on_window_event(w, &event).consumed {
+                return;
+            }
         }
 
         match event {
@@ -825,7 +1220,9 @@ impl ApplicationHandler for App {
 
             WindowEvent::Resized(size) => {
                 if size.width > 0 && size.height > 0 {
-                    if let Some(r) = self.renderer.as_mut() { r.resize(size.width, size.height); }
+                    if let Some(r) = self.renderer.as_mut() {
+                        r.resize(size.width, size.height);
+                    }
                     self.window_size = [size.width as f32, size.height as f32];
                 }
             }
@@ -834,16 +1231,29 @@ impl ApplicationHandler for App {
                 self.modifiers = mods.state();
             }
 
-            WindowEvent::KeyboardInput { event: KeyEvent { physical_key: PhysicalKey::Code(key), state, .. }, .. } => {
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(key),
+                        state,
+                        ..
+                    },
+                ..
+            } => {
                 let pressed = state == ElementState::Pressed;
                 self.camera_ctrl.process_key(key, pressed);
 
-                if !pressed { return; }
+                if !pressed {
+                    return;
+                }
 
                 match key {
-                    KeyCode::Space => { self.game.paused = !self.game.paused; }
+                    KeyCode::Space => {
+                        self.game.paused = !self.game.paused;
+                    }
                     KeyCode::KeyR => {
-                        self.game.reset(Path::new(BAR_UNITS_PATH), Path::new(MAP_MANIFEST_PATH));
+                        self.game
+                            .reset(Path::new(BAR_UNITS_PATH), Path::new(MAP_MANIFEST_PATH));
                     }
                     KeyCode::Escape => {
                         if self.game.placement_mode.is_some() {
@@ -853,14 +1263,28 @@ impl ApplicationHandler for App {
                         }
                     }
                     // Digit keys: build (for builders), queue (for factories), control groups (with Ctrl)
-                    key @ (KeyCode::Digit1 | KeyCode::Digit2 | KeyCode::Digit3 | KeyCode::Digit4
-                          | KeyCode::Digit5 | KeyCode::Digit6 | KeyCode::Digit7 | KeyCode::Digit8
-                          | KeyCode::Digit9 | KeyCode::Digit0) => {
+                    key @ (KeyCode::Digit1
+                    | KeyCode::Digit2
+                    | KeyCode::Digit3
+                    | KeyCode::Digit4
+                    | KeyCode::Digit5
+                    | KeyCode::Digit6
+                    | KeyCode::Digit7
+                    | KeyCode::Digit8
+                    | KeyCode::Digit9
+                    | KeyCode::Digit0) => {
                         let idx = match key {
-                            KeyCode::Digit1 => 0, KeyCode::Digit2 => 1, KeyCode::Digit3 => 2,
-                            KeyCode::Digit4 => 3, KeyCode::Digit5 => 4, KeyCode::Digit6 => 5,
-                            KeyCode::Digit7 => 6, KeyCode::Digit8 => 7, KeyCode::Digit9 => 8,
-                            KeyCode::Digit0 => 9, _ => unreachable!(),
+                            KeyCode::Digit1 => 0,
+                            KeyCode::Digit2 => 1,
+                            KeyCode::Digit3 => 2,
+                            KeyCode::Digit4 => 3,
+                            KeyCode::Digit5 => 4,
+                            KeyCode::Digit6 => 5,
+                            KeyCode::Digit7 => 6,
+                            KeyCode::Digit8 => 7,
+                            KeyCode::Digit9 => 8,
+                            KeyCode::Digit0 => 9,
+                            _ => unreachable!(),
                         };
 
                         if self.modifiers.control_key() {
@@ -885,7 +1309,11 @@ impl ApplicationHandler for App {
                                         .and_then(|def| def.can_build.get(idx as usize).copied())
                                 };
                                 if let Some(id) = unit_id {
-                                    bar_game_lib::production::queue_unit(&mut self.game.world, sel, id);
+                                    bar_game_lib::production::queue_unit(
+                                        &mut self.game.world,
+                                        sel,
+                                        id,
+                                    );
                                 }
                             } else {
                                 // No builder/factory: recall control group
@@ -904,12 +1332,20 @@ impl ApplicationHandler for App {
                 self.cursor_pos = [position.x as f32, position.y as f32];
             }
 
-            WindowEvent::MouseInput { state: ElementState::Pressed, button, .. } => {
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button,
+                ..
+            } => {
                 if let Some((wx, wz)) = self.screen_to_ground() {
                     if self.game.placement_mode.is_some() {
                         match button {
-                            MouseButton::Left => { self.game.handle_place(wx, wz); }
-                            MouseButton::Right => { self.game.placement_mode = None; }
+                            MouseButton::Left => {
+                                self.game.handle_place(wx, wz);
+                            }
+                            MouseButton::Right => {
+                                self.game.placement_mode = None;
+                            }
                             _ => {}
                         }
                     } else {
@@ -928,11 +1364,17 @@ impl ApplicationHandler for App {
                                     tracing::debug!("Right-click: no units selected");
                                 }
                                 for e in targets {
-                                    let has_ms = self.game.world.get::<recoil_sim::MoveState>(e).is_some();
+                                    let has_ms =
+                                        self.game.world.get::<recoil_sim::MoveState>(e).is_some();
                                     if !has_ms {
-                                        tracing::warn!("Selected entity {:?} has no MoveState — cannot move", e);
+                                        tracing::warn!(
+                                            "Selected entity {:?} has no MoveState — cannot move",
+                                            e
+                                        );
                                     }
-                                    if let Some(ms) = self.game.world.get_mut::<recoil_sim::MoveState>(e) {
+                                    if let Some(ms) =
+                                        self.game.world.get_mut::<recoil_sim::MoveState>(e)
+                                    {
                                         *ms.into_inner() = recoil_sim::MoveState::MovingTo(
                                             recoil_math::SimVec3::new(
                                                 recoil_math::SimFloat::from_f32(wx),
@@ -968,10 +1410,24 @@ impl ApplicationHandler for App {
                     self.game.frame_count += 1;
 
                     for pos in &impacts {
-                        self.particle_system.emit(*pos, 6, [1.0, 0.6, 0.2, 1.0], (5.0, 15.0), (0.2, 0.5), (1.0, 2.5));
+                        self.particle_system.emit(
+                            *pos,
+                            6,
+                            [1.0, 0.6, 0.2, 1.0],
+                            (5.0, 15.0),
+                            (0.2, 0.5),
+                            (1.0, 2.5),
+                        );
                     }
                     for pos in &deaths {
-                        self.particle_system.emit(*pos, 20, [1.0, 0.3, 0.1, 1.0], (10.0, 30.0), (0.4, 1.0), (2.0, 5.0));
+                        self.particle_system.emit(
+                            *pos,
+                            20,
+                            [1.0, 0.3, 0.1, 1.0],
+                            (10.0, 30.0),
+                            (0.4, 1.0),
+                            (2.0, 5.0),
+                        );
                     }
                 }
                 self.particle_system.update(dt);
@@ -998,9 +1454,14 @@ impl ApplicationHandler for App {
                 let fps = self.fps_counter.tick();
 
                 if let (Some(renderer), Some(egui_state), Some(egui_renderer), Some(window)) = (
-                    self.renderer.as_mut(), self.egui_state.as_mut(), self.egui_renderer.as_mut(), self.window.as_ref(),
+                    self.renderer.as_mut(),
+                    self.egui_state.as_mut(),
+                    self.egui_renderer.as_mut(),
+                    self.window.as_ref(),
                 ) {
-                    let cam = self.camera_ctrl.camera(self.window_size[0] / self.window_size[1]);
+                    let cam = self
+                        .camera_ctrl
+                        .camera(self.window_size[0] / self.window_size[1]);
                     renderer.update_camera(&cam);
                     renderer.update_units(&instances);
                     renderer.update_projectiles(&proj);
@@ -1008,14 +1469,24 @@ impl ApplicationHandler for App {
                     let render_result = renderer.render_no_present();
                     let (output, view) = match render_result {
                         Ok(v) => v,
-                        Err(e) => { tracing::error!("render: {e}"); window.request_redraw(); return; }
+                        Err(e) => {
+                            tracing::error!("render: {e}");
+                            window.request_redraw();
+                            return;
+                        }
                     };
 
                     // egui
                     let raw_input = egui_state.take_egui_input(window);
                     let egui_ctx = egui_state.egui_ctx().clone();
                     let vp_mat = cam.view_projection();
-                    let ui_data = gather_ui_data(&mut self.game, fps, &vp_mat, self.window_size, self.camera_ctrl.center);
+                    let ui_data = gather_ui_data(
+                        &mut self.game,
+                        fps,
+                        &vp_mat,
+                        self.window_size,
+                        self.camera_ctrl.center,
+                    );
                     let empty_atlas = IconAtlas::empty();
                     let atlas = self.icon_atlas.as_ref().unwrap_or(&empty_atlas);
                     let mut ui_actions = Vec::new();
@@ -1024,24 +1495,46 @@ impl ApplicationHandler for App {
                     });
                     egui_state.handle_platform_output(window, full_output.platform_output);
 
-                    let tris = egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
+                    let tris =
+                        egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
                     for (id, delta) in &full_output.textures_delta.set {
-                        egui_renderer.update_texture(&renderer.gpu.device, &renderer.gpu.queue, *id, delta);
+                        egui_renderer.update_texture(
+                            &renderer.gpu.device,
+                            &renderer.gpu.queue,
+                            *id,
+                            delta,
+                        );
                     }
                     let screen_desc = ScreenDescriptor {
                         size_in_pixels: [renderer.gpu.config.width, renderer.gpu.config.height],
                         pixels_per_point: full_output.pixels_per_point,
                     };
-                    let mut encoder = renderer.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("egui") });
-                    let user_bufs = egui_renderer.update_buffers(&renderer.gpu.device, &renderer.gpu.queue, &mut encoder, &tris, &screen_desc);
+                    let mut encoder = renderer.gpu.device.create_command_encoder(
+                        &wgpu::CommandEncoderDescriptor {
+                            label: Some("egui"),
+                        },
+                    );
+                    let user_bufs = egui_renderer.update_buffers(
+                        &renderer.gpu.device,
+                        &renderer.gpu.queue,
+                        &mut encoder,
+                        &tris,
+                        &screen_desc,
+                    );
                     {
                         let pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                             label: Some("egui_pass"),
                             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                view: &view, resolve_target: None,
-                                ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                                view: &view,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Load,
+                                    store: wgpu::StoreOp::Store,
+                                },
                             })],
-                            depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
+                            depth_stencil_attachment: None,
+                            timestamp_writes: None,
+                            occlusion_query_set: None,
                         });
                         let mut pass = pass.forget_lifetime();
                         egui_renderer.render(&mut pass, &tris, &screen_desc);
@@ -1049,7 +1542,9 @@ impl ApplicationHandler for App {
                     let mut bufs: Vec<wgpu::CommandBuffer> = vec![encoder.finish()];
                     bufs.extend(user_bufs);
                     renderer.gpu.queue.submit(bufs);
-                    for id in &full_output.textures_delta.free { egui_renderer.free_texture(id); }
+                    for id in &full_output.textures_delta.free {
+                        egui_renderer.free_texture(id);
+                    }
                     output.present();
 
                     // Process UI actions
@@ -1060,7 +1555,11 @@ impl ApplicationHandler for App {
                             }
                             UiAction::QueueUnit(id) => {
                                 if let Some(sel) = self.game.selected() {
-                                    bar_game_lib::production::queue_unit(&mut self.game.world, sel, id);
+                                    bar_game_lib::production::queue_unit(
+                                        &mut self.game.world,
+                                        sel,
+                                        id,
+                                    );
                                 }
                             }
                         }

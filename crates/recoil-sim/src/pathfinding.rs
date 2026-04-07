@@ -736,17 +736,9 @@ mod tests {
     fn path_between_two_buildings() {
         let mut grid = open_grid(30, 20);
         // Building A blocking upper half at column 10.
-        let _fp_a = mark_building_footprint(
-            &mut grid,
-            pos(10, 3),
-            SimFloat::from_int(3),
-        );
+        let _fp_a = mark_building_footprint(&mut grid, pos(10, 3), SimFloat::from_int(3));
         // Building B blocking lower half at column 10.
-        let _fp_b = mark_building_footprint(
-            &mut grid,
-            pos(10, 16),
-            SimFloat::from_int(3),
-        );
+        let _fp_b = mark_building_footprint(&mut grid, pos(10, 16), SimFloat::from_int(3));
         // Gap at rows ~7..13 should allow passage.
         let path = find_path(&grid, pos(0, 10), pos(20, 10)).expect("path through gap");
         assert!(path.len() >= 2);

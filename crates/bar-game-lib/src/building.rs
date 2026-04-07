@@ -18,8 +18,8 @@ use recoil_sim::commands::CommandQueue;
 use recoil_sim::construction::{BuildSite, BuildTarget, Builder};
 use recoil_sim::economy::{EconomyState, ResourceProducer};
 use recoil_sim::factory::BuildQueue;
-use recoil_sim::unit_defs::UnitDefRegistry;
 use recoil_sim::pathfinding::{mark_building_footprint, TerrainGrid};
+use recoil_sim::unit_defs::UnitDefRegistry;
 use recoil_sim::{
     Allegiance, CollisionRadius, Dead, Heading, Health, MoveState, MovementParams, Position,
     SightRange, SimVec2, Target, UnitType, Velocity,
@@ -117,9 +117,7 @@ pub fn place_building(
                 max: max_health,
             },
             Allegiance { team },
-            UnitType {
-                id: unit_type_id,
-            },
+            UnitType { id: unit_type_id },
             CollisionRadius {
                 radius: collision_r.max(SimFloat::from_int(8)),
             },
@@ -198,12 +196,7 @@ pub fn finalize_completed_buildings(world: &mut World) -> Option<Entity> {
         let registry = world.resource::<UnitDefRegistry>();
         candidates
             .into_iter()
-            .filter(|(_, id, _, _, _)| {
-                registry
-                    .get(*id)
-                    .map(|d| d.is_building)
-                    .unwrap_or(false)
-            })
+            .filter(|(_, id, _, _, _)| registry.get(*id).map(|d| d.is_building).unwrap_or(false))
             .collect()
     };
 
@@ -265,7 +258,7 @@ pub fn finalize_completed_buildings(world: &mut World) -> Option<Entity> {
                 queue: VecDeque::new(),
                 current_progress: SimFloat::ZERO,
                 rally_point: rally,
-                    repeat: false,
+                repeat: false,
             });
             tracing::info!(
                 "Team {} factory (type {}) completed at ({:.0}, {:.0})",
@@ -323,10 +316,7 @@ pub fn equip_factory_spawned_units(world: &mut World, weapon_def_ids: &BTreeMap<
         to_equip
             .into_iter()
             .filter(|(_, id, _)| {
-                registry
-                    .get(*id)
-                    .map(|d| !d.is_building)
-                    .unwrap_or(false) // skip unknown units
+                registry.get(*id).map(|d| !d.is_building).unwrap_or(false) // skip unknown units
             })
             .collect()
     };

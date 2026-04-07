@@ -205,7 +205,12 @@ impl Renderer {
     }
 
     /// Register a mesh for a specific mesh_id (e.g. a unit_type_id).
-    pub fn register_unit_mesh(&mut self, mesh_id: u32, vertices: &[crate::unit_mesh::UnitVertex], indices: &[u16]) {
+    pub fn register_unit_mesh(
+        &mut self,
+        mesh_id: u32,
+        vertices: &[crate::unit_mesh::UnitVertex],
+        indices: &[u16],
+    ) {
         self.unit_renderer
             .register_mesh(&self.gpu.device, mesh_id, vertices, indices);
     }
@@ -223,7 +228,11 @@ impl Renderer {
     }
 
     /// Replace the terrain mesh with heightmap data.
-    pub fn set_terrain_mesh(&mut self, vertices: &[crate::terrain::TerrainVertex], indices: &[u32]) {
+    pub fn set_terrain_mesh(
+        &mut self,
+        vertices: &[crate::terrain::TerrainVertex],
+        indices: &[u32],
+    ) {
         self.terrain.set_mesh(&self.gpu.device, vertices, indices);
     }
 

@@ -180,14 +180,7 @@ fn ai_opening(
     };
 
     if let Some(fid) = factory_id {
-        building::place_building(
-            world,
-            Some(cmd),
-            fid,
-            cmd_pos.0 + 40.0,
-            cmd_pos.1,
-            ai.team,
-        );
+        building::place_building(world, Some(cmd), fid, cmd_pos.0 + 40.0, cmd_pos.1, ai.team);
     }
 
     // Also build a solar while the factory constructs.
