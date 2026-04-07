@@ -13,6 +13,8 @@ use recoil_sim::factory::BuildQueue;
 use recoil_sim::projectile::ImpactEventQueue;
 use recoil_sim::{Dead, Health, Position};
 
+use recoil_sim::selection::SelectionState;
+
 use crate::ai::{self, AiState};
 use crate::building::{self, PlacementType};
 use crate::production;
@@ -32,7 +34,7 @@ pub struct GameState {
     pub world: World,
     pub paused: bool,
     pub frame_count: u64,
-    pub selected: Option<Entity>,
+    pub selection: SelectionState,
     pub placement_mode: Option<PlacementType>,
     /// AI state for team 1.
     pub ai_state: AiState,
@@ -63,7 +65,7 @@ impl GameState {
             world,
             paused: false,
             frame_count: 0,
-            selected: None,
+            selection: SelectionState::default(),
             placement_mode: None,
             ai_state,
             weapon_def_ids: config.weapon_def_ids,
@@ -84,7 +86,7 @@ impl GameState {
             world,
             paused: false,
             frame_count: 0,
-            selected: None,
+            selection: SelectionState::default(),
             placement_mode: None,
             ai_state,
             weapon_def_ids: config.weapon_def_ids,
@@ -102,7 +104,7 @@ impl GameState {
         self.world = World::new();
         let config = setup::setup_game(&mut self.world, bar_units_path, map_manifest_path);
 
-        self.selected = None;
+        self.selection.clear();
         self.frame_count = 0;
         self.placement_mode = None;
         self.commander_team0 = config.commander_team0;
@@ -239,7 +241,7 @@ impl GameState {
         if let Some(btype) = self.placement_mode.take() {
             // Use selected entity if it's a builder, otherwise fall back to commander.
             let builder = if self.selected_is_builder() {
-                self.selected
+                self.selected()
             } else {
                 self.commander_team0
             };
@@ -257,16 +259,21 @@ impl GameState {
         production::queue_unit_by_name(&mut self.world, factory_entity, unit_name);
     }
 
-    /// Check if the selected entity is a factory.
+    /// The first selected entity (backwards-compat convenience).
+    pub fn selected(&self) -> Option<Entity> {
+        self.selection.selected.first().copied()
+    }
+
+    /// Check if the (first) selected entity is a factory.
     pub fn selected_is_factory(&self) -> bool {
-        self.selected
+        self.selected()
             .map(|e| self.world.get::<BuildQueue>(e).is_some())
             .unwrap_or(false)
     }
 
-    /// Check if the selected entity is a commander/builder.
+    /// Check if the (first) selected entity is a commander/builder.
     pub fn selected_is_builder(&self) -> bool {
-        self.selected
+        self.selected()
             .map(|e| self.world.get::<Builder>(e).is_some())
             .unwrap_or(false)
     }
@@ -278,14 +285,57 @@ impl GameState {
     /// Simulate left-click at world position: select nearest unit within radius.
     pub fn click_select(&mut self, x: f32, z: f32, radius: f32) -> Option<Entity> {
         let entity = self.find_unit_at(x, z, radius);
-        self.selected = entity;
+        if let Some(e) = entity {
+            self.selection.select_single(e);
+        } else {
+            self.selection.clear();
+        }
         entity
     }
 
-    /// Simulate right-click at world position: issue move command to selected.
-    /// Returns true if a move command was issued.
+    /// Shift-click to toggle a unit in the selection.
+    pub fn click_select_toggle(&mut self, x: f32, z: f32, radius: f32) -> Option<Entity> {
+        let entity = self.find_unit_at(x, z, radius);
+        if let Some(e) = entity {
+            self.selection.toggle(e);
+        }
+        entity
+    }
+
+    /// Box-select all units within a world-space rectangle.
+    pub fn box_select(&mut self, x1: f32, z1: f32, x2: f32, z2: f32) {
+        let min_x = x1.min(x2);
+        let max_x = x1.max(x2);
+        let min_z = z1.min(z2);
+        let max_z = z1.max(z2);
+        let entities: Vec<Entity> = self
+            .world
+            .query_filtered::<(Entity, &Position), bevy_ecs::query::Without<Dead>>()
+            .iter(&self.world)
+            .filter(|(_, p)| {
+                let px = p.pos.x.to_f32();
+                let pz = p.pos.z.to_f32();
+                px >= min_x && px <= max_x && pz >= min_z && pz <= max_z
+            })
+            .map(|(e, _)| e)
+            .collect();
+        self.selection.select_box(entities);
+    }
+
+    /// Save current selection to a control group slot (0-9).
+    pub fn save_control_group(&mut self, slot: u8) {
+        self.selection.save_control_group(slot);
+    }
+
+    /// Recall a control group slot (0-9).
+    pub fn recall_control_group(&mut self, slot: u8) {
+        self.selection.recall_control_group(slot);
+    }
+
+    /// Simulate right-click at world position: issue move command to all selected units.
+    /// Returns number of units that received a move command.
     pub fn click_move(&mut self, target_x: f32, target_z: f32) -> bool {
-        if let Some(sel) = self.selected {
+        if let Some(sel) = self.selected() {
             if let Some(ms) = self.world.get_mut::<recoil_sim::MoveState>(sel) {
                 *ms.into_inner() = recoil_sim::MoveState::MovingTo(
                     recoil_math::SimVec3::new(
@@ -1710,7 +1760,7 @@ mod tests {
                 .remove::<recoil_sim::construction::BuildSite>();
             building::finalize_completed_buildings(&mut game.world);
 
-            game.selected = Some(factory);
+            game.selection.select_single(factory);
             assert!(game.selected_is_factory());
             assert!(!game.selected_is_builder());
         }
@@ -1722,7 +1772,7 @@ mod tests {
         let cmd = game.commander_team0.unwrap();
 
         let mut game = game;
-        game.selected = Some(cmd);
+        game.selection.select_single(cmd);
         assert!(game.selected_is_builder());
         assert!(!game.selected_is_factory());
     }
@@ -2032,12 +2082,12 @@ mod tests {
         let cz = cmd_pos.z.to_f32();
 
         // Nothing selected initially
-        assert!(game.selected.is_none());
+        assert!(game.selected().is_none());
 
         // Click near the commander
         let selected = game.click_select(cx + 1.0, cz + 1.0, 20.0);
         assert_eq!(selected, Some(cmd), "Should select the commander");
-        assert_eq!(game.selected, Some(cmd));
+        assert_eq!(game.selected(), Some(cmd));
         assert!(game.selected_is_builder(), "Commander is a builder");
     }
 
@@ -2048,7 +2098,7 @@ mod tests {
         // Click far from any unit
         let selected = game.click_select(999.0, 999.0, 20.0);
         assert!(selected.is_none(), "Should not select anything on empty ground");
-        assert!(game.selected.is_none());
+        assert!(game.selected().is_none());
     }
 
     #[test]
@@ -2063,11 +2113,11 @@ mod tests {
 
         // Select commander 0
         game.click_select(pos0.x.to_f32(), pos0.z.to_f32(), 20.0);
-        assert_eq!(game.selected, Some(cmd0));
+        assert_eq!(game.selected(), Some(cmd0));
 
         // Select commander 1
         game.click_select(pos1.x.to_f32(), pos1.z.to_f32(), 20.0);
-        assert_eq!(game.selected, Some(cmd1));
+        assert_eq!(game.selected(), Some(cmd1));
     }
 
     // -----------------------------------------------------------------------
@@ -2082,7 +2132,7 @@ mod tests {
         let start_pos = game.world.get::<Position>(cmd).unwrap().pos;
 
         // Select the commander
-        game.selected = Some(cmd);
+        game.selection.select_single(cmd);
 
         // Right-click to move
         let target_x = start_pos.x.to_f32() + 50.0;
@@ -2115,7 +2165,7 @@ mod tests {
     #[test]
     fn ui_right_click_no_selection_does_nothing() {
         let mut game = make_test_game();
-        assert!(game.selected.is_none());
+        assert!(game.selected().is_none());
 
         let moved = game.click_move(500.0, 500.0);
         assert!(!moved, "Should not move when nothing is selected");
@@ -2132,7 +2182,7 @@ mod tests {
 
         // Step 1: Select commander (builder)
         let cmd = game.commander_team0.unwrap();
-        game.selected = Some(cmd);
+        game.selection.select_single(cmd);
         assert!(game.selected_is_builder());
 
         // Step 2: Enter build mode (simulates pressing a build key)
@@ -2183,7 +2233,7 @@ mod tests {
     fn ui_cancel_placement_right_click() {
         let mut game = make_test_game();
 
-        game.selected = Some(game.commander_team0.unwrap());
+        game.selection.select_single(game.commander_team0.unwrap());
         game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
         assert!(game.placement_mode.is_some());
 
@@ -2205,7 +2255,7 @@ mod tests {
             }
         }
 
-        game.selected = Some(game.commander_team0.unwrap());
+        game.selection.select_single(game.commander_team0.unwrap());
         game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
         game.handle_place(300.0, 300.0);
 
@@ -2276,7 +2326,7 @@ mod tests {
             .id();
 
         // Step 1: Select the factory
-        game.selected = Some(factory);
+        game.selection.select_single(factory);
         assert!(game.selected_is_factory());
         assert!(!game.selected_is_builder());
 
@@ -2329,12 +2379,12 @@ mod tests {
         game.click_select(cmd_pos.x.to_f32(), cmd_pos.z.to_f32(), 20.0);
 
         // Verify we can read the selected unit's info
-        assert!(game.selected.is_some());
+        assert!(game.selected().is_some());
         assert!(game.selected_is_builder());
         assert!(!game.selected_is_factory());
 
         // Verify we can access the unit's UnitDef
-        let sel = game.selected.unwrap();
+        let sel = game.selected().unwrap();
         let ut = game.world.get::<recoil_sim::UnitType>(sel).unwrap();
         let registry = game.world.resource::<recoil_sim::unit_defs::UnitDefRegistry>();
         let def = registry.get(ut.id);
@@ -2361,7 +2411,7 @@ mod tests {
         let sz = start_pos.z.to_f32();
 
         // Select and move to a nearby spot
-        game.selected = Some(cmd);
+        game.selection.select_single(cmd);
         let tx = sx + 20.0;
         let tz = sz;
         game.click_move(tx, tz);
@@ -2373,7 +2423,7 @@ mod tests {
         }
 
         // Deselect
-        game.selected = None;
+        game.selection.clear();
 
         // Click at the target location to re-select
         let found = game.click_select(tx, tz, 25.0);
@@ -2564,5 +2614,114 @@ mod tests {
             "Team 1 (AI) should have more than just the commander: got {}",
             t1_units
         );
+    }
+
+    // ===================================================================
+    // MULTI-SELECT & CONTROL GROUP TESTS
+    // ===================================================================
+
+    #[test]
+    fn ui_shift_click_toggle_selection() {
+        let mut game = make_test_game();
+        let weapon_id = register_test_weapon(&mut game);
+
+        let _u1 = spawn_armed_unit(&mut game, 100, 100, 0, weapon_id, 500);
+        let _u2 = spawn_armed_unit(&mut game, 120, 100, 0, weapon_id, 500);
+
+        // Click u1
+        game.click_select(100.0, 100.0, 10.0);
+        assert_eq!(game.selection.selected.len(), 1);
+        assert_eq!(game.selected(), Some(u1));
+
+        // Shift-click u2 — adds to selection
+        game.click_select_toggle(120.0, 100.0, 10.0);
+        assert_eq!(game.selection.selected.len(), 2);
+
+        // Shift-click u1 again — removes from selection
+        game.click_select_toggle(100.0, 100.0, 10.0);
+        assert_eq!(game.selection.selected.len(), 1);
+        assert_eq!(game.selected(), Some(u2));
+    }
+
+    #[test]
+    fn ui_box_select() {
+        let mut game = make_test_game();
+        let weapon_id = register_test_weapon(&mut game);
+
+        let _u1 = spawn_armed_unit(&mut game, 300, 300, 0, weapon_id, 500);
+        let _u2 = spawn_armed_unit(&mut game, 310, 310, 0, weapon_id, 500);
+        let _u3 = spawn_armed_unit(&mut game, 320, 320, 0, weapon_id, 500);
+        // Far away unit — should NOT be selected
+        let _u4 = spawn_armed_unit(&mut game, 500, 500, 0, weapon_id, 500);
+
+        game.box_select(290.0, 290.0, 330.0, 330.0);
+        assert_eq!(
+            game.selection.selected.len(),
+            3,
+            "Box select should capture 3 units, got {}",
+            game.selection.selected.len()
+        );
+    }
+
+    #[test]
+    fn ui_control_groups() {
+        let mut game = make_test_game();
+        let weapon_id = register_test_weapon(&mut game);
+
+        let _u1 = spawn_armed_unit(&mut game, 100, 100, 0, weapon_id, 500);
+        let _u2 = spawn_armed_unit(&mut game, 120, 100, 0, weapon_id, 500);
+
+        // Select both and save to group 1
+        game.box_select(90.0, 90.0, 130.0, 110.0);
+        assert_eq!(game.selection.selected.len(), 2);
+        game.save_control_group(1);
+
+        // Clear and verify empty
+        game.selection.clear();
+        assert!(game.selected().is_none());
+
+        // Recall group 1
+        game.recall_control_group(1);
+        assert_eq!(game.selection.selected.len(), 2);
+    }
+
+    #[test]
+    fn ui_move_all_selected() {
+        let mut game = make_test_game();
+        let weapon_id = register_test_weapon(&mut game);
+
+        let u1 = spawn_armed_unit(&mut game, 300, 300, 0, weapon_id, 500);
+        let u2 = spawn_armed_unit(&mut game, 310, 300, 0, weapon_id, 500);
+
+        // Select both
+        game.box_select(290.0, 290.0, 320.0, 310.0);
+        assert_eq!(game.selection.selected.len(), 2);
+
+        // Issue move to all selected
+        let target_x = 400.0;
+        let target_z = 400.0;
+        for &e in &game.selection.selected.clone() {
+            if let Some(ms) = game.world.get_mut::<recoil_sim::MoveState>(e) {
+                *ms.into_inner() = recoil_sim::MoveState::MovingTo(
+                    recoil_math::SimVec3::new(
+                        recoil_math::SimFloat::from_f32(target_x),
+                        recoil_math::SimFloat::ZERO,
+                        recoil_math::SimFloat::from_f32(target_z),
+                    ),
+                );
+            }
+        }
+
+        // Tick
+        for _ in 0..100 {
+            game.tick();
+            game.frame_count += 1;
+        }
+
+        // Both should have moved
+        let p1 = game.world.get::<Position>(u1).unwrap().pos;
+        let p2 = game.world.get::<Position>(u2).unwrap().pos;
+        assert!(p1.x.to_f32() > 300.0 || p1.z.to_f32() > 300.0, "u1 should have moved");
+        assert!(p2.x.to_f32() > 310.0 || p2.z.to_f32() > 300.0, "u2 should have moved");
     }
 }

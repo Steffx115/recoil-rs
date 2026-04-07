@@ -222,6 +222,7 @@ name = "bar-game"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bar-game-lib",
  "bevy_ecs",
  "egui",
  "egui-wgpu",

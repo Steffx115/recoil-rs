@@ -116,7 +116,7 @@ fn all_tests() -> Vec<VisualTest> {
             step: Box::new(|game, frame| {
                 if frame == 10 {
                     let cmd = game.commander_team0.unwrap();
-                    game.selected = Some(cmd);
+                    game.selection.select_single(cmd);
                     game.handle_build_command(PlacementType(BUILDING_SOLAR_ID));
                     let pos = game.world.get::<Position>(cmd).unwrap().pos;
                     game.handle_place(pos.x.to_f32() + 15.0, pos.z.to_f32());
@@ -147,7 +147,7 @@ fn all_tests() -> Vec<VisualTest> {
             step: Box::new(|game, frame| {
                 if frame == 10 {
                     let cmd = game.commander_team0.unwrap();
-                    game.selected = Some(cmd);
+                    game.selection.select_single(cmd);
                     game.handle_build_command(PlacementType(BUILDING_FACTORY_ID));
                     let pos = game.world.get::<Position>(cmd).unwrap().pos;
                     game.handle_place(pos.x.to_f32() + 40.0, pos.z.to_f32());
@@ -253,7 +253,7 @@ fn all_tests() -> Vec<VisualTest> {
 // ---------------------------------------------------------------------------
 
 fn extract_units(game: &mut GameState) -> Vec<UnitInstance> {
-    let sel = game.selected;
+    let sel = game.selected();
     let mut out: Vec<UnitInstance> = game.world
         .query_filtered::<(Entity, &Position, &Heading, &Allegiance, &Health), Without<Dead>>()
         .iter(&game.world)
