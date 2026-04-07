@@ -2156,9 +2156,10 @@ mod tests {
             .collect();
         assert!(!sites.is_empty(), "A build site should exist");
 
-        // Step 4: Tick until construction progresses
-        for _ in 0..100 {
-            game.tick();
+        // Step 4: Tick construction system directly (avoids AI interference)
+        for _ in 0..500 {
+            recoil_sim::construction::construction_system(&mut game.world);
+            recoil_sim::sim_runner::sim_tick(&mut game.world);
             game.frame_count += 1;
         }
 
