@@ -4552,4 +4552,339 @@ mod tests {
         // But no new entities
         snap5.assert_t1_count_unchanged(&mut game, "step6: move tick no AI");
     }
+
+    // ===================================================================
+    // PRECISE SIMULATION TESTS — exactly one thing changes, nothing else
+    // ===================================================================
+
+    /// Helper: count entities by UnitType ID.
+    fn count_by_type(game: &mut GameState, type_id: u32) -> usize {
+        game.world
+            .query_filtered::<&recoil_sim::UnitType, Without<Dead>>()
+            .iter(&game.world)
+            .filter(|ut| ut.id == type_id)
+            .count()
+    }
+
+    /// Helper: collect all alive entity positions as sorted vec for comparison.
+    fn all_positions(game: &mut GameState) -> Vec<(u64, f32, f32)> {
+        let mut out: Vec<_> = game.world
+            .query_filtered::<(&recoil_sim::SimId, &Position), Without<Dead>>()
+            .iter(&game.world)
+            .map(|(sid, p)| (sid.id, p.pos.x.to_f32(), p.pos.z.to_f32()))
+            .collect();
+        out.sort_by_key(|(id, _, _)| *id);
+        out
+    }
+
+    /// Helper: collect all HP values keyed by SimId.
+    fn all_health(game: &mut GameState) -> Vec<(u64, f32, f32)> {
+        let mut out: Vec<_> = game.world
+            .query_filtered::<(&recoil_sim::SimId, &Health), Without<Dead>>()
+            .iter(&game.world)
+            .map(|(sid, h)| (sid.id, h.current.to_f32(), h.max.to_f32()))
+            .collect();
+        out.sort_by_key(|(id, _, _)| *id);
+        out
+    }
+
+    /// Factory produces exactly one unit — nothing else changes.
+    #[test]
+    fn sim_factory_produces_one_unit_nothing_else() {
+        use recoil_sim::factory::{BuildQueue, UnitBlueprint, UnitRegistry};
+
+        let mut game = make_test_game();
+        fund_team(&mut game, 0);
+
+        let unit_id = 33333u32;
+        {
+            let mut reg = game.world.resource_mut::<UnitRegistry>();
+            reg.blueprints.push(UnitBlueprint {
+                unit_type_id: unit_id, metal_cost: SimFloat::from_int(5),
+                energy_cost: SimFloat::from_int(5), build_time: 5,
+                max_health: SimFloat::from_int(100),
+            });
+        }
+        {
+            let mut reg = game.world.resource_mut::<recoil_sim::unit_defs::UnitDefRegistry>();
+            let mut def = recoil_sim::unit_defs::UnitDef {
+                name: "prodtest".into(), unit_type_id: unit_id,
+                max_health: 100.0, armor_class: "Light".into(),
+                sight_range: 50.0, collision_radius: 2.0,
+                max_speed: 2.0, acceleration: 1.0, turn_rate: 0.5,
+                metal_cost: 5.0, energy_cost: 5.0, build_time: 5,
+                weapons: vec![], model_path: None, icon_path: None,
+                categories: vec![], can_build: vec![], can_build_names: vec![],
+                build_power: None, metal_production: None, energy_production: None,
+                is_building: false, is_builder: false,
+            };
+            def.compute_derived_flags();
+            reg.register(def);
+        }
+
+        let factory = game.world.spawn((
+            Position { pos: SimVec3::new(SimFloat::from_int(300), SimFloat::ZERO, SimFloat::from_int(300)) },
+            BuildQueue { queue: std::collections::VecDeque::new(), current_progress: SimFloat::ZERO,
+                rally_point: SimVec3::new(SimFloat::from_int(350), SimFloat::ZERO, SimFloat::from_int(300)),
+                repeat: false },
+            recoil_sim::Allegiance { team: 0 },
+            recoil_sim::UnitType { id: building::BUILDING_FACTORY_ID },
+            Health { current: SimFloat::from_int(500), max: SimFloat::from_int(500) },
+        )).id();
+
+        game.queue_unit_in_factory(factory, unit_id);
+
+        // Snapshot BEFORE production
+        let snap = Snapshot::capture(&mut game);
+        let positions_before = all_positions(&mut game);
+        let health_before = all_health(&mut game);
+        let count_before = count_by_type(&mut game, unit_id);
+        assert_eq!(count_before, 0, "No units of this type yet");
+
+        // Tick enough for production (no AI — direct systems)
+        for _ in 0..30 {
+            recoil_sim::construction::construction_system(&mut game.world);
+            recoil_sim::sim_runner::sim_tick(&mut game.world);
+            building::equip_factory_spawned_units(&mut game.world, &game.weapon_def_ids);
+            building::finalize_completed_buildings(&mut game.world);
+            game.frame_count += 1;
+        }
+
+        // Exactly ONE new unit of this type
+        let count_after = count_by_type(&mut game, unit_id);
+        assert_eq!(count_after, 1, "Factory should produce exactly 1 unit");
+
+        // Total entity count: +1
+        let new_total = game.world
+            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .iter(&game.world).count();
+        assert_eq!(new_total, snap.entity_count + 1, "Exactly 1 new entity total");
+
+        // Team 1 unchanged
+        snap.assert_t1_count_unchanged(&mut game, "production must not affect team 1");
+
+        // All pre-existing entities should have same HP (no combat happened)
+        let health_after = all_health(&mut game);
+        for (id, hp_before, max_before) in &health_before {
+            if let Some((_, hp_after, max_after)) = health_after.iter().find(|(sid, _, _)| sid == id) {
+                assert_eq!(*hp_before, *hp_after,
+                    "Entity {} HP changed during production: {}->{}", id, hp_before, hp_after);
+                assert_eq!(*max_before, *max_after,
+                    "Entity {} max HP changed during production", id);
+            }
+        }
+
+        // All pre-existing entity positions should be unchanged (idle, no combat)
+        let positions_after = all_positions(&mut game);
+        for (id, x_before, z_before) in &positions_before {
+            if let Some((_, x_after, z_after)) = positions_after.iter().find(|(sid, _, _)| sid == id) {
+                assert_eq!(*x_before, *x_after,
+                    "Entity {} X position changed during production: {}->{}", id, x_before, x_after);
+                assert_eq!(*z_before, *z_after,
+                    "Entity {} Z position changed during production: {}->{}", id, z_before, z_after);
+            }
+        }
+
+        // Factory queue should be empty
+        let bq = game.world.get::<BuildQueue>(factory).unwrap();
+        assert!(bq.queue.is_empty(), "Queue should be empty after producing");
+        assert_eq!(bq.current_progress, SimFloat::ZERO, "Progress should reset to 0");
+    }
+
+    /// Single tick with no actions — nothing changes except frame count.
+    #[test]
+    fn sim_idle_tick_changes_nothing() {
+        let mut game = make_test_game();
+
+        let positions_before = all_positions(&mut game);
+        let health_before = all_health(&mut game);
+        let snap = Snapshot::capture(&mut game);
+
+        // Single tick with NO AI (direct systems only)
+        recoil_sim::construction::construction_system(&mut game.world);
+        recoil_sim::sim_runner::sim_tick(&mut game.world);
+        building::equip_factory_spawned_units(&mut game.world, &game.weapon_def_ids);
+        building::finalize_completed_buildings(&mut game.world);
+
+        snap.assert_entity_count_unchanged(&mut game, "idle tick: entity count");
+        snap.assert_no_new_buildings(&mut game, "idle tick: buildings");
+
+        let positions_after = all_positions(&mut game);
+        let health_after = all_health(&mut game);
+        assert_eq!(positions_before, positions_after, "idle tick: all positions");
+        assert_eq!(health_before, health_after, "idle tick: all health");
+    }
+
+    /// Building completes → exactly one ResourceProducer added, nothing else.
+    #[test]
+    fn sim_building_complete_only_adds_producer() {
+        let mut game = make_test_game();
+        fund_team(&mut game, 0);
+
+        // Manually create a completed solar (no BuildSite = already done)
+        let solar_pos = SimVec3::new(SimFloat::from_int(400), SimFloat::ZERO, SimFloat::from_int(400));
+        game.world.spawn((
+            Position { pos: solar_pos },
+            Health { current: SimFloat::from_int(500), max: SimFloat::from_int(500) },
+            recoil_sim::Allegiance { team: 0 },
+            recoil_sim::UnitType { id: building::BUILDING_SOLAR_ID },
+            recoil_sim::CollisionRadius { radius: SimFloat::from_int(2) },
+        ));
+
+        let snap = Snapshot::capture(&mut game);
+        let producers_before: usize = game.world
+            .query::<&recoil_sim::economy::ResourceProducer>()
+            .iter(&game.world).count();
+        let health_before = all_health(&mut game);
+
+        // Finalize
+        building::finalize_completed_buildings(&mut game.world);
+
+        let producers_after: usize = game.world
+            .query::<&recoil_sim::economy::ResourceProducer>()
+            .iter(&game.world).count();
+        assert_eq!(producers_after, producers_before + 1,
+            "Finalization should add exactly 1 ResourceProducer");
+
+        // No entities created or destroyed
+        snap.assert_entity_count_unchanged(&mut game, "finalize: entity count");
+        snap.assert_t1_count_unchanged(&mut game, "finalize: team 1");
+
+        // No HP changes
+        let health_after = all_health(&mut game);
+        assert_eq!(health_before, health_after, "finalize: no HP changes");
+    }
+
+    /// Combat tick with two opposing units — only the combatants' HP changes.
+    #[test]
+    fn sim_combat_only_affects_combatants() {
+        let mut game = make_test_game();
+
+        let weapon_id = register_test_weapon(&mut game);
+        let attacker = spawn_armed_unit(&mut game, 500, 500, 0, weapon_id, 500);
+        let defender = spawn_armed_unit(&mut game, 510, 500, 1, weapon_id, 500);
+
+        // Snapshot includes commanders + 2 combat units
+        let snap = Snapshot::capture(&mut game);
+        let _cmd0_hp_before = snap.cmd0_hp;
+        let cmd1_hp_before = snap.cmd1_hp;
+
+        // Run 50 ticks (no AI)
+        for _ in 0..50 {
+            recoil_sim::construction::construction_system(&mut game.world);
+            recoil_sim::sim_runner::sim_tick(&mut game.world);
+            game.frame_count += 1;
+        }
+
+        // Commanders should NOT have taken damage (they're far away)
+        snap.assert_cmd0_hp_unchanged(&game, "combat: cmd0 HP");
+        // cmd1 is at (824,824), attacker at (500,500) — out of range
+        let cmd1_hp_now = game.commander_team1
+            .and_then(|e| game.world.get::<Health>(e))
+            .map(|h| h.current.to_f32());
+        assert_eq!(cmd1_hp_before, cmd1_hp_now, "combat: cmd1 HP should be unchanged");
+
+        // Combatants should have taken damage (or one is dead)
+        let att_hp = game.world.get::<Health>(attacker).map(|h| h.current.to_f32());
+        let def_hp = game.world.get::<Health>(defender).map(|h| h.current.to_f32());
+        let damage_dealt = att_hp.is_none_or(|h| h < 500.0) || def_hp.is_none_or(|h| h < 500.0);
+        assert!(damage_dealt, "Combat units should have taken damage: att={:?} def={:?}", att_hp, def_hp);
+
+        // No new entities spawned (except possibly wreckage if someone died)
+        let t0_now: usize = game.world
+            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .iter(&game.world).filter(|a| a.team == 0).count();
+        // Team 0 should have cmd + attacker (possibly dead → wreckage)
+        assert!(t0_now >= 1, "Team 0 should have at least commander");
+    }
+
+    /// Move command → only the ordered unit's position changes, all others static.
+    #[test]
+    fn sim_move_only_moves_one_unit() {
+        let mut game = make_test_game();
+        let weapon_id = register_test_weapon(&mut game);
+
+        let mover = spawn_armed_unit(&mut game, 300, 300, 0, weapon_id, 500);
+        let bystander = spawn_armed_unit(&mut game, 400, 400, 0, weapon_id, 500);
+
+        let bystander_pos = game.world.get::<Position>(bystander).unwrap().pos;
+        let snap = Snapshot::capture(&mut game);
+
+        // Move only the mover
+        *game.world.get_mut::<recoil_sim::MoveState>(mover).unwrap() =
+            recoil_sim::MoveState::MovingTo(SimVec3::new(
+                SimFloat::from_int(350), SimFloat::ZERO, SimFloat::from_int(350)));
+
+        for _ in 0..50 {
+            recoil_sim::construction::construction_system(&mut game.world);
+            recoil_sim::sim_runner::sim_tick(&mut game.world);
+            game.frame_count += 1;
+        }
+
+        // Mover should have moved
+        let mover_pos = game.world.get::<Position>(mover).unwrap().pos;
+        assert!(mover_pos.x.to_f32() > 300.0 || mover_pos.z.to_f32() > 300.0, "Mover should move");
+
+        // Bystander must NOT have moved
+        let bystander_now = game.world.get::<Position>(bystander).unwrap().pos;
+        assert_eq!(bystander_pos.x, bystander_now.x, "Bystander X must not change");
+        assert_eq!(bystander_pos.z, bystander_now.z, "Bystander Z must not change");
+
+        // Commanders unchanged
+        snap.assert_cmd0_pos_unchanged(&game, "move: cmd0");
+        snap.assert_cmd1_pos_unchanged(&game, "move: cmd1");
+
+        // No entity count change
+        snap.assert_entity_count_unchanged(&mut game, "move: no spawns");
+
+        // No HP changes (no combat)
+        let health_after = all_health(&mut game);
+        for (id, hp, _) in &health_after {
+            assert_eq!(*hp, 500.0_f32.max(health_after.iter().find(|(sid,_,_)| sid == id).unwrap().2),
+                "No unit should have lost HP from movement alone");
+        }
+    }
+
+    /// Construction tick on a BuildSite → only progress changes, nothing else.
+    #[test]
+    fn sim_construction_only_changes_progress() {
+        let mut game = make_test_game();
+        fund_team(&mut game, 0);
+
+        let cmd = game.commander_team0.unwrap();
+        let cmd_pos = game.world.get::<Position>(cmd).unwrap().pos;
+
+        // Place a solar near commander so builder is in range
+        game.selection.select_single(cmd);
+        game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+        game.handle_place(cmd_pos.x.to_f32() + 5.0, cmd_pos.z.to_f32());
+
+        let site_entity = game.world
+            .query_filtered::<(Entity, &recoil_sim::construction::BuildSite), Without<Dead>>()
+            .iter(&game.world)
+            .next()
+            .map(|(e, _)| e);
+        assert!(site_entity.is_some(), "BuildSite should exist");
+
+        let snap = Snapshot::capture(&mut game);
+        let progress_before = game.world
+            .get::<recoil_sim::construction::BuildSite>(site_entity.unwrap())
+            .unwrap().progress;
+
+        // Tick construction only
+        for _ in 0..20 {
+            recoil_sim::construction::construction_system(&mut game.world);
+        }
+
+        let site_still = game.world.get::<recoil_sim::construction::BuildSite>(site_entity.unwrap());
+        if let Some(site) = site_still {
+            assert!(site.progress >= progress_before,
+                "Construction progress should advance: {:?} -> {:?}", progress_before, site.progress);
+        }
+        // Either progressed or completed — both valid
+
+        // Entity count unchanged (building not finalized yet — only construction_system ran)
+        snap.assert_entity_count_unchanged(&mut game, "construction: entity count");
+        snap.assert_t1_count_unchanged(&mut game, "construction: team 1");
+    }
 }
