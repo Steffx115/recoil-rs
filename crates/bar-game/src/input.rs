@@ -54,7 +54,7 @@ pub fn unit_instances(game: &mut GameState) -> Vec<UnitInstance> {
             }
             UnitInstance {
                 position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()],
-                heading: heading.angle.to_f32() + std::f32::consts::PI,
+                heading: -heading.angle.to_f32(),
                 team_color: c,
                 mesh_id: ut.id,
             }
