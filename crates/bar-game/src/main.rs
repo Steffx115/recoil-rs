@@ -173,6 +173,24 @@ fn projectile_instances(game: &mut GameState) -> Vec<ProjectileInstance> {
 // UI data + egui drawing
 // ---------------------------------------------------------------------------
 
+/// Screen-space health bar for a unit.
+struct HealthBarInfo {
+    screen_x: f32,
+    screen_y: f32,
+    hp_frac: f32,
+    build_frac: Option<f32>,
+    is_selected: bool,
+}
+
+/// Minimap dot.
+struct MinimapDot {
+    /// Normalized position 0..1 on the map.
+    nx: f32,
+    nz: f32,
+    team: u8,
+    is_building: bool,
+}
+
 struct UiData {
     metal: f32, metal_storage: f32, metal_income: f32, metal_expense: f32,
     energy: f32, energy_storage: f32, energy_income: f32, energy_expense: f32,
@@ -187,9 +205,34 @@ struct UiData {
     builder_options: Vec<(String, String, u32)>,
     factory_options: Vec<(String, String, u32)>,
     game_over: Option<bar_game_lib::GameOver>,
+    health_bars: Vec<HealthBarInfo>,
+    minimap_dots: Vec<MinimapDot>,
+    /// Camera position on minimap (normalized).
+    cam_nx: f32,
+    cam_nz: f32,
 }
 
-fn gather_ui_data(game: &mut GameState, fps: f32) -> UiData {
+/// Project a world position to screen coordinates.
+fn world_to_screen(vp: &[[f32; 4]; 4], wx: f32, wy: f32, wz: f32, sw: f32, sh: f32) -> Option<(f32, f32)> {
+    let x = vp[0][0]*wx + vp[1][0]*wy + vp[2][0]*wz + vp[3][0];
+    let y = vp[0][1]*wx + vp[1][1]*wy + vp[2][1]*wz + vp[3][1];
+    let w = vp[0][3]*wx + vp[1][3]*wy + vp[2][3]*wz + vp[3][3];
+    if w.abs() < 1e-6 { return None; }
+    let ndc_x = x / w;
+    let ndc_y = y / w;
+    // NDC is -1..1, convert to screen pixels.
+    let sx = (ndc_x * 0.5 + 0.5) * sw;
+    let sy = (1.0 - (ndc_y * 0.5 + 0.5)) * sh;
+    if sx >= -100.0 && sx <= sw + 100.0 && sy >= -100.0 && sy <= sh + 100.0 {
+        Some((sx, sy))
+    } else {
+        None
+    }
+}
+
+const MAP_SIZE: f32 = 1024.0; // world units
+
+fn gather_ui_data(game: &mut GameState, fps: f32, vp: &[[f32; 4]; 4], screen_size: [f32; 2], cam_center: [f32; 2]) -> UiData {
     let (metal, metal_storage, energy, energy_storage) = {
         let eco = game.world.resource::<EconomyState>();
         eco.teams.get(&0).map(|r| (r.metal.to_f32(), r.metal_storage.to_f32(), r.energy.to_f32(), r.energy_storage.to_f32())).unwrap_or_default()
@@ -256,6 +299,45 @@ fn gather_ui_data(game: &mut GameState, fps: f32) -> UiData {
         pt.label(registry)
     });
 
+    // --- Health bars: project world positions to screen ---
+    let selected_set: std::collections::HashSet<Entity> = game.selection.selected.iter().copied().collect();
+    let mut health_bars = Vec::new();
+    for (entity, pos, hp, _al, bs) in game.world
+        .query_filtered::<(Entity, &Position, &Health, &Allegiance, Option<&BuildSite>), Without<Dead>>()
+        .iter(&game.world)
+    {
+        let frac = if hp.max > SimFloat::ZERO { hp.current.to_f32() / hp.max.to_f32() } else { 1.0 };
+        let is_sel = selected_set.contains(&entity);
+        // Only show if damaged, selected, or under construction.
+        if frac >= 1.0 && !is_sel && bs.is_none() { continue; }
+        let wx = pos.pos.x.to_f32();
+        let wz = pos.pos.z.to_f32();
+        if let Some((sx, sy)) = world_to_screen(vp, wx, 5.0, wz, screen_size[0], screen_size[1]) {
+            health_bars.push(HealthBarInfo {
+                screen_x: sx, screen_y: sy - 10.0,
+                hp_frac: frac,
+                build_frac: bs.map(|b| {
+                    if b.total_build_time > SimFloat::ZERO { b.progress.to_f32() / SimFloat::ONE.to_f32() } else { 0.0 }
+                }),
+                is_selected: is_sel,
+            });
+        }
+    }
+
+    // --- Minimap dots ---
+    let mut minimap_dots = Vec::new();
+    for (pos, al, heading) in game.world
+        .query_filtered::<(&Position, &Allegiance, Option<&Heading>), Without<Dead>>()
+        .iter(&game.world)
+    {
+        minimap_dots.push(MinimapDot {
+            nx: pos.pos.x.to_f32() / MAP_SIZE,
+            nz: pos.pos.z.to_f32() / MAP_SIZE,
+            team: al.team,
+            is_building: heading.is_none(),
+        });
+    }
+
     UiData {
         metal, metal_storage, metal_income, metal_expense,
         energy, energy_storage, energy_income, energy_expense,
@@ -266,6 +348,10 @@ fn gather_ui_data(game: &mut GameState, fps: f32) -> UiData {
         factory_queue_len, placement_label,
         builder_options, factory_options,
         game_over: game.game_over.clone(),
+        health_bars,
+        minimap_dots,
+        cam_nx: cam_center[0] / MAP_SIZE,
+        cam_nz: cam_center[1] / MAP_SIZE,
     }
 }
 
@@ -329,8 +415,8 @@ fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData) {
         });
     });
 
-    // --- Left panel ---
-    egui::SidePanel::left("info_panel").default_width(160.0).resizable(false).show(ctx, |ui| {
+    // --- Left panel: selection info + build menu grid ---
+    egui::SidePanel::left("info_panel").default_width(180.0).resizable(false).show(ctx, |ui| {
         ui.heading("Selection");
         ui.separator();
         if let Some(ref name) = ui_data.selected_name {
@@ -341,16 +427,98 @@ fn draw_egui_ui(ctx: &egui::Context, ui_data: &UiData) {
                     else if frac > 0.25 { egui::Color32::from_rgb(220, 180, 40) }
                     else { egui::Color32::from_rgb(220, 50, 50) };
                 ui.label(format!("HP: {:.0} / {:.0}", hp, max_hp));
-                ui.add_sized([140.0, 14.0], egui::ProgressBar::new(frac).fill(color));
+                ui.add_sized([160.0, 14.0], egui::ProgressBar::new(frac).fill(color));
             }
             if ui_data.selected_is_factory && ui_data.factory_queue_len > 0 {
                 ui.separator();
                 ui.label(format!("Queue: {}", ui_data.factory_queue_len));
             }
+
+            // Build menu grid (for builders)
+            let opts = if ui_data.selected_is_builder { &ui_data.builder_options }
+                else if ui_data.selected_is_factory { &ui_data.factory_options }
+                else { &ui_data.builder_options };
+            if !opts.is_empty() {
+                ui.separator();
+                ui.label(egui::RichText::new(if ui_data.selected_is_factory { "Production" } else { "Build" }).strong());
+                egui::Grid::new("build_grid").num_columns(2).spacing([4.0, 4.0]).show(ui, |ui| {
+                    for (i, (key, name, _id)) in opts.iter().enumerate() {
+                        let label = format!("[{}] {}", key, name);
+                        ui.label(egui::RichText::new(label).small());
+                        if (i + 1) % 2 == 0 { ui.end_row(); }
+                    }
+                });
+            }
         } else {
             ui.label("No unit selected");
         }
     });
+
+    // --- Right panel: minimap ---
+    egui::SidePanel::right("minimap_panel").default_width(160.0).resizable(false).show(ctx, |ui| {
+        ui.heading("Map");
+        let size = egui::vec2(150.0, 150.0);
+        let (response, painter) = ui.allocate_painter(size, egui::Sense::click());
+        let rect = response.rect;
+
+        // Background
+        painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(20, 30, 20));
+
+        // Unit dots
+        for dot in &ui_data.minimap_dots {
+            let x = rect.min.x + dot.nx * rect.width();
+            let y = rect.min.y + dot.nz * rect.height();
+            let color = if dot.team == 0 { egui::Color32::from_rgb(60, 120, 255) }
+                else { egui::Color32::from_rgb(255, 60, 60) };
+            let radius = if dot.is_building { 3.0 } else { 2.0 };
+            painter.circle_filled(egui::pos2(x, y), radius, color);
+        }
+
+        // Camera indicator
+        let cx = rect.min.x + ui_data.cam_nx * rect.width();
+        let cy = rect.min.y + ui_data.cam_nz * rect.height();
+        painter.rect_stroke(
+            egui::Rect::from_center_size(egui::pos2(cx, cy), egui::vec2(20.0, 15.0)),
+            0.0,
+            egui::Stroke::new(1.0, egui::Color32::WHITE),
+            egui::StrokeKind::Outside,
+        );
+    });
+
+    // --- Health bars (floating above units) ---
+    for hb in &ui_data.health_bars {
+        let bar_w = 30.0;
+        let bar_h = 4.0;
+        let x = hb.screen_x - bar_w * 0.5;
+        let y = hb.screen_y - bar_h;
+
+        let color = if hb.hp_frac > 0.5 { egui::Color32::from_rgb(60, 200, 60) }
+            else if hb.hp_frac > 0.25 { egui::Color32::from_rgb(220, 180, 40) }
+            else { egui::Color32::from_rgb(220, 50, 50) };
+
+        let outline = if hb.is_selected { egui::Color32::WHITE } else { egui::Color32::from_rgb(40, 40, 40) };
+
+        egui::Area::new(egui::Id::new(("hb", (hb.screen_x * 100.0) as i32, (hb.screen_y * 100.0) as i32)))
+            .fixed_pos(egui::pos2(x, y))
+            .interactable(false)
+            .show(ctx, |ui| {
+                let (_, painter) = ui.allocate_painter(egui::vec2(bar_w, bar_h), egui::Sense::hover());
+                let r = painter.clip_rect();
+                painter.rect_filled(r, 1.0, egui::Color32::from_rgb(30, 30, 30));
+                let filled = egui::Rect::from_min_size(r.min, egui::vec2(bar_w * hb.hp_frac, bar_h));
+                painter.rect_filled(filled, 1.0, color);
+                painter.rect_stroke(r, 1.0, egui::Stroke::new(0.5, outline), egui::StrokeKind::Outside);
+
+                // Build progress bar (below health bar)
+                if let Some(bf) = hb.build_frac {
+                    let (_, bp) = ui.allocate_painter(egui::vec2(bar_w, 2.0), egui::Sense::hover());
+                    let br = bp.clip_rect();
+                    bp.rect_filled(br, 0.0, egui::Color32::from_rgb(20, 20, 20));
+                    let bf_rect = egui::Rect::from_min_size(br.min, egui::vec2(bar_w * bf, 2.0));
+                    bp.rect_filled(bf_rect, 0.0, egui::Color32::from_rgb(80, 80, 220));
+                }
+            });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -654,7 +822,8 @@ impl ApplicationHandler for App {
                     // egui
                     let raw_input = egui_state.take_egui_input(window);
                     let egui_ctx = egui_state.egui_ctx().clone();
-                    let ui_data = gather_ui_data(&mut self.game, fps);
+                    let vp_mat = cam.view_projection();
+                    let ui_data = gather_ui_data(&mut self.game, fps, &vp_mat, self.window_size, self.camera_ctrl.center);
                     let full_output = egui_ctx.run(raw_input, |ctx| draw_egui_ui(ctx, &ui_data));
                     egui_state.handle_platform_output(window, full_output.platform_output);
 
