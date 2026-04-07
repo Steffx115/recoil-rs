@@ -144,14 +144,118 @@ impl IntegrationField {
 // FlowField
 // ---------------------------------------------------------------------------
 
-/// 2-D grid of direction vectors. Each cell stores a normalised `SimVec2`
-/// pointing toward the lowest-cost neighbour (i.e., toward the goal).
+// ---------------------------------------------------------------------------
+// Direction encoding (GPU-friendly u8)
+// ---------------------------------------------------------------------------
+
+/// Encoded direction as `u8` for GPU-buffer-friendly storage.
+///
+/// ## WGSL Compute Shader Layout
+///
+/// The direction field is a contiguous `Vec<u8>` in row-major order:
+/// `directions[y * width + x]` gives the direction for cell `(x, y)`.
+///
+/// Direction encoding (8 cardinal/diagonal + blocked/goal):
+///
+/// ```text
+///   7  0  1
+///   6  X  2
+///   5  4  3
+/// ```
+///
+/// * `0` = North (0, -1)
+/// * `1` = NorthEast (1, -1)
+/// * `2` = East (1, 0)
+/// * `3` = SouthEast (1, 1)
+/// * `4` = South (0, 1)
+/// * `5` = SouthWest (-1, 1)
+/// * `6` = West (-1, 0)
+/// * `7` = NorthWest (-1, -1)
+/// * `8` = Goal (no movement needed)
+/// * `255` = Blocked/unreachable
+pub const DIR_N: u8 = 0;
+pub const DIR_NE: u8 = 1;
+pub const DIR_E: u8 = 2;
+pub const DIR_SE: u8 = 3;
+pub const DIR_S: u8 = 4;
+pub const DIR_SW: u8 = 5;
+pub const DIR_W: u8 = 6;
+pub const DIR_NW: u8 = 7;
+pub const DIR_GOAL: u8 = 8;
+pub const DIR_BLOCKED: u8 = 255;
+
+/// Convert a (dx, dy) offset to a direction `u8`.
+fn offset_to_dir(dx: i32, dy: i32) -> u8 {
+    match (dx, dy) {
+        (0, -1) => DIR_N,
+        (1, -1) => DIR_NE,
+        (1, 0) => DIR_E,
+        (1, 1) => DIR_SE,
+        (0, 1) => DIR_S,
+        (-1, 1) => DIR_SW,
+        (-1, 0) => DIR_W,
+        (-1, -1) => DIR_NW,
+        _ => DIR_BLOCKED,
+    }
+}
+
+/// Convert a direction `u8` to a (dx, dy) offset. Returns `(0, 0)` for
+/// goal/blocked.
+fn dir_to_offset(dir: u8) -> (i32, i32) {
+    match dir {
+        DIR_N => (0, -1),
+        DIR_NE => (1, -1),
+        DIR_E => (1, 0),
+        DIR_SE => (1, 1),
+        DIR_S => (0, 1),
+        DIR_SW => (-1, 1),
+        DIR_W => (-1, 0),
+        DIR_NW => (-1, -1),
+        _ => (0, 0),
+    }
+}
+
+/// Convert a direction `u8` to a normalised `SimVec2`.
+fn dir_to_vec(dir: u8) -> SimVec2 {
+    let (dx, dy) = dir_to_offset(dir);
+    if dx == 0 && dy == 0 {
+        return SimVec2::ZERO;
+    }
+    SimVec2::new(SimFloat::from_int(dx), SimFloat::from_int(dy)).normalize()
+}
+
+// ---------------------------------------------------------------------------
+// FlowField
+// ---------------------------------------------------------------------------
+
+/// 2-D grid of direction vectors stored as `u8` for GPU-buffer compatibility.
+///
+/// Each cell encodes the direction toward the lowest-cost neighbour using the
+/// 8-direction + goal + blocked scheme documented above. A companion
+/// `SimVec2`-based direction cache is kept for CPU-side sampling without
+/// repeated decode overhead.
+///
+/// ## GPU Buffer Layout
+///
+/// * **Cost field** ([`IntegrationField`]): contiguous `Vec<u32>`, row-major,
+///   `width * height` elements. Upload via `cost_field_as_bytes()`.
+/// * **Direction field**: contiguous `Vec<u8>`, row-major, `width * height`
+///   elements. Upload via `direction_field_as_bytes()`.
+///
+/// Both fields use the same `(y * width + x)` addressing. A WGSL compute
+/// shader can read these as `storage` buffers and perform flow-field queries
+/// in parallel for thousands of units.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlowField {
     width: usize,
     height: usize,
-    /// Row-major directions.
+    /// Row-major encoded directions (u8). GPU-buffer-friendly.
+    direction_bytes: Vec<u8>,
+    /// Row-major decoded directions (SimVec2). CPU-side cache.
     directions: Vec<SimVec2>,
+    /// Row-major cost-to-goal field stored as u32 (fixed-point raw >> 16).
+    /// GPU-friendly contiguous layout.
+    cost_field: Vec<u32>,
 }
 
 impl FlowField {
@@ -159,18 +263,47 @@ impl FlowField {
     fn from_integration(integration: &IntegrationField) -> Self {
         let w = integration.width;
         let h = integration.height;
+        let mut direction_bytes = vec![DIR_BLOCKED; w * h];
         let mut directions = vec![SimVec2::ZERO; w * h];
+        let mut cost_field = Vec::with_capacity(w * h);
+
+        // Build cost field (u32). We map SimFloat raw i64 to u32:
+        // SimFloat::MAX → u32::MAX (unreachable), else truncate to u32.
+        for y in 0..h {
+            for x in 0..w {
+                let cost = integration.get(x, y);
+                let val = if cost == SimFloat::MAX {
+                    u32::MAX
+                } else {
+                    // SimFloat stores as i64 with 32 fractional bits.
+                    // Shift right 16 to fit in u32 while preserving relative order.
+                    let raw = cost.raw();
+                    if raw < 0 {
+                        0u32
+                    } else {
+                        (raw >> 16).min(u32::MAX as i64 - 1) as u32
+                    }
+                };
+                cost_field.push(val);
+            }
+        }
 
         for y in 0..h {
             for x in 0..w {
-                // Unreachable cells and the goal cell itself keep ZERO direction.
                 let cost = integration.get(x, y);
-                if cost == SimFloat::MAX || cost == SimFloat::ZERO {
+                if cost == SimFloat::MAX {
+                    // Unreachable — keep DIR_BLOCKED.
+                    continue;
+                }
+                if cost == SimFloat::ZERO {
+                    // Goal cell.
+                    direction_bytes[y * w + x] = DIR_GOAL;
                     continue;
                 }
 
                 let mut best_cost = SimFloat::MAX;
-                let mut best_dir = SimVec2::ZERO;
+                let mut best_dx: i32 = 0;
+                let mut best_dy: i32 = 0;
 
                 for &(dx, dy, _diag) in &NEIGHBORS {
                     let nx = x as i32 + dx;
@@ -181,21 +314,26 @@ impl FlowField {
                     let nx = nx as usize;
                     let ny = ny as usize;
 
-                    let cost = integration.get(nx, ny);
-                    if cost < best_cost {
-                        best_cost = cost;
-                        best_dir = SimVec2::new(SimFloat::from_int(dx), SimFloat::from_int(dy));
+                    let ncost = integration.get(nx, ny);
+                    if ncost < best_cost {
+                        best_cost = ncost;
+                        best_dx = dx;
+                        best_dy = dy;
                     }
                 }
 
-                directions[y * w + x] = best_dir.normalize();
+                let dir = offset_to_dir(best_dx, best_dy);
+                direction_bytes[y * w + x] = dir;
+                directions[y * w + x] = dir_to_vec(dir);
             }
         }
 
         Self {
             width: w,
             height: h,
+            direction_bytes,
             directions,
+            cost_field,
         }
     }
 
@@ -218,6 +356,23 @@ impl FlowField {
         self.directions[y * self.width + x]
     }
 
+    /// Sample the raw direction byte at a world-space position.
+    ///
+    /// Returns `DIR_BLOCKED` for out-of-bounds or unreachable cells.
+    pub fn sample_dir(&self, pos: SimVec2) -> u8 {
+        let x = pos.x.to_f64() as i64;
+        let y = pos.y.to_f64() as i64;
+        if x < 0 || y < 0 {
+            return DIR_BLOCKED;
+        }
+        let x = x as usize;
+        let y = y as usize;
+        if x >= self.width || y >= self.height {
+            return DIR_BLOCKED;
+        }
+        self.direction_bytes[y * self.width + x]
+    }
+
     /// Grid width.
     #[inline]
     pub fn width(&self) -> usize {
@@ -228,6 +383,64 @@ impl FlowField {
     #[inline]
     pub fn height(&self) -> usize {
         self.height
+    }
+
+    /// Return the direction field as a byte slice for GPU buffer upload.
+    ///
+    /// Layout: row-major `Vec<u8>`, `width * height` elements.
+    /// Each byte is a direction code (see module-level direction constants).
+    pub fn direction_field_as_bytes(&self) -> &[u8] {
+        &self.direction_bytes
+    }
+
+    /// Return the cost field as a byte slice for GPU buffer upload.
+    ///
+    /// Layout: row-major `Vec<u32>`, `width * height` elements, encoded as
+    /// little-endian bytes (`4 * width * height` bytes total).
+    pub fn cost_field_as_bytes(&self) -> &[u8] {
+        // SAFETY: Vec<u32> is contiguous and aligned; we just reinterpret as bytes.
+        // This is safe because u32 has no padding and we use the slice's lifetime.
+        let ptr = self.cost_field.as_ptr() as *const u8;
+        let len = self.cost_field.len() * std::mem::size_of::<u32>();
+        // SAFETY: cost_field is a valid contiguous allocation; the returned
+        // slice borrows `self` so the data cannot be freed or moved.
+        unsafe { std::slice::from_raw_parts(ptr, len) }
+    }
+
+    /// Extract a path by following the flow field from `start` to the goal.
+    ///
+    /// Returns cell-centre `SimVec2` positions from start to goal (inclusive).
+    /// Stops early if the path exceeds `max_steps` to prevent infinite loops
+    /// on malformed fields.
+    pub fn extract_path(&self, start: SimVec2, max_steps: usize) -> Vec<SimVec2> {
+        let mut path = Vec::new();
+        let mut cx = start.x.to_f64() as i64;
+        let mut cy = start.y.to_f64() as i64;
+
+        for _ in 0..max_steps {
+            if cx < 0 || cy < 0 || cx as usize >= self.width || cy as usize >= self.height {
+                break;
+            }
+            let ux = cx as usize;
+            let uy = cy as usize;
+
+            let dir = self.direction_bytes[uy * self.width + ux];
+            // Add cell centre to path.
+            path.push(SimVec2::new(
+                SimFloat::from_int(ux as i32) + SimFloat::HALF,
+                SimFloat::from_int(uy as i32) + SimFloat::HALF,
+            ));
+
+            if dir == DIR_GOAL || dir == DIR_BLOCKED {
+                break;
+            }
+
+            let (dx, dy) = dir_to_offset(dir);
+            cx += dx as i64;
+            cy += dy as i64;
+        }
+
+        path
     }
 }
 
@@ -452,5 +665,119 @@ mod tests {
             SimVec2::ZERO,
             "unreachable cell should have zero direction"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // 6. GPU buffer layout: direction bytes have correct size
+    // ------------------------------------------------------------------
+    #[test]
+    fn direction_field_bytes_correct_size() {
+        let grid = open_grid(8, 8);
+        let field = compute_flow_field(&grid, pos(4, 4));
+        let bytes = field.direction_field_as_bytes();
+        assert_eq!(bytes.len(), 8 * 8, "direction bytes should be width*height");
+    }
+
+    // ------------------------------------------------------------------
+    // 7. GPU buffer layout: cost field bytes have correct size
+    // ------------------------------------------------------------------
+    #[test]
+    fn cost_field_bytes_correct_size() {
+        let grid = open_grid(8, 8);
+        let field = compute_flow_field(&grid, pos(4, 4));
+        let bytes = field.cost_field_as_bytes();
+        assert_eq!(
+            bytes.len(),
+            8 * 8 * 4,
+            "cost field bytes should be width*height*sizeof(u32)"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // 8. Direction encoding: goal cell has DIR_GOAL
+    // ------------------------------------------------------------------
+    #[test]
+    fn goal_cell_has_dir_goal() {
+        let grid = open_grid(8, 8);
+        let field = compute_flow_field(&grid, pos(4, 4));
+        let dir = field.sample_dir(pos(4, 4));
+        assert_eq!(dir, DIR_GOAL, "goal cell should have DIR_GOAL");
+    }
+
+    // ------------------------------------------------------------------
+    // 9. Direction encoding: blocked cells have DIR_BLOCKED
+    // ------------------------------------------------------------------
+    #[test]
+    fn unreachable_cell_has_dir_blocked() {
+        let mut grid = open_grid(5, 5);
+        // Surround (2,2) with impassable cells.
+        for dx in -1i32..=1 {
+            for dy in -1i32..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                grid.set((2 + dx) as usize, (2 + dy) as usize, SimFloat::ZERO);
+            }
+        }
+        let field = compute_flow_field(&grid, pos(2, 2));
+        // Cell (0,0) is cut off.
+        assert_eq!(
+            field.sample_dir(pos(0, 0)),
+            DIR_BLOCKED,
+            "unreachable cell should have DIR_BLOCKED"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // 10. Extract path follows field to goal
+    // ------------------------------------------------------------------
+    #[test]
+    fn extract_path_reaches_goal() {
+        let grid = open_grid(10, 10);
+        let goal = pos(9, 9);
+        let field = compute_flow_field(&grid, goal);
+        let path = field.extract_path(pos(0, 0), 100);
+        assert!(path.len() >= 2, "path should have multiple steps");
+        // Last cell should be (9, 9).
+        let last = path.last().unwrap();
+        let lx = last.x.to_f64() as usize;
+        let ly = last.y.to_f64() as usize;
+        assert_eq!((lx, ly), (9, 9), "path should end at goal");
+    }
+
+    // ------------------------------------------------------------------
+    // 11. Extract path around obstacle
+    // ------------------------------------------------------------------
+    #[test]
+    fn extract_path_around_obstacle() {
+        let mut grid = open_grid(10, 10);
+        for y in 0..8 {
+            grid.set(5, y, SimFloat::ZERO);
+        }
+        let goal = pos(9, 0);
+        let field = compute_flow_field(&grid, goal);
+        let path = field.extract_path(pos(0, 0), 200);
+        assert!(path.len() >= 2, "path should exist");
+        // No waypoint should be on the wall.
+        for p in &path {
+            let gx = p.x.to_f64() as usize;
+            let gy = p.y.to_f64() as usize;
+            assert!(
+                grid.is_passable(gx, gy),
+                "path stepped on wall at ({gx},{gy})"
+            );
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 12. Direction roundtrip: offset → dir → offset
+    // ------------------------------------------------------------------
+    #[test]
+    fn direction_roundtrip() {
+        for &(dx, dy, _) in &NEIGHBORS {
+            let dir = offset_to_dir(dx, dy);
+            let (rx, ry) = dir_to_offset(dir);
+            assert_eq!((dx, dy), (rx, ry), "roundtrip failed for ({dx},{dy})");
+        }
     }
 }

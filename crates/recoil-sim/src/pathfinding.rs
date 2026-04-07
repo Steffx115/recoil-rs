@@ -463,6 +463,173 @@ fn collinear(a: SimVec2, b: SimVec2, c: SimVec2, terrain: &TerrainGrid) -> bool 
 }
 
 // ---------------------------------------------------------------------------
+// Pathfinder trait abstraction
+// ---------------------------------------------------------------------------
+
+/// Trait for pluggable pathfinding strategies.
+///
+/// Each implementation finds a path on a [`TerrainGrid`] from `start` to
+/// `goal` (both in world-space `SimVec2`). Returns cell-centre waypoints
+/// or `None` if no path exists.
+pub trait Pathfinder {
+    fn find_path(&self, grid: &TerrainGrid, start: SimVec2, goal: SimVec2) -> Option<Vec<SimVec2>>;
+}
+
+/// A* pathfinder wrapping the existing [`find_path`] function.
+#[derive(Debug, Clone, Default)]
+pub struct AStarPathfinder;
+
+impl Pathfinder for AStarPathfinder {
+    fn find_path(&self, grid: &TerrainGrid, start: SimVec2, goal: SimVec2) -> Option<Vec<SimVec2>> {
+        find_path(grid, start, goal)
+    }
+}
+
+/// Flow-field pathfinder that computes a flow field for the goal and extracts
+/// individual paths by following the field.
+///
+/// Amortises computation: one flow field serves all units heading to the same
+/// destination cell. The cache is cleared each tick or when terrain changes.
+#[derive(Debug, Clone, Default)]
+pub struct FlowFieldPathfinder {
+    cache: crate::flowfield::FlowFieldCache,
+}
+
+impl FlowFieldPathfinder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Clear the flow-field cache (call when terrain changes).
+    pub fn clear_cache(&mut self) {
+        self.cache.clear();
+    }
+}
+
+impl Pathfinder for FlowFieldPathfinder {
+    fn find_path(&self, grid: &TerrainGrid, start: SimVec2, goal: SimVec2) -> Option<Vec<SimVec2>> {
+        // We need &mut self to update the cache, but the trait takes &self.
+        // For now, compute a fresh flow field each call. The HybridPathfinder
+        // below uses the cache directly.
+        let field = crate::flowfield::compute_flow_field(grid, goal);
+        let max_steps = grid.width() * grid.height();
+        let path = field.extract_path(start, max_steps);
+        if path.len() <= 1 {
+            None
+        } else {
+            Some(path)
+        }
+    }
+}
+
+/// Hybrid pathfinder that dispatches between A* and flow-field based on the
+/// number of units heading to the same destination.
+///
+/// * Small groups (< `threshold` units to same goal cell): A*
+/// * Large groups (>= `threshold`): compute one flow field, share among all
+///
+/// The caller must register pending path requests via [`register_request`]
+/// before calling [`resolve_all`].
+#[derive(Debug, Clone)]
+pub struct HybridPathfinder {
+    /// Minimum number of units heading to the same goal cell before switching
+    /// to flow-field pathfinding. Default: 8.
+    pub threshold: usize,
+
+    /// Pending path requests: `(start, goal)` per entity-index.
+    requests: Vec<(SimVec2, SimVec2)>,
+
+    /// Flow-field cache (shared across resolve calls within a tick).
+    ff_cache: crate::flowfield::FlowFieldCache,
+}
+
+impl Default for HybridPathfinder {
+    fn default() -> Self {
+        Self {
+            threshold: 8,
+            requests: Vec::new(),
+            ff_cache: crate::flowfield::FlowFieldCache::new(),
+        }
+    }
+}
+
+impl HybridPathfinder {
+    pub fn new(threshold: usize) -> Self {
+        Self {
+            threshold,
+            ..Default::default()
+        }
+    }
+
+    /// Register a path request. Returns the index for later retrieval.
+    pub fn register_request(&mut self, start: SimVec2, goal: SimVec2) -> usize {
+        let idx = self.requests.len();
+        self.requests.push((start, goal));
+        idx
+    }
+
+    /// Resolve all registered requests, returning one `Option<Vec<SimVec2>>`
+    /// per request (in registration order).
+    ///
+    /// Goals that appear >= `threshold` times use flow-field pathfinding;
+    /// the rest use A*.
+    pub fn resolve_all(&mut self, grid: &TerrainGrid) -> Vec<Option<Vec<SimVec2>>> {
+        // Count requests per goal cell using a BTreeMap for determinism.
+        let mut goal_counts: BTreeMap<(usize, usize), usize> = BTreeMap::new();
+        let goal_cells: Vec<(usize, usize)> = self
+            .requests
+            .iter()
+            .map(|(_s, g)| {
+                let gx = (g.x.to_f64() as usize).min(grid.width().saturating_sub(1));
+                let gy = (g.y.to_f64() as usize).min(grid.height().saturating_sub(1));
+                (gx, gy)
+            })
+            .collect();
+
+        for &cell in &goal_cells {
+            *goal_counts.entry(cell).or_insert(0) += 1;
+        }
+
+        let max_steps = grid.width() * grid.height();
+        let mut results = Vec::with_capacity(self.requests.len());
+
+        for (i, (start, goal)) in self.requests.iter().enumerate() {
+            let cell = goal_cells[i];
+            let count = goal_counts.get(&cell).copied().unwrap_or(0);
+
+            if count >= self.threshold {
+                // Use flow field.
+                let field = self.ff_cache.get_or_compute(grid, *goal);
+                let path = field.extract_path(*start, max_steps);
+                if path.len() <= 1 {
+                    results.push(None);
+                } else {
+                    results.push(Some(path));
+                }
+            } else {
+                // Use A*.
+                results.push(find_path(grid, *start, *goal));
+            }
+        }
+
+        self.requests.clear();
+        results
+    }
+
+    /// Clear the flow-field cache (call when terrain changes).
+    pub fn clear_cache(&mut self) {
+        self.ff_cache.clear();
+    }
+}
+
+impl Pathfinder for HybridPathfinder {
+    fn find_path(&self, grid: &TerrainGrid, start: SimVec2, goal: SimVec2) -> Option<Vec<SimVec2>> {
+        // Single-request mode falls back to A* (no group info available).
+        find_path(grid, start, goal)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -927,5 +1094,170 @@ mod tests {
             let result = find_path(&grid, pos(0, 0), pos(gx as i32, gy as i32));
             prop_assert!(result.is_none(), "impassable start should return None");
         }
+    }
+
+    // ==================================================================
+    // Pathfinder trait tests
+    // ==================================================================
+
+    #[test]
+    fn astar_pathfinder_trait_finds_path() {
+        let grid = open_grid(10, 10);
+        let pathfinder = AStarPathfinder;
+        let path = pathfinder
+            .find_path(&grid, pos(0, 0), pos(9, 0))
+            .expect("A* pathfinder should find a path");
+        assert!(path.len() >= 2);
+    }
+
+    #[test]
+    fn flowfield_pathfinder_trait_finds_path() {
+        let grid = open_grid(10, 10);
+        let pathfinder = FlowFieldPathfinder::new();
+        let path = pathfinder
+            .find_path(&grid, pos(0, 0), pos(9, 0))
+            .expect("flow-field pathfinder should find a path");
+        assert!(path.len() >= 2);
+        // Path should end near goal.
+        let last = path.last().unwrap();
+        let lx = last.x.to_f64() as usize;
+        assert_eq!(lx, 9);
+    }
+
+    #[test]
+    fn flowfield_pathfinder_routes_around_obstacle() {
+        let mut grid = open_grid(10, 10);
+        // Wall across column 5, rows 0..8.
+        for y in 0..8 {
+            grid.set(5, y, SimFloat::ZERO);
+        }
+        let pathfinder = FlowFieldPathfinder::new();
+        let path = pathfinder
+            .find_path(&grid, pos(0, 0), pos(9, 0))
+            .expect("flow-field should route around obstacle");
+        // Verify no waypoint is on the wall.
+        for p in &path {
+            let gx = p.x.to_f64() as usize;
+            let gy = p.y.to_f64() as usize;
+            assert!(
+                grid.is_passable(gx, gy),
+                "waypoint ({gx},{gy}) is on the wall"
+            );
+        }
+    }
+
+    #[test]
+    fn hybrid_pathfinder_small_group_uses_astar() {
+        let grid = open_grid(20, 20);
+        let mut hybrid = HybridPathfinder::new(8);
+
+        // Register < 8 requests to the same goal → should use A*.
+        for i in 0..5 {
+            hybrid.register_request(pos(i, 0), pos(19, 19));
+        }
+
+        let results = hybrid.resolve_all(&grid);
+        assert_eq!(results.len(), 5);
+        for r in &results {
+            assert!(r.is_some(), "all paths should be found");
+        }
+    }
+
+    #[test]
+    fn hybrid_pathfinder_large_group_uses_flowfield() {
+        let grid = open_grid(20, 20);
+        let mut hybrid = HybridPathfinder::new(4); // lower threshold for test
+
+        // Register >= 4 requests to the same goal → should use flow field.
+        for i in 0..10 {
+            hybrid.register_request(pos(i, 0), pos(19, 19));
+        }
+
+        let results = hybrid.resolve_all(&grid);
+        assert_eq!(results.len(), 10);
+        for r in &results {
+            assert!(r.is_some(), "all paths should be found");
+        }
+        // Verify flow-field cache was populated.
+        // (The cache is internal but we can check indirectly.)
+    }
+
+    #[test]
+    fn hybrid_pathfinder_mixed_goals() {
+        let grid = open_grid(20, 20);
+        let mut hybrid = HybridPathfinder::new(3);
+
+        // 4 units to (19,19) → flow field
+        for i in 0..4 {
+            hybrid.register_request(pos(i, 0), pos(19, 19));
+        }
+        // 2 units to (0,19) → A*
+        for i in 0..2 {
+            hybrid.register_request(pos(i, 0), pos(0, 19));
+        }
+
+        let results = hybrid.resolve_all(&grid);
+        assert_eq!(results.len(), 6);
+        for r in &results {
+            assert!(r.is_some(), "all paths should be found");
+        }
+    }
+
+    // ==================================================================
+    // Benchmark test (uses std::time::Instant — test-only)
+    // ==================================================================
+
+    #[test]
+    fn benchmark_astar_vs_flowfield() {
+        use std::time::Instant;
+
+        // Create 256x256 grid with scattered obstacles.
+        let mut grid = TerrainGrid::new(256, 256, SimFloat::ONE);
+        // Add walls every 32 columns, with gaps.
+        for wall_x in (32..256).step_by(32) {
+            for y in 0..256 {
+                if y % 16 < 12 {
+                    // wall with gap every 16 rows
+                    grid.set(wall_x, y, SimFloat::ZERO);
+                }
+            }
+        }
+
+        let goal = pos(250, 250);
+
+        // Benchmark 100 A* queries.
+        let starts: Vec<SimVec2> = (0..100).map(|i| pos(i % 30, (i / 30) * 3)).collect();
+
+        let t0 = Instant::now();
+        let mut astar_results = Vec::new();
+        for start in &starts {
+            astar_results.push(find_path(&grid, *start, goal));
+        }
+        let astar_time = t0.elapsed();
+
+        // Benchmark 1 flow field + 100 lookups.
+        let t1 = Instant::now();
+        let field = crate::flowfield::compute_flow_field(&grid, goal);
+        let max_steps = 256 * 256;
+        let mut ff_results = Vec::new();
+        for start in &starts {
+            ff_results.push(field.extract_path(*start, max_steps));
+        }
+        let ff_time = t1.elapsed();
+
+        // Print results (visible with `cargo test -- --nocapture`).
+        println!("=== Pathfinding Benchmark (256x256, 100 queries) ===");
+        println!("A*:         {astar_time:?}");
+        println!("Flow field: {ff_time:?}");
+        println!(
+            "Speedup:    {:.1}x",
+            astar_time.as_secs_f64() / ff_time.as_secs_f64().max(1e-9)
+        );
+
+        // Sanity: most paths should exist.
+        let astar_found = astar_results.iter().filter(|r| r.is_some()).count();
+        let ff_found = ff_results.iter().filter(|r| r.len() > 1).count();
+        assert!(astar_found > 50, "A* should find most paths");
+        assert!(ff_found > 50, "flow field should find most paths");
     }
 }

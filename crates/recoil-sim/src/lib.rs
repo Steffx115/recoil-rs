@@ -32,6 +32,7 @@ pub use components::{
     MoveState, MovementParams, Position, SightRange, SimId, Target, Transport, UnitType, Velocity,
 };
 pub use fog::{fog_system, is_entity_visible, CellVisibility, FogOfWar};
+pub use pathfinding::{AStarPathfinder, FlowFieldPathfinder, HybridPathfinder, Pathfinder};
 pub use selection::{screen_to_ground_raw, SelectionState};
 pub use spatial::SpatialGrid;
 pub use targeting::{FireEvent, FireEventQueue, WeaponRegistry};
