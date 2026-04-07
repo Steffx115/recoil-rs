@@ -467,6 +467,112 @@ mod tests {
     use recoil_math::SimVec3;
     use recoil_sim::economy::EconomyState;
 
+    // -------------------------------------------------------------------
+    // Snapshot helper for negative assertions
+    // -------------------------------------------------------------------
+
+    /// Lightweight snapshot of game state for before/after comparison.
+    #[allow(dead_code)]
+    struct Snapshot {
+        entity_count: usize,
+        t0_count: usize,
+        t1_count: usize,
+        building_count: usize,
+        cmd0_pos: Option<(f32, f32)>,
+        cmd1_pos: Option<(f32, f32)>,
+        cmd0_hp: Option<f32>,
+        cmd1_hp: Option<f32>,
+        metal_t0: f32,
+        energy_t0: f32,
+    }
+
+    #[allow(dead_code)]
+    impl Snapshot {
+        fn capture(game: &mut GameState) -> Self {
+            let entity_count = game.world
+                .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+                .iter(&game.world).count();
+            let t0_count = game.world
+                .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+                .iter(&game.world).filter(|a| a.team == 0).count();
+            let t1_count = game.world
+                .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+                .iter(&game.world).filter(|a| a.team == 1).count();
+            let building_count = game.world
+                .query_filtered::<&recoil_sim::construction::BuildSite, Without<Dead>>()
+                .iter(&game.world).count();
+            let cmd0_pos = game.commander_team0
+                .and_then(|e| game.world.get::<Position>(e))
+                .map(|p| (p.pos.x.to_f32(), p.pos.z.to_f32()));
+            let cmd1_pos = game.commander_team1
+                .and_then(|e| game.world.get::<Position>(e))
+                .map(|p| (p.pos.x.to_f32(), p.pos.z.to_f32()));
+            let cmd0_hp = game.commander_team0
+                .and_then(|e| game.world.get::<Health>(e))
+                .map(|h| h.current.to_f32());
+            let cmd1_hp = game.commander_team1
+                .and_then(|e| game.world.get::<Health>(e))
+                .map(|h| h.current.to_f32());
+            let (metal_t0, energy_t0) = {
+                let eco = game.world.resource::<EconomyState>();
+                eco.teams.get(&0)
+                    .map(|r| (r.metal.to_f32(), r.energy.to_f32()))
+                    .unwrap_or((0.0, 0.0))
+            };
+            Self { entity_count, t0_count, t1_count, building_count,
+                cmd0_pos, cmd1_pos, cmd0_hp, cmd1_hp, metal_t0, energy_t0 }
+        }
+
+        fn assert_entity_count_unchanged(&self, game: &mut GameState, msg: &str) {
+            let now = game.world
+                .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+                .iter(&game.world).count();
+            assert_eq!(self.entity_count, now, "Entity count changed unexpectedly: {}", msg);
+        }
+
+        fn assert_t0_count_unchanged(&self, game: &mut GameState, msg: &str) {
+            let now = game.world
+                .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+                .iter(&game.world).filter(|a| a.team == 0).count();
+            assert_eq!(self.t0_count, now, "Team 0 count changed: {}", msg);
+        }
+
+        fn assert_t1_count_unchanged(&self, game: &mut GameState, msg: &str) {
+            let now = game.world
+                .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+                .iter(&game.world).filter(|a| a.team == 1).count();
+            assert_eq!(self.t1_count, now, "Team 1 count changed: {}", msg);
+        }
+
+        fn assert_cmd0_pos_unchanged(&self, game: &GameState, msg: &str) {
+            let now = game.commander_team0
+                .and_then(|e| game.world.get::<Position>(e))
+                .map(|p| (p.pos.x.to_f32(), p.pos.z.to_f32()));
+            assert_eq!(self.cmd0_pos, now, "Cmd0 position changed: {}", msg);
+        }
+
+        fn assert_cmd1_pos_unchanged(&self, game: &GameState, msg: &str) {
+            let now = game.commander_team1
+                .and_then(|e| game.world.get::<Position>(e))
+                .map(|p| (p.pos.x.to_f32(), p.pos.z.to_f32()));
+            assert_eq!(self.cmd1_pos, now, "Cmd1 position changed: {}", msg);
+        }
+
+        fn assert_no_new_buildings(&self, game: &mut GameState, msg: &str) {
+            let now = game.world
+                .query_filtered::<&recoil_sim::construction::BuildSite, Without<Dead>>()
+                .iter(&game.world).count();
+            assert_eq!(self.building_count, now, "BuildSite count changed: {}", msg);
+        }
+
+        fn assert_cmd0_hp_unchanged(&self, game: &GameState, msg: &str) {
+            let now = game.commander_team0
+                .and_then(|e| game.world.get::<Health>(e))
+                .map(|h| h.current.to_f32());
+            assert_eq!(self.cmd0_hp, now, "Cmd0 HP changed: {}", msg);
+        }
+    }
+
     /// Helper: create a GameState with fallback defs (no BAR repo needed).
     fn make_test_game() -> GameState {
         let bar_units = Path::new("nonexistent/units");
@@ -4243,5 +4349,207 @@ mod tests {
             // For now, just verify no NaN/panic.
             assert!(!drift.to_f32().is_nan(), "Building position must not be NaN");
         }
+    }
+
+    // ===================================================================
+    // SNAPSHOT-VERIFIED ACTION SEQUENCES
+    // Each action checks that ONLY the expected state changed.
+    // ===================================================================
+
+    /// Select → verify nothing else changed.
+    #[test]
+    fn verified_select_only_changes_selection() {
+        let mut game = make_test_game();
+        let snap = Snapshot::capture(&mut game);
+
+        let cmd = game.commander_team0.unwrap();
+        let pos = game.world.get::<Position>(cmd).unwrap().pos;
+        game.click_select(pos.x.to_f32(), pos.z.to_f32(), 20.0);
+
+        // Selection changed — but nothing else should have
+        assert_eq!(game.selected(), Some(cmd));
+        snap.assert_entity_count_unchanged(&mut game, "select must not spawn/despawn");
+        snap.assert_cmd0_pos_unchanged(&game, "select must not move commander");
+        snap.assert_cmd1_pos_unchanged(&game, "select must not move enemy");
+        snap.assert_no_new_buildings(&mut game, "select must not create buildings");
+        snap.assert_cmd0_hp_unchanged(&game, "select must not damage commander");
+    }
+
+    /// Move command → only the moved unit's position changes.
+    #[test]
+    fn verified_move_only_affects_target() {
+        let mut game = make_test_game();
+
+        let cmd0 = game.commander_team0.unwrap();
+        game.selection.select_single(cmd0);
+        game.click_move(300.0, 300.0);
+
+        let snap = Snapshot::capture(&mut game);
+
+        // Run sim without AI (direct systems)
+        for _ in 0..50 {
+            recoil_sim::construction::construction_system(&mut game.world);
+            recoil_sim::sim_runner::sim_tick(&mut game.world);
+            game.frame_count += 1;
+        }
+
+        // Commander 0 should have moved
+        let new_pos = game.world.get::<Position>(cmd0).unwrap().pos;
+        assert!(new_pos != snap.cmd0_pos.map(|(x, z)| SimVec3::new(
+            SimFloat::from_f32(x), SimFloat::ZERO, SimFloat::from_f32(z)
+        )).unwrap_or(SimVec3::ZERO), "Commander should have moved");
+
+        // Enemy commander must NOT have moved (no AI running)
+        snap.assert_cmd1_pos_unchanged(&game, "enemy must not move without AI");
+
+        // No new entities should have spawned
+        snap.assert_entity_count_unchanged(&mut game, "move must not spawn entities");
+        snap.assert_no_new_buildings(&mut game, "move must not create buildings");
+    }
+
+    /// Place building → only one BuildSite added, nothing else changes.
+    #[test]
+    fn verified_place_building_only_adds_one() {
+        let mut game = make_test_game();
+        fund_team(&mut game, 0);
+
+        let cmd = game.commander_team0.unwrap();
+        game.selection.select_single(cmd);
+        let snap = Snapshot::capture(&mut game);
+
+        game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+        let pos = game.world.get::<Position>(cmd).unwrap().pos;
+        game.handle_place(pos.x.to_f32() + 10.0, pos.z.to_f32());
+
+        // Exactly one new entity (the BuildSite)
+        let new_count = game.world
+            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .iter(&game.world).count();
+        assert_eq!(new_count, snap.entity_count + 1, "Place should add exactly 1 entity");
+
+        // BuildSite count increased by 1
+        let new_sites = game.world
+            .query_filtered::<&recoil_sim::construction::BuildSite, Without<Dead>>()
+            .iter(&game.world).count();
+        assert_eq!(new_sites, snap.building_count + 1, "Should have exactly 1 new BuildSite");
+
+        // Enemy unchanged
+        snap.assert_cmd1_pos_unchanged(&game, "placing building must not affect enemy");
+        snap.assert_t1_count_unchanged(&mut game, "placing building must not affect team 1");
+
+        // Placement mode consumed
+        assert!(game.placement_mode.is_none(), "Placement mode should be cleared");
+    }
+
+    /// Queue unit in factory → only queue changes, no immediate spawn.
+    #[test]
+    fn verified_queue_unit_no_immediate_spawn() {
+        use recoil_sim::factory::BuildQueue;
+
+        let mut game = make_test_game();
+        fund_team(&mut game, 0);
+
+        let factory = game.world.spawn((
+            Position { pos: SimVec3::ZERO },
+            BuildQueue { queue: std::collections::VecDeque::new(), current_progress: SimFloat::ZERO,
+                rally_point: SimVec3::ZERO, repeat: false },
+            recoil_sim::Allegiance { team: 0 },
+            recoil_sim::UnitType { id: building::BUILDING_FACTORY_ID },
+            Health { current: SimFloat::from_int(500), max: SimFloat::from_int(500) },
+        )).id();
+
+        let snap = Snapshot::capture(&mut game);
+        game.queue_unit_in_factory(factory, 12345);
+
+        // Queue should have 1 item
+        let bq = game.world.get::<BuildQueue>(factory).unwrap();
+        assert_eq!(bq.queue.len(), 1);
+
+        // But NO new entity should have spawned yet
+        snap.assert_entity_count_unchanged(&mut game, "queuing must not spawn immediately");
+        snap.assert_cmd0_pos_unchanged(&game, "queuing must not move commander");
+        snap.assert_cmd1_pos_unchanged(&game, "queuing must not affect enemy");
+    }
+
+    /// Tick with paused game → absolutely nothing changes.
+    #[test]
+    fn verified_paused_tick_changes_nothing() {
+        let mut game = make_test_game();
+        fund_both_teams(&mut game);
+        game.paused = true;
+
+        let snap = Snapshot::capture(&mut game);
+
+        for _ in 0..100 { game.tick(); }
+
+        snap.assert_entity_count_unchanged(&mut game, "paused tick must not change entity count");
+        snap.assert_cmd0_pos_unchanged(&game, "paused tick must not move cmd0");
+        snap.assert_cmd1_pos_unchanged(&game, "paused tick must not move cmd1");
+        snap.assert_no_new_buildings(&mut game, "paused tick must not create buildings");
+        snap.assert_cmd0_hp_unchanged(&game, "paused tick must not damage cmd0");
+    }
+
+    /// Full verified sequence: build → tick → move → tick → verify each step.
+    #[test]
+    fn verified_step_by_step_sequence() {
+        let mut game = make_test_game();
+        fund_both_teams(&mut game);
+
+        let cmd = game.commander_team0.unwrap();
+        let pos = game.world.get::<Position>(cmd).unwrap().pos;
+
+        // Step 1: Select commander
+        let snap1 = Snapshot::capture(&mut game);
+        game.selection.select_single(cmd);
+        snap1.assert_entity_count_unchanged(&mut game, "step1: select");
+        snap1.assert_cmd0_pos_unchanged(&game, "step1: select");
+        snap1.assert_no_new_buildings(&mut game, "step1: select");
+
+        // Step 2: Enter build mode
+        let snap2 = Snapshot::capture(&mut game);
+        game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+        assert!(game.placement_mode.is_some());
+        snap2.assert_entity_count_unchanged(&mut game, "step2: build mode");
+        snap2.assert_cmd0_pos_unchanged(&game, "step2: build mode");
+
+        // Step 3: Place building
+        let snap3 = Snapshot::capture(&mut game);
+        game.handle_place(pos.x.to_f32() + 10.0, pos.z.to_f32());
+        assert!(game.placement_mode.is_none(), "step3: mode cleared");
+        let sites_now = game.world.query_filtered::<&recoil_sim::construction::BuildSite, Without<Dead>>()
+            .iter(&game.world).count();
+        assert_eq!(sites_now, snap3.building_count + 1, "step3: exactly 1 new site");
+        snap3.assert_cmd0_pos_unchanged(&game, "step3: place");
+
+        // Step 4: Tick construction (no AI)
+        let snap4 = Snapshot::capture(&mut game);
+        for _ in 0..50 {
+            recoil_sim::construction::construction_system(&mut game.world);
+            recoil_sim::sim_runner::sim_tick(&mut game.world);
+            building::equip_factory_spawned_units(&mut game.world, &game.weapon_def_ids);
+            building::finalize_completed_buildings(&mut game.world);
+            game.frame_count += 1;
+        }
+        // No new entities from construction alone
+        snap4.assert_t1_count_unchanged(&mut game, "step4: tick no AI");
+
+        // Step 5: Move commander
+        let snap5 = Snapshot::capture(&mut game);
+        game.click_move(pos.x.to_f32() + 50.0, pos.z.to_f32());
+        // Move command itself doesn't change position
+        snap5.assert_cmd0_pos_unchanged(&game, "step5: move cmd (before tick)");
+        snap5.assert_entity_count_unchanged(&mut game, "step5: move cmd");
+
+        // Step 6: Tick to execute move (no AI)
+        for _ in 0..50 {
+            recoil_sim::construction::construction_system(&mut game.world);
+            recoil_sim::sim_runner::sim_tick(&mut game.world);
+            game.frame_count += 1;
+        }
+        // Commander should have moved now
+        let new_pos = game.world.get::<Position>(cmd).unwrap().pos;
+        assert!(new_pos.x != pos.x || new_pos.z != pos.z, "step6: cmd should move");
+        // But no new entities
+        snap5.assert_t1_count_unchanged(&mut game, "step6: move tick no AI");
     }
 }
