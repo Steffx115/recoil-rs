@@ -14,3 +14,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }
+recoil-net = { path = "../recoil-net" }
+proptest = { workspace = true }
+bincode = { workspace = true }

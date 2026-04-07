@@ -249,7 +249,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bevy_ecs",
+ "bincode",
+ "proptest",
  "recoil-math",
+ "recoil-net",
  "recoil-sim",
  "tracing",
  "tracing-subscriber",

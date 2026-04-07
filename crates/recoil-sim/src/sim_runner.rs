@@ -801,12 +801,7 @@ mod tests {
             .id();
 
         // Spawn a unit at (5, 10) that needs to reach (25, 10).
-        let unit = spawn_full_unit(
-            &mut world,
-            SimFloat::from_int(5),
-            SimFloat::from_int(10),
-            1,
-        );
+        let unit = spawn_full_unit(&mut world, SimFloat::from_int(5), SimFloat::from_int(10), 1);
         world.entity_mut(unit).insert(CommandQueue::default());
         world
             .get_mut::<CommandQueue>(unit)
@@ -938,11 +933,7 @@ mod tests {
                 world
                     .get_mut::<CommandQueue>(entity)
                     .unwrap()
-                    .push(Command::Move(SimVec3::new(
-                        tx,
-                        SimFloat::ZERO,
-                        tz,
-                    )));
+                    .push(Command::Move(SimVec3::new(tx, SimFloat::ZERO, tz)));
             }
 
             let mut checksums = Vec::new();
