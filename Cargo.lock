@@ -2837,6 +2837,7 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "recoil-sim",
+ "thiserror 2.0.18",
  "tracing",
  "wgpu",
  "winit",
