@@ -60,18 +60,37 @@ pub struct BuildTarget {
 ///   target [`Dead`].
 pub fn construction_system(world: &mut World) {
     // Collect builder data up front to avoid borrow conflicts.
-    let builders: Vec<(SimFloat, Entity, u8)> = {
-        let mut query = world.query::<(&Builder, &BuildTarget, &Allegiance)>();
+    let builders: Vec<(Entity, SimFloat, Entity, u8)> = {
+        let mut query = world.query::<(Entity, &Builder, &BuildTarget, &Allegiance)>();
         query
             .iter(world)
-            .map(|(b, bt, a)| (b.build_power, bt.target, a.team))
+            .map(|(e, b, bt, a)| (e, b.build_power, bt.target, a.team))
             .collect()
     };
 
-    for (build_power, target, team) in builders {
+    for (builder_entity, build_power, target, team) in builders {
         // Check if target still exists.
         if world.get_entity(target).is_err() {
             continue;
+        }
+
+        // Stop the builder if it's close enough to the target.
+        if let (Some(builder_pos), Some(target_pos)) = (
+            world.get::<crate::Position>(builder_entity).map(|p| p.pos),
+            world.get::<crate::Position>(target).map(|p| p.pos),
+        ) {
+            let dx = builder_pos.x - target_pos.x;
+            let dz = builder_pos.z - target_pos.z;
+            let dist_sq = dx * dx + dz * dz;
+            // Stop within ~15 world units of the target.
+            let stop_dist = crate::SimFloat::from_int(15);
+            if dist_sq <= stop_dist * stop_dist {
+                if let Some(mut ms) = world.get_mut::<crate::MoveState>(builder_entity) {
+                    if matches!(*ms, crate::MoveState::MovingTo(_)) {
+                        *ms = crate::MoveState::Idle;
+                    }
+                }
+            }
         }
 
         // --- BuildSite target (construction) ---

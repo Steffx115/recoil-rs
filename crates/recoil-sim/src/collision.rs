@@ -9,7 +9,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::prelude::*;
 
-use crate::components::{CollisionRadius, Position};
+use crate::components::{CollisionRadius, MoveState, Position};
 use crate::spatial::SpatialGrid;
 use crate::{SimFloat, SimVec2, SimVec3};
 
@@ -37,17 +37,18 @@ pub fn collision_system(world: &mut World) {
     }
 
     // Collect all collidable entities and their current state.
-    let entities: Vec<(Entity, SimVec3, SimFloat)> = world
-        .query_filtered::<(Entity, &Position, &CollisionRadius), ()>()
+    // `is_mobile` tracks whether the entity has MoveState (can be pushed).
+    let entities: Vec<(Entity, SimVec3, SimFloat, bool)> = world
+        .query_filtered::<(Entity, &Position, &CollisionRadius, Option<&MoveState>), ()>()
         .iter(world)
-        .map(|(e, p, r)| (e, p.pos, r.radius))
+        .map(|(e, p, r, ms)| (e, p.pos, r.radius, ms.is_some()))
         .collect();
 
     // Find the maximum radius across all entities so we can do a single
     // broad-phase query radius = own_radius + max_other_radius.
     let max_radius = entities
         .iter()
-        .map(|&(_, _, r)| r)
+        .map(|&(_, _, r, _)| r)
         .max()
         .unwrap_or(SimFloat::ZERO);
 
@@ -57,7 +58,12 @@ pub fn collision_system(world: &mut World) {
 
     let grid = world.resource::<SpatialGrid>();
 
-    for &(entity_a, pos_a, radius_a) in &entities {
+    // Build a lookup for mobility.
+    let mobility: std::collections::HashMap<Entity, bool> = entities.iter()
+        .map(|&(e, _, _, mobile)| (e, mobile))
+        .collect();
+
+    for &(entity_a, pos_a, radius_a, _) in &entities {
         let search_radius = radius_a + max_radius;
         let center = SimVec2::new(pos_a.x, pos_a.z);
         let neighbours = grid.units_in_radius(center, search_radius);
@@ -103,9 +109,28 @@ pub fn collision_system(world: &mut World) {
                 SimVec3::new(SimFloat::ONE, SimFloat::ZERO, SimFloat::ZERO)
             };
 
-            // A moves away from B (negative direction), B moves away from A.
-            displacements.push((entity_a, direction * (-half_overlap)));
-            displacements.push((neighbour, direction * half_overlap));
+            // Check mobility: entities without MoveState (buildings) are immovable.
+            let a_mobile = mobility.get(&entity_a).copied().unwrap_or(true);
+            let b_mobile = mobility.get(&neighbour).copied().unwrap_or(true);
+
+            match (a_mobile, b_mobile) {
+                (true, true) => {
+                    // Both mobile: split displacement evenly.
+                    displacements.push((entity_a, direction * (-half_overlap)));
+                    displacements.push((neighbour, direction * half_overlap));
+                }
+                (true, false) => {
+                    // Only A is mobile: A gets full push away from building B.
+                    displacements.push((entity_a, direction * (-overlap)));
+                }
+                (false, true) => {
+                    // Only B is mobile: B gets full push away from building A.
+                    displacements.push((neighbour, direction * overlap));
+                }
+                (false, false) => {
+                    // Both immobile: no displacement.
+                }
+            }
         }
     }
 
