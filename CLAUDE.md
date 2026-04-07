@@ -11,6 +11,13 @@ cargo build --release -p bar-game               # full release build
 
 Use `--message-format=short` on cargo build/clippy during iterative fix loops.
 
+## Commit Discipline
+
+- **Always commit when a batch of work is done.** Never leave large amounts of work uncommitted. A "batch" is any coherent set of changes that passes tests — typically one Jira story, one feature, or one bug fix.
+- Commit before switching branches, before running worktree agents, and before any destructive git operations.
+- If a session involves multiple stories, commit after each one completes (don't batch them all at the end).
+- Worktree agents must not check out branches in the main worktree.
+
 ## Architecture Rules
 
 - All simulation math MUST use `SimFloat` from `recoil-math`. Never use f32/f64 in sim code.
