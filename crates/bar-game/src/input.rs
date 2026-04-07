@@ -56,7 +56,9 @@ pub fn unit_instances(game: &mut GameState) -> Vec<UnitInstance> {
                 position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()],
                 heading: -heading.angle.to_f32(),
                 team_color: c,
+                alpha: 1.0,
                 mesh_id: ut.id,
+                _pad: [0; 3],
             }
         })
         .collect()
@@ -98,7 +100,9 @@ pub fn building_instances(game: &mut GameState) -> Vec<UnitInstance> {
                 position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()],
                 heading: 0.0,
                 team_color: c,
+                alpha: 1.0,
                 mesh_id: ut.id,
+                _pad: [0; 3],
             }
         })
         .collect()

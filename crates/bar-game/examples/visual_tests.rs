@@ -291,7 +291,9 @@ fn extract_units(game: &mut GameState) -> Vec<UnitInstance> {
                 position: [pos.pos.x.to_f32(), 0.0, pos.pos.z.to_f32()],
                 heading: hd.angle.to_f32(),
                 team_color: c,
+                alpha: 1.0,
                 mesh_id: 0,
+                _pad: [0; 3],
             }
         })
         .collect();
@@ -305,7 +307,7 @@ fn extract_units(game: &mut GameState) -> Vec<UnitInstance> {
             let f = (hp.current.to_f32() / hp.max.to_f32().max(1.0)).clamp(0.2, 1.0);
             c[0] *= f; c[1] *= f; c[2] *= f;
             if sel == Some(e) { c[0] = (c[0]+0.3).min(1.0); c[1] = (c[1]+0.3).min(1.0); c[2] = (c[2]+0.3).min(1.0); }
-            UnitInstance { position: [pos.pos.x.to_f32(), 0.0, pos.pos.z.to_f32()], heading: 0.0, team_color: c, mesh_id: 0 }
+            UnitInstance { position: [pos.pos.x.to_f32(), 0.0, pos.pos.z.to_f32()], heading: 0.0, team_color: c, alpha: 1.0, mesh_id: 0, _pad: [0; 3] }
         })
         .collect();
 

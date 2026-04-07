@@ -17,8 +17,11 @@ pub struct UnitInstance {
     pub position: [f32; 3],
     pub heading: f32,
     pub team_color: [f32; 3],
+    /// Opacity (0.0 = invisible, 1.0 = fully opaque). Used for placement ghosts.
+    pub alpha: f32,
     /// Which mesh to render (0 = placeholder). Set from UnitType.id or a mesh table index.
     pub mesh_id: u32,
+    pub _pad: [u32; 3],
 }
 
 impl UnitInstance {
@@ -41,7 +44,12 @@ impl UnitInstance {
                 shader_location: 5,
                 format: wgpu::VertexFormat::Float32x3,
             },
-            // mesh_id not passed to shader — used CPU-side for draw grouping only
+            wgpu::VertexAttribute {
+                offset: 28,
+                shader_location: 6,
+                format: wgpu::VertexFormat::Float32,
+            },
+            // mesh_id and padding not passed to shader — used CPU-side only
         ],
     };
 }
@@ -100,6 +108,7 @@ struct VertexOutput {
     @location(2) base_color: vec3<f32>,
     @location(3) world_pos: vec3<f32>,
     @location(4) view_depth: f32,
+    @location(5) alpha: f32,
 }
 
 @vertex
@@ -110,6 +119,7 @@ fn vs_main(
     @location(3) inst_position: vec3<f32>,
     @location(4) heading: f32,
     @location(5) team_color: vec3<f32>,
+    @location(6) alpha: f32,
 ) -> VertexOutput {
     let c = cos(heading);
     let s = sin(heading);
@@ -132,6 +142,7 @@ fn vs_main(
     out.base_color = color;
     out.world_pos = world_pos;
     out.view_depth = clip_pos.w;
+    out.alpha = alpha;
     return out;
 }
 
@@ -145,7 +156,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let diffuse = ndl * 0.75 * shadow;
     let lighting = ambient + diffuse;
     let color = in.base_color * 0.3 + in.team_color * 0.7;
-    return vec4<f32>(color * lighting, 1.0);
+    return vec4<f32>(color * lighting, in.alpha);
 }
 "#;
 
@@ -233,7 +244,7 @@ impl UnitRenderer {
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: surface_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: Default::default(),
@@ -410,8 +421,8 @@ mod tests {
 
     #[test]
     fn unit_instance_size() {
-        // 3 position + 1 heading + 3 team_color + 1 mesh_id = 8 * 4 = 32 bytes
-        assert_eq!(std::mem::size_of::<UnitInstance>(), 32);
+        // 3 position + 1 heading + 3 team_color + 1 alpha + 1 mesh_id + 3 pad = 12 * 4 = 48 bytes
+        assert_eq!(std::mem::size_of::<UnitInstance>(), 48);
     }
 
     #[test]
