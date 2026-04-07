@@ -99,6 +99,147 @@ impl CommandQueue {
 }
 
 // ---------------------------------------------------------------------------
+// CommandHandler trait and result
+// ---------------------------------------------------------------------------
+
+/// Result of executing a command handler for one tick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandResult {
+    /// Command is still in progress — keep it at the front of the queue.
+    InProgress,
+    /// Command completed — advance to the next command in the queue.
+    Complete,
+    /// Command cleared the entire queue (e.g. Stop).
+    QueueCleared,
+}
+
+/// Trait for command-specific execution logic.
+///
+/// Each [`Command`] variant delegates to a handler implementing this trait.
+/// The handler reads/writes ECS state via the provided [`World`] and returns
+/// a [`CommandResult`] indicating whether the command is still active.
+pub trait CommandHandler {
+    fn execute(&self, world: &mut World, entity: Entity) -> CommandResult;
+}
+
+// ---------------------------------------------------------------------------
+// Handler implementations
+// ---------------------------------------------------------------------------
+
+struct MoveHandler {
+    target: SimVec3,
+}
+
+impl CommandHandler for MoveHandler {
+    fn execute(&self, world: &mut World, entity: Entity) -> CommandResult {
+        let state = world.get::<MoveState>(entity).unwrap().clone();
+        match state {
+            MoveState::Idle => {
+                // Compute A* path if terrain grid is available.
+                let first_target = compute_pathfinding_waypoints(world, entity, self.target);
+                *world.get_mut::<MoveState>(entity).unwrap() = MoveState::MovingTo(first_target);
+                CommandResult::InProgress
+            }
+            MoveState::Arriving => CommandResult::Complete,
+            MoveState::MovingTo(_) => {
+                // Already moving — let the movement system do its job.
+                CommandResult::InProgress
+            }
+        }
+    }
+}
+
+struct StopHandler;
+
+impl CommandHandler for StopHandler {
+    fn execute(&self, world: &mut World, entity: Entity) -> CommandResult {
+        *world.get_mut::<MoveState>(entity).unwrap() = MoveState::Idle;
+        world
+            .get_mut::<CommandQueue>(entity)
+            .unwrap()
+            .commands
+            .clear();
+        CommandResult::QueueCleared
+    }
+}
+
+struct HoldPositionHandler;
+
+impl CommandHandler for HoldPositionHandler {
+    fn execute(&self, world: &mut World, entity: Entity) -> CommandResult {
+        *world.get_mut::<MoveState>(entity).unwrap() = MoveState::Idle;
+        CommandResult::Complete
+    }
+}
+
+struct PatrolHandler {
+    target: SimVec3,
+}
+
+impl CommandHandler for PatrolHandler {
+    fn execute(&self, world: &mut World, entity: Entity) -> CommandResult {
+        let state = world.get::<MoveState>(entity).unwrap().clone();
+        match state {
+            MoveState::Arriving => {
+                // Arrived at patrol point — push patrol back and advance.
+                let patrol_cmd = Command::Patrol(self.target);
+                let q = world.get_mut::<CommandQueue>(entity).unwrap();
+                let q = q.into_inner();
+                q.commands.push_back(patrol_cmd);
+                q.commands.pop_front();
+                // We manually managed the queue, so report InProgress to
+                // avoid a second advance.
+                CommandResult::InProgress
+            }
+            MoveState::Idle => {
+                *world.get_mut::<MoveState>(entity).unwrap() = MoveState::MovingTo(self.target);
+                CommandResult::InProgress
+            }
+            MoveState::MovingTo(_) => {
+                // Still en route.
+                CommandResult::InProgress
+            }
+        }
+    }
+}
+
+/// Stub handler for commands whose full systems are not yet implemented.
+/// Advances immediately so the queue progresses.
+struct StubHandler;
+
+impl CommandHandler for StubHandler {
+    fn execute(&self, _world: &mut World, _entity: Entity) -> CommandResult {
+        CommandResult::Complete
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Command → handler dispatch
+// ---------------------------------------------------------------------------
+
+impl Command {
+    /// Return a trait-object handler for this command variant.
+    ///
+    /// The returned handler encapsulates the command's parameters and
+    /// execution logic. This keeps the [`Command`] enum stable for
+    /// serialization while allowing each variant's behaviour to be
+    /// implemented independently.
+    fn handler(&self) -> Box<dyn CommandHandler> {
+        match self {
+            Command::Move(pos) => Box::new(MoveHandler { target: *pos }),
+            Command::Stop => Box::new(StopHandler),
+            Command::HoldPosition => Box::new(HoldPositionHandler),
+            Command::Patrol(pos) => Box::new(PatrolHandler { target: *pos }),
+            Command::Attack(_)
+            | Command::Guard(_)
+            | Command::Build { .. }
+            | Command::Reclaim(_)
+            | Command::Repair(_) => Box::new(StubHandler),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Pathfinding integration
 // ---------------------------------------------------------------------------
 
@@ -141,8 +282,7 @@ fn compute_pathfinding_waypoints(world: &mut World, entity: Entity, target: SimV
     // Push intermediate waypoints (skip first = start, skip last = use original target).
     let intermediates = &path[1..path.len() - 1];
     // Insert in reverse so they end up in order at the front.
-    q.commands
-        .push_front(Command::Move(target)); // final destination
+    q.commands.push_front(Command::Move(target)); // final destination
     for wp in intermediates.iter().rev() {
         let wp3 = SimVec3::new(wp.x, SimFloat::ZERO, wp.y);
         q.commands.push_front(Command::Move(wp3));
@@ -161,7 +301,8 @@ fn compute_pathfinding_waypoints(world: &mut World, entity: Entity, target: SimV
 ///
 /// For every entity that has both a [`CommandQueue`] and a [`MoveState`],
 /// the front command is inspected and the entity's movement state is
-/// updated accordingly.
+/// updated accordingly.  Dispatch is trait-based: each [`Command`] variant
+/// provides a [`CommandHandler`] implementation via [`Command::handler`].
 pub fn command_system(world: &mut World) {
     let entities: Vec<Entity> = world
         .query_filtered::<Entity, (With<CommandQueue>, With<MoveState>)>()
@@ -177,70 +318,16 @@ pub fn command_system(world: &mut World) {
             continue;
         };
 
-        match cmd {
-            Command::Move(pos) => {
-                let state = world.get::<MoveState>(entity).unwrap().clone();
-                match state {
-                    MoveState::Idle | MoveState::Arriving => {
-                        if state == MoveState::Arriving {
-                            world.get_mut::<CommandQueue>(entity).unwrap().advance();
-                        } else {
-                            // Compute A* path if terrain grid is available.
-                            let first_target =
-                                compute_pathfinding_waypoints(world, entity, pos);
-                            *world.get_mut::<MoveState>(entity).unwrap() =
-                                MoveState::MovingTo(first_target);
-                        }
-                    }
-                    MoveState::MovingTo(_) => {
-                        // Already moving — let the movement system do its job.
-                    }
-                }
-            }
+        let handler = cmd.handler();
+        let result = handler.execute(world, entity);
 
-            Command::Stop => {
-                *world.get_mut::<MoveState>(entity).unwrap() = MoveState::Idle;
-                world
-                    .get_mut::<CommandQueue>(entity)
-                    .unwrap()
-                    .commands
-                    .clear();
-            }
-
-            Command::HoldPosition => {
-                *world.get_mut::<MoveState>(entity).unwrap() = MoveState::Idle;
+        match result {
+            CommandResult::Complete => {
                 world.get_mut::<CommandQueue>(entity).unwrap().advance();
             }
-
-            Command::Patrol(pos) => {
-                let state = world.get::<MoveState>(entity).unwrap().clone();
-                match state {
-                    MoveState::Arriving => {
-                        // Arrived at patrol point — push patrol back and advance.
-                        let patrol_cmd = Command::Patrol(pos);
-                        let q = world.get_mut::<CommandQueue>(entity).unwrap();
-                        // Can't borrow mutably and push while iterating, so
-                        // we do it in two steps via into_inner.
-                        let q = q.into_inner();
-                        q.commands.push_back(patrol_cmd);
-                        q.commands.pop_front();
-                    }
-                    MoveState::Idle => {
-                        *world.get_mut::<MoveState>(entity).unwrap() = MoveState::MovingTo(pos);
-                    }
-                    MoveState::MovingTo(_) => {
-                        // Still en route.
-                    }
-                }
-            }
-
-            // Stub commands — advance immediately until their systems exist.
-            Command::Attack(_)
-            | Command::Guard(_)
-            | Command::Build { .. }
-            | Command::Reclaim(_)
-            | Command::Repair(_) => {
-                world.get_mut::<CommandQueue>(entity).unwrap().advance();
+            CommandResult::InProgress | CommandResult::QueueCleared => {
+                // InProgress: keep command at front.
+                // QueueCleared: handler already emptied the queue.
             }
         }
     }
@@ -500,21 +587,13 @@ mod tests {
     // Pathfinding-integrated move tests
     // ==================================================================
 
-    use crate::pathfinding::{mark_building_footprint, TerrainGrid};
     use crate::components::Position;
+    use crate::pathfinding::{mark_building_footprint, TerrainGrid};
 
     /// Spawn an entity with position, command queue, and move state.
-    fn spawn_with_pos_and_queue(
-        world: &mut World,
-        pos: SimVec3,
-        state: MoveState,
-    ) -> Entity {
+    fn spawn_with_pos_and_queue(world: &mut World, pos: SimVec3, state: MoveState) -> Entity {
         world
-            .spawn((
-                Position { pos },
-                CommandQueue::default(),
-                state,
-            ))
+            .spawn((Position { pos }, CommandQueue::default(), state))
             .id()
     }
 
@@ -527,19 +606,11 @@ mod tests {
         // Set up terrain grid with a building blocking the direct path.
         let mut grid = TerrainGrid::new(30, 20, SimFloat::ONE);
         let building_pos = SimVec2::new(SimFloat::from_int(15), SimFloat::from_int(5));
-        let _fp = mark_building_footprint(
-            &mut grid,
-            building_pos,
-            SimFloat::from_int(3),
-        );
+        let _fp = mark_building_footprint(&mut grid, building_pos, SimFloat::from_int(3));
         world.insert_resource(grid);
 
         // Spawn unit at (5,5) wanting to move to (25,5).
-        let start = SimVec3::new(
-            SimFloat::from_int(5),
-            SimFloat::ZERO,
-            SimFloat::from_int(5),
-        );
+        let start = SimVec3::new(SimFloat::from_int(5), SimFloat::ZERO, SimFloat::from_int(5));
         let target = SimVec3::new(
             SimFloat::from_int(25),
             SimFloat::ZERO,
@@ -587,11 +658,7 @@ mod tests {
         let grid = TerrainGrid::new(30, 20, SimFloat::ONE);
         world.insert_resource(grid);
 
-        let start = SimVec3::new(
-            SimFloat::from_int(5),
-            SimFloat::ZERO,
-            SimFloat::from_int(5),
-        );
+        let start = SimVec3::new(SimFloat::from_int(5), SimFloat::ZERO, SimFloat::from_int(5));
         let target = SimVec3::new(
             SimFloat::from_int(10),
             SimFloat::ZERO,
@@ -609,10 +676,7 @@ mod tests {
         // which triggers the straight-line fallback (path.len() <= 2).
         // The unit should be moving to the target directly.
         let state = world.get::<MoveState>(e).unwrap().clone();
-        assert!(
-            matches!(state, MoveState::MovingTo(_)),
-            "should be moving"
-        );
+        assert!(matches!(state, MoveState::MovingTo(_)), "should be moving");
     }
 
     // ---- Move without terrain grid falls back to direct move ----
@@ -622,11 +686,7 @@ mod tests {
         let mut world = World::new();
         // No TerrainGrid resource inserted.
 
-        let start = SimVec3::new(
-            SimFloat::from_int(5),
-            SimFloat::ZERO,
-            SimFloat::from_int(5),
-        );
+        let start = SimVec3::new(SimFloat::from_int(5), SimFloat::ZERO, SimFloat::from_int(5));
         let target = SimVec3::new(
             SimFloat::from_int(25),
             SimFloat::ZERO,
@@ -655,18 +715,10 @@ mod tests {
 
         let mut grid = TerrainGrid::new(30, 20, SimFloat::ONE);
         let building_pos = SimVec2::new(SimFloat::from_int(15), SimFloat::from_int(5));
-        let _fp = mark_building_footprint(
-            &mut grid,
-            building_pos,
-            SimFloat::from_int(3),
-        );
+        let _fp = mark_building_footprint(&mut grid, building_pos, SimFloat::from_int(3));
         world.insert_resource(grid);
 
-        let start = SimVec3::new(
-            SimFloat::from_int(5),
-            SimFloat::ZERO,
-            SimFloat::from_int(5),
-        );
+        let start = SimVec3::new(SimFloat::from_int(5), SimFloat::ZERO, SimFloat::from_int(5));
         let target_a = SimVec3::new(
             SimFloat::from_int(25),
             SimFloat::ZERO,
@@ -692,10 +744,111 @@ mod tests {
         let cmds: Vec<_> = q.commands.iter().collect();
 
         // Find target_b in the queue — it should be the very last command.
-        let has_target_b = cmds.iter().any(|c| matches!(c, Command::Move(p) if *p == target_b));
+        let has_target_b = cmds
+            .iter()
+            .any(|c| matches!(c, Command::Move(p) if *p == target_b));
         assert!(
             has_target_b,
             "shift-queued Move(target_b) should still be in queue"
         );
+    }
+
+    // ==================================================================
+    // CommandHandler trait dispatch tests
+    // ==================================================================
+
+    #[test]
+    fn handler_returns_correct_types() {
+        // Verify that each command variant produces an appropriate handler.
+        let target = world_spawn_target();
+
+        let commands = vec![
+            Command::Move(SimVec3::ZERO),
+            Command::Stop,
+            Command::HoldPosition,
+            Command::Patrol(SimVec3::ZERO),
+            Command::Attack(target),
+            Command::Guard(target),
+            Command::Build {
+                unit_type: 1,
+                position: SimVec3::ZERO,
+            },
+            Command::Reclaim(target),
+            Command::Repair(target),
+        ];
+
+        // Just verify handler() doesn't panic for any variant.
+        for cmd in &commands {
+            let _handler = cmd.handler();
+        }
+    }
+
+    /// Helper: create a dummy entity for handler tests.
+    fn world_spawn_target() -> Entity {
+        let mut world = World::new();
+        world.spawn_empty().id()
+    }
+
+    #[test]
+    fn move_handler_returns_in_progress_from_idle() {
+        let mut world = World::new();
+        let target = SimVec3::new(SimFloat::from_int(10), SimFloat::ZERO, SimFloat::ZERO);
+        let e = spawn_with_queue(&mut world, MoveState::Idle);
+
+        let handler = MoveHandler { target };
+        let result = handler.execute(&mut world, e);
+        assert_eq!(result, CommandResult::InProgress);
+        assert_eq!(
+            *world.get::<MoveState>(e).unwrap(),
+            MoveState::MovingTo(target)
+        );
+    }
+
+    #[test]
+    fn move_handler_returns_complete_on_arriving() {
+        let mut world = World::new();
+        let target = SimVec3::new(SimFloat::from_int(10), SimFloat::ZERO, SimFloat::ZERO);
+        let e = spawn_with_queue(&mut world, MoveState::Arriving);
+
+        let handler = MoveHandler { target };
+        let result = handler.execute(&mut world, e);
+        assert_eq!(result, CommandResult::Complete);
+    }
+
+    #[test]
+    fn stop_handler_clears_queue() {
+        let mut world = World::new();
+        let e = spawn_with_queue(&mut world, MoveState::MovingTo(SimVec3::ZERO));
+        world
+            .get_mut::<CommandQueue>(e)
+            .unwrap()
+            .push(Command::Move(SimVec3::ZERO));
+
+        let handler = StopHandler;
+        let result = handler.execute(&mut world, e);
+        assert_eq!(result, CommandResult::QueueCleared);
+        assert_eq!(*world.get::<MoveState>(e).unwrap(), MoveState::Idle);
+        assert!(world.get::<CommandQueue>(e).unwrap().is_empty());
+    }
+
+    #[test]
+    fn hold_position_handler_returns_complete() {
+        let mut world = World::new();
+        let e = spawn_with_queue(&mut world, MoveState::MovingTo(SimVec3::ZERO));
+
+        let handler = HoldPositionHandler;
+        let result = handler.execute(&mut world, e);
+        assert_eq!(result, CommandResult::Complete);
+        assert_eq!(*world.get::<MoveState>(e).unwrap(), MoveState::Idle);
+    }
+
+    #[test]
+    fn stub_handler_returns_complete() {
+        let mut world = World::new();
+        let e = spawn_with_queue(&mut world, MoveState::Idle);
+
+        let handler = StubHandler;
+        let result = handler.execute(&mut world, e);
+        assert_eq!(result, CommandResult::Complete);
     }
 }

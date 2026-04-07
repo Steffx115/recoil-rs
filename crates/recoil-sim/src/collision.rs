@@ -59,7 +59,8 @@ pub fn collision_system(world: &mut World) {
     let grid = world.resource::<SpatialGrid>();
 
     // Build a lookup for mobility.
-    let mobility: std::collections::HashMap<Entity, bool> = entities.iter()
+    let mobility: std::collections::HashMap<Entity, bool> = entities
+        .iter()
         .map(|&(e, _, _, mobile)| (e, mobile))
         .collect();
 
