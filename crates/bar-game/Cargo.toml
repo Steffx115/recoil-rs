@@ -6,6 +6,7 @@ license.workspace = true
 description = "BAR-inspired RTS game binary"
 
 [dependencies]
+bar-game-lib = { path = "../bar-game-lib" }
 recoil-math = { path = "../recoil-math" }
 recoil-sim = { path = "../recoil-sim" }
 recoil-net = { path = "../recoil-net" }
