@@ -267,6 +267,7 @@ impl GameState {
     /// Check if the (first) selected entity is a factory.
     pub fn selected_is_factory(&self) -> bool {
         self.selected()
+            .filter(|&e| self.world.get_entity(e).is_ok())
             .map(|e| self.world.get::<BuildQueue>(e).is_some())
             .unwrap_or(false)
     }
@@ -274,6 +275,7 @@ impl GameState {
     /// Check if the (first) selected entity is a commander/builder.
     pub fn selected_is_builder(&self) -> bool {
         self.selected()
+            .filter(|&e| self.world.get_entity(e).is_ok())
             .map(|e| self.world.get::<Builder>(e).is_some())
             .unwrap_or(false)
     }
@@ -336,6 +338,7 @@ impl GameState {
     /// Returns number of units that received a move command.
     pub fn click_move(&mut self, target_x: f32, target_z: f32) -> bool {
         if let Some(sel) = self.selected() {
+            if self.world.get_entity(sel).is_err() { return false; }
             if let Some(ms) = self.world.get_mut::<recoil_sim::MoveState>(sel) {
                 *ms.into_inner() = recoil_sim::MoveState::MovingTo(
                     recoil_math::SimVec3::new(
@@ -3186,5 +3189,328 @@ mod tests {
             .filter(|a| a.team == 0)
             .count();
         assert!(t0_entities >= 2, "Should have commander + at least one building: got {}", t0_entities);
+    }
+
+    // ===================================================================
+    // EDGE CASE & COVERAGE GAP TESTS
+    // ===================================================================
+
+    #[test]
+    fn action_factory_repeat_mode() {
+        use recoil_sim::factory::{BuildQueue, UnitBlueprint, UnitRegistry};
+
+        let mut game = make_test_game();
+        fund_team(&mut game, 0);
+
+        let test_id = 66666u32;
+        {
+            let mut reg = game.world.resource_mut::<UnitRegistry>();
+            reg.blueprints.push(UnitBlueprint {
+                unit_type_id: test_id, metal_cost: SimFloat::from_int(5),
+                energy_cost: SimFloat::from_int(5), build_time: 3,
+                max_health: SimFloat::from_int(100),
+            });
+        }
+
+        let factory = game.world.spawn((
+            Position { pos: SimVec3::new(SimFloat::from_int(300), SimFloat::ZERO, SimFloat::from_int(300)) },
+            BuildQueue { queue: std::collections::VecDeque::new(), current_progress: SimFloat::ZERO,
+                rally_point: SimVec3::ZERO, repeat: true },
+            recoil_sim::Allegiance { team: 0 },
+            recoil_sim::UnitType { id: building::BUILDING_FACTORY_ID },
+            Health { current: SimFloat::from_int(500), max: SimFloat::from_int(500) },
+        )).id();
+
+        game.queue_unit_in_factory(factory, test_id);
+
+        // Tick enough for 3 production cycles
+        for _ in 0..30 { game.tick(); game.frame_count += 1; }
+
+        // Queue should not be empty (repeat re-appends)
+        let bq = game.world.get::<BuildQueue>(factory).unwrap();
+        assert!(!bq.queue.is_empty(), "Repeat mode should keep queue non-empty");
+    }
+
+    #[test]
+    fn action_area_repair() {
+        use recoil_sim::commands::CommandQueue;
+
+        let mut game = make_test_game();
+        let cmd = game.commander_team0.unwrap();
+
+        // Spawn a damaged friendly unit
+        let _damaged = game.world.spawn((
+            Position { pos: SimVec3::new(SimFloat::from_int(210), SimFloat::ZERO, SimFloat::from_int(200)) },
+            Health { current: SimFloat::from_int(50), max: SimFloat::from_int(200) },
+            recoil_sim::Allegiance { team: 0 },
+            recoil_sim::UnitType { id: 1 },
+        )).id();
+
+        game.selection.select_single(cmd);
+        game.area_repair(210.0, 200.0, 50.0);
+
+        let cq = game.world.get::<CommandQueue>(cmd).unwrap();
+        assert!(!cq.commands.is_empty(), "Area repair should queue repair commands");
+    }
+
+    #[test]
+    fn action_select_dead_entity_graceful() {
+        let mut game = make_test_game();
+        let weapon_id = register_test_weapon(&mut game);
+        let unit = spawn_armed_unit(&mut game, 400, 400, 0, weapon_id, 100);
+
+        game.selection.select_single(unit);
+        assert_eq!(game.selected(), Some(unit));
+
+        // Kill unit and force despawn
+        game.world.entity_mut(unit).insert(Dead);
+        recoil_sim::lifecycle::cleanup_dead(&mut game.world);
+
+        // Entity is despawned by cleanup_dead. Selection still holds the entity
+        // reference but the entity no longer exists in the world. Operations on
+        // it should not panic.
+        let _ = game.selected(); // should not panic
+        let _ = game.selected_is_builder(); // should not panic
+        let _ = game.selected_is_factory(); // should not panic
+        let moved = game.click_move(500.0, 500.0); // should return false gracefully
+        assert!(!moved, "Move on dead entity should fail gracefully");
+    }
+
+    #[test]
+    fn action_game_reset_after_game_over() {
+        let mut game = make_test_game();
+
+        // Trigger game over
+        let cmd1 = game.commander_team1.unwrap();
+        game.world.get_mut::<Health>(cmd1).unwrap().current = SimFloat::ZERO;
+        for _ in 0..10 { game.tick(); game.frame_count += 1; }
+        assert!(game.is_game_over());
+
+        // Reset
+        game.reset(
+            std::path::Path::new("nonexistent/units"),
+            std::path::Path::new("assets/maps/small_duel/manifest.ron"),
+        );
+        assert!(!game.is_game_over(), "Game over should be cleared after reset");
+        assert_eq!(game.frame_count, 0);
+        assert!(game.commander_team0.is_some());
+        assert!(game.commander_team1.is_some());
+    }
+
+    #[test]
+    fn action_move_to_current_position() {
+        let mut game = make_test_game();
+        let cmd = game.commander_team0.unwrap();
+        let pos = game.world.get::<Position>(cmd).unwrap().pos;
+
+        game.selection.select_single(cmd);
+        game.click_move(pos.x.to_f32(), pos.z.to_f32());
+
+        // Should not panic, unit should quickly arrive
+        for _ in 0..10 { game.tick(); game.frame_count += 1; }
+
+        let ms = game.world.get::<recoil_sim::MoveState>(cmd).unwrap();
+        // Should be Idle or Arriving (close enough to target)
+        let at_rest = matches!(ms, recoil_sim::MoveState::Idle | recoil_sim::MoveState::Arriving);
+        assert!(at_rest, "Unit should be at rest after moving to current pos");
+    }
+
+    #[test]
+    fn action_selection_persists_across_ticks() {
+        let mut game = make_test_game();
+        let cmd = game.commander_team0.unwrap();
+
+        game.selection.select_single(cmd);
+        assert_eq!(game.selected(), Some(cmd));
+
+        for _ in 0..100 { game.tick(); game.frame_count += 1; }
+
+        assert_eq!(game.selected(), Some(cmd), "Selection should persist across ticks");
+    }
+
+    #[test]
+    fn action_resource_depletion_stalls_factory() {
+        use recoil_sim::factory::{BuildQueue, UnitBlueprint, UnitRegistry};
+
+        let mut game = make_test_game();
+        // Set team 0 to near-zero resources
+        {
+            let mut eco = game.world.resource_mut::<EconomyState>();
+            if let Some(r) = eco.teams.get_mut(&0) {
+                r.metal = SimFloat::from_int(1);
+                r.energy = SimFloat::from_int(1);
+                r.metal_storage = SimFloat::from_int(100);
+                r.energy_storage = SimFloat::from_int(100);
+            }
+        }
+
+        let test_id = 55551u32;
+        {
+            let mut reg = game.world.resource_mut::<UnitRegistry>();
+            reg.blueprints.push(UnitBlueprint {
+                unit_type_id: test_id, metal_cost: SimFloat::from_int(1000),
+                energy_cost: SimFloat::from_int(1000), build_time: 10,
+                max_health: SimFloat::from_int(100),
+            });
+        }
+
+        let factory = game.world.spawn((
+            Position { pos: SimVec3::ZERO },
+            BuildQueue { queue: std::collections::VecDeque::new(), current_progress: SimFloat::ZERO,
+                rally_point: SimVec3::ZERO, repeat: false },
+            recoil_sim::Allegiance { team: 0 },
+            recoil_sim::UnitType { id: building::BUILDING_FACTORY_ID },
+            Health { current: SimFloat::from_int(500), max: SimFloat::from_int(500) },
+        )).id();
+
+        game.queue_unit_in_factory(factory, test_id);
+
+        for _ in 0..50 { game.tick(); game.frame_count += 1; }
+
+        // Factory should be heavily stalled — either 0 units or progress very low
+        let spawned: usize = game.world
+            .query_filtered::<&recoil_sim::UnitType, Without<Dead>>()
+            .iter(&game.world)
+            .filter(|ut| ut.id == test_id)
+            .count();
+        let progress = game.world.get::<recoil_sim::factory::BuildQueue>(factory)
+            .unwrap().current_progress;
+        // With 1 metal vs 1000 cost, stall_ratio is ~0.001, so production is glacially slow
+        assert!(
+            spawned == 0 || progress < SimFloat::ONE,
+            "Stalled factory should produce slowly: spawned={}, progress={:?}",
+            spawned, progress
+        );
+    }
+
+    #[test]
+    fn action_two_teams_combat_to_death() {
+        let mut game = make_test_game();
+        let weapon_id = register_test_weapon(&mut game);
+
+        // Spawn armies near each other
+        for i in 0..3 {
+            spawn_armed_unit(&mut game, 500 + i * 5, 500, 0, weapon_id, 200);
+            spawn_armed_unit(&mut game, 530 + i * 5, 500, 1, weapon_id, 200);
+        }
+
+        for _ in 0..500 { game.tick(); game.frame_count += 1; }
+
+        // At least one side should have taken casualties
+        let t0: usize = game.world
+            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .iter(&game.world)
+            .filter(|a| a.team == 0)
+            .count();
+        let t1: usize = game.world
+            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .iter(&game.world)
+            .filter(|a| a.team == 1)
+            .count();
+
+        // Started with 3+commander per side; should have losses
+        assert!(
+            t0 < 5 || t1 < 5,
+            "Combat should cause casualties: t0={} t1={}", t0, t1
+        );
+    }
+
+    #[test]
+    fn action_wreckage_spawns_on_death() {
+        use recoil_sim::construction::Reclaimable;
+        use recoil_sim::combat_data::{DamageType, WeaponDef};
+        use recoil_sim::targeting::WeaponRegistry;
+
+        let mut game = make_test_game();
+
+        let weapon_def_id = {
+            let mut registry = game.world.resource_mut::<WeaponRegistry>();
+            let id = registry.defs.len() as u32;
+            registry.defs.push(WeaponDef {
+                damage: SimFloat::from_int(9999), damage_type: DamageType::Normal,
+                range: SimFloat::from_int(500), reload_time: 1,
+                projectile_speed: SimFloat::ZERO, area_of_effect: SimFloat::ZERO,
+                is_paralyzer: false,
+            });
+            id
+        };
+
+        // Strong attacker kills weak victim
+        spawn_armed_unit(&mut game, 400, 400, 0, weapon_def_id, 5000);
+        let _victim = spawn_armed_unit(&mut game, 420, 400, 1, weapon_def_id, 50);
+
+        // Count initial reclaimables
+        let initial_wrecks: usize = game.world
+            .query::<&Reclaimable>().iter(&game.world).count();
+
+        for _ in 0..100 { game.tick(); game.frame_count += 1; }
+
+        // Victim should be dead and wreckage should exist
+        let final_wrecks: usize = game.world
+            .query::<&Reclaimable>().iter(&game.world).count();
+
+        assert!(
+            final_wrecks > initial_wrecks,
+            "Killing a unit should spawn wreckage: before={} after={}",
+            initial_wrecks, final_wrecks
+        );
+    }
+
+    #[test]
+    fn action_multiple_factories_produce_simultaneously() {
+        use recoil_sim::factory::{BuildQueue, UnitBlueprint, UnitRegistry};
+
+        let mut game = make_test_game();
+        fund_team(&mut game, 0);
+
+        let test_id = 44444u32;
+        {
+            let mut reg = game.world.resource_mut::<UnitRegistry>();
+            reg.blueprints.push(UnitBlueprint {
+                unit_type_id: test_id, metal_cost: SimFloat::from_int(5),
+                energy_cost: SimFloat::from_int(5), build_time: 5,
+                max_health: SimFloat::from_int(100),
+            });
+        }
+        {
+            let mut reg = game.world.resource_mut::<recoil_sim::unit_defs::UnitDefRegistry>();
+            let mut def = recoil_sim::unit_defs::UnitDef {
+                name: "multitest".into(), unit_type_id: test_id,
+                max_health: 100.0, armor_class: "Light".into(),
+                sight_range: 50.0, collision_radius: 2.0,
+                max_speed: 2.0, acceleration: 1.0, turn_rate: 0.5,
+                metal_cost: 5.0, energy_cost: 5.0, build_time: 5,
+                weapons: vec![], model_path: None, icon_path: None,
+                categories: vec![], can_build: vec![], can_build_names: vec![],
+                build_power: None, metal_production: None, energy_production: None,
+                is_building: false, is_builder: false,
+            };
+            def.compute_derived_flags();
+            reg.register(def);
+        }
+
+        // Create two factories
+        for offset in [0, 50] {
+            let f = game.world.spawn((
+                Position { pos: SimVec3::new(SimFloat::from_int(300 + offset), SimFloat::ZERO, SimFloat::from_int(300)) },
+                BuildQueue { queue: std::collections::VecDeque::new(), current_progress: SimFloat::ZERO,
+                    rally_point: SimVec3::new(SimFloat::from_int(350 + offset), SimFloat::ZERO, SimFloat::from_int(300)),
+                    repeat: false },
+                recoil_sim::Allegiance { team: 0 },
+                recoil_sim::UnitType { id: building::BUILDING_FACTORY_ID },
+                Health { current: SimFloat::from_int(500), max: SimFloat::from_int(500) },
+            )).id();
+            game.queue_unit_in_factory(f, test_id);
+        }
+
+        for _ in 0..30 { game.tick(); game.frame_count += 1; }
+
+        let spawned: usize = game.world
+            .query_filtered::<&recoil_sim::UnitType, Without<Dead>>()
+            .iter(&game.world)
+            .filter(|ut| ut.id == test_id)
+            .count();
+
+        assert!(spawned >= 2, "Two factories should each produce a unit: got {}", spawned);
     }
 }
