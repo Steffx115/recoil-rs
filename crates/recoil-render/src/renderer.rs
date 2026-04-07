@@ -6,6 +6,7 @@ use winit::window::Window;
 use crate::camera::Camera;
 use crate::gpu::GpuContext;
 use crate::projectile_renderer::{ProjectileInstance, ProjectileRenderer};
+use crate::shadow::ShadowResources;
 use crate::terrain::TerrainResources;
 use crate::unit_renderer::{UnitInstance, UnitRenderer};
 
@@ -13,6 +14,7 @@ use crate::unit_renderer::{UnitInstance, UnitRenderer};
 pub struct Renderer {
     pub gpu: GpuContext,
     pub camera: Camera,
+    shadow: ShadowResources,
     terrain: TerrainResources,
     unit_renderer: UnitRenderer,
     projectile_renderer: ProjectileRenderer,
@@ -28,11 +30,17 @@ impl Renderer {
             ..Camera::default()
         };
 
-        let terrain =
-            TerrainResources::new(&gpu, &camera).context("failed to create terrain resources")?;
+        let shadow = ShadowResources::new(&gpu.device);
 
-        let unit_renderer =
-            UnitRenderer::new(&gpu.device, gpu.config.format, terrain.bind_group_layout());
+        let terrain = TerrainResources::new(&gpu, &camera, shadow.bind_group_layout())
+            .context("failed to create terrain resources")?;
+
+        let unit_renderer = UnitRenderer::new(
+            &gpu.device,
+            gpu.config.format,
+            terrain.bind_group_layout(),
+            shadow.bind_group_layout(),
+        );
 
         let projectile_renderer =
             ProjectileRenderer::new(&gpu.device, gpu.config.format, terrain.bind_group_layout());
@@ -40,6 +48,7 @@ impl Renderer {
         Ok(Self {
             gpu,
             camera,
+            shadow,
             terrain,
             unit_renderer,
             projectile_renderer,
@@ -60,6 +69,9 @@ impl Renderer {
         // Upload latest camera matrix.
         self.terrain.update_camera(&self.gpu.queue, &self.camera);
 
+        // Update shadow cascade matrices.
+        self.shadow.update(&self.gpu.queue, &self.camera);
+
         let output = self
             .gpu
             .surface
@@ -77,9 +89,43 @@ impl Renderer {
                 label: Some("render_encoder"),
             });
 
+        // --- Shadow pass: render depth from light's perspective for each cascade ---
+        for cascade in 0..crate::shadow::CASCADE_COUNT as usize {
+            let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("shadow_pass"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.shadow.cascade_views[cascade],
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            // Terrain shadow
+            shadow_pass.set_pipeline(&self.shadow.terrain_shadow_pipeline);
+            shadow_pass.set_bind_group(0, self.shadow.light_vp_bind_group(cascade), &[]);
+            shadow_pass.set_vertex_buffer(0, self.terrain.vertex_buffer.slice(..));
+            shadow_pass.set_index_buffer(
+                self.terrain.index_buffer.slice(..),
+                wgpu::IndexFormat::Uint32,
+            );
+            shadow_pass.draw_indexed(0..self.terrain.index_count, 0, 0..1);
+
+            // Unit shadow
+            shadow_pass.set_pipeline(&self.shadow.unit_shadow_pipeline);
+            shadow_pass.set_bind_group(0, self.shadow.light_vp_bind_group(cascade), &[]);
+            self.unit_renderer.render_shadow(&mut shadow_pass);
+        }
+
+        // --- Main render pass ---
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("terrain_pass"),
+                label: Some("main_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
@@ -105,8 +151,10 @@ impl Renderer {
                 occlusion_query_set: None,
             });
 
+            // Terrain
             pass.set_pipeline(&self.terrain.pipeline);
             pass.set_bind_group(0, &self.terrain.camera_bind_group, &[]);
+            pass.set_bind_group(1, self.shadow.bind_group(), &[]);
             pass.set_vertex_buffer(0, self.terrain.vertex_buffer.slice(..));
             pass.set_index_buffer(
                 self.terrain.index_buffer.slice(..),
@@ -114,11 +162,13 @@ impl Renderer {
             );
             pass.draw_indexed(0..self.terrain.index_count, 0, 0..1);
 
-            // Units: reuse the same camera bind group (group 0).
+            // Units: reuse the same camera bind group (group 0) + shadow (group 1).
             pass.set_bind_group(0, &self.terrain.camera_bind_group, &[]);
+            pass.set_bind_group(1, self.shadow.bind_group(), &[]);
             self.unit_renderer.render(&mut pass);
 
             // Projectiles / particles: draw after units (alpha-blended).
+            // Projectiles don't use shadows, only bind group 0.
             pass.set_bind_group(0, &self.terrain.camera_bind_group, &[]);
             self.projectile_renderer.render(&mut pass);
         }
@@ -175,6 +225,11 @@ impl Renderer {
     /// Replace the terrain mesh with heightmap data.
     pub fn set_terrain_mesh(&mut self, vertices: &[crate::terrain::TerrainVertex], indices: &[u32]) {
         self.terrain.set_mesh(&self.gpu.device, vertices, indices);
+    }
+
+    /// Set the directional light direction for shadow casting.
+    pub fn set_light_direction(&mut self, dir: [f32; 3]) {
+        self.shadow.set_light_direction(dir);
     }
 
     /// Access terrain resources (e.g. for custom draw calls).

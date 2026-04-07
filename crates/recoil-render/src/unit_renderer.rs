@@ -22,7 +22,7 @@ pub struct UnitInstance {
 }
 
 impl UnitInstance {
-    const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
+    pub const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<UnitInstance>() as wgpu::BufferAddress,
         step_mode: wgpu::VertexStepMode::Instance,
         attributes: &[
@@ -44,11 +44,50 @@ struct Uniforms {
 }
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
+// Shadow bindings (group 1)
+struct ShadowUniforms {
+    light_vp_0: mat4x4<f32>,
+    light_vp_1: mat4x4<f32>,
+    cascade_splits: vec4<f32>,
+};
+
+@group(1) @binding(0) var shadow_map: texture_depth_2d_array;
+@group(1) @binding(1) var shadow_sampler: sampler_comparison;
+@group(1) @binding(2) var<uniform> shadow_uniforms: ShadowUniforms;
+
+fn shadow_factor(world_pos: vec3<f32>, view_depth: f32) -> f32 {
+    var light_vp: mat4x4<f32>;
+    var cascade: u32;
+    if (view_depth < shadow_uniforms.cascade_splits.y) {
+        light_vp = shadow_uniforms.light_vp_0;
+        cascade = 0u;
+    } else {
+        light_vp = shadow_uniforms.light_vp_1;
+        cascade = 1u;
+    }
+    let light_pos = light_vp * vec4<f32>(world_pos, 1.0);
+    let proj = light_pos.xyz / light_pos.w;
+    let uv = vec2<f32>(proj.x * 0.5 + 0.5, 1.0 - (proj.y * 0.5 + 0.5));
+    let depth = proj.z;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { return 1.0; }
+    let texel_size = 1.0 / 2048.0;
+    var total = 0.0;
+    for (var x = -1i; x <= 1i; x += 2i) {
+        for (var y = -1i; y <= 1i; y += 2i) {
+            let offset = vec2<f32>(f32(x), f32(y)) * texel_size;
+            total += textureSampleCompareLevel(shadow_map, shadow_sampler, uv + offset, cascade, depth - 0.005);
+        }
+    }
+    return total / 4.0;
+}
+
 struct VertexOutput {
     @builtin(position) pos: vec4<f32>,
     @location(0) normal: vec3<f32>,
     @location(1) team_color: vec3<f32>,
     @location(2) base_color: vec3<f32>,
+    @location(3) world_pos: vec3<f32>,
+    @location(4) view_depth: f32,
 }
 
 @vertex
@@ -73,11 +112,14 @@ fn vs_main(
         -normal.x * s + normal.z * c,
     );
     let world_pos = rotated + inst_position;
+    let clip_pos = uniforms.view_proj * vec4<f32>(world_pos, 1.0);
     var out: VertexOutput;
-    out.pos = uniforms.view_proj * vec4<f32>(world_pos, 1.0);
+    out.pos = clip_pos;
     out.normal = rotated_normal;
     out.team_color = team_color;
     out.base_color = color;
+    out.world_pos = world_pos;
+    out.view_depth = clip_pos.w;
     return out;
 }
 
@@ -86,8 +128,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let light_dir = normalize(vec3<f32>(0.5, 0.8, 0.3));
     let n = normalize(in.normal);
     let ndl = max(dot(n, light_dir), 0.0);
+    let shadow = shadow_factor(in.world_pos, in.view_depth);
     let ambient = 0.25;
-    let diffuse = ndl * 0.75;
+    let diffuse = ndl * 0.75 * shadow;
     let lighting = ambient + diffuse;
     let color = in.base_color * 0.3 + in.team_color * 0.7;
     return vec4<f32>(color * lighting, 1.0);
@@ -124,6 +167,7 @@ impl UnitRenderer {
         device: &wgpu::Device,
         surface_format: wgpu::TextureFormat,
         camera_bind_group_layout: &wgpu::BindGroupLayout,
+        shadow_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("unit_shader"),
@@ -156,7 +200,7 @@ impl UnitRenderer {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("unit_pipeline_layout"),
-            bind_group_layouts: &[camera_bind_group_layout],
+            bind_group_layouts: &[camera_bind_group_layout, shadow_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -288,6 +332,25 @@ impl UnitRenderer {
             return;
         }
         pass.set_pipeline(&self.pipeline);
+        pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+
+        for &(mesh_id, inst_start, inst_count) in &self.draw_groups {
+            if let Some(mesh) = self.meshes.get(&mesh_id) {
+                pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                pass.draw_indexed(0..mesh.index_count, 0, inst_start..inst_start + inst_count);
+            }
+        }
+    }
+
+    /// Record draw commands into a shadow (depth-only) render pass.
+    ///
+    /// The caller must have already set the shadow pipeline and bind group 0
+    /// (light VP). This method only sets vertex/index buffers and issues draws.
+    pub fn render_shadow<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        if self.instance_count == 0 {
+            return;
+        }
         pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
 
         for &(mesh_id, inst_start, inst_count) in &self.draw_groups {

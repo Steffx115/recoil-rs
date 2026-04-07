@@ -55,11 +55,50 @@ struct Uniforms {
 }
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
+// Shadow bindings (group 1)
+struct ShadowUniforms {
+    light_vp_0: mat4x4<f32>,
+    light_vp_1: mat4x4<f32>,
+    cascade_splits: vec4<f32>,
+};
+
+@group(1) @binding(0) var shadow_map: texture_depth_2d_array;
+@group(1) @binding(1) var shadow_sampler: sampler_comparison;
+@group(1) @binding(2) var<uniform> shadow_uniforms: ShadowUniforms;
+
+fn shadow_factor(world_pos: vec3<f32>, view_depth: f32) -> f32 {
+    var light_vp: mat4x4<f32>;
+    var cascade: u32;
+    if (view_depth < shadow_uniforms.cascade_splits.y) {
+        light_vp = shadow_uniforms.light_vp_0;
+        cascade = 0u;
+    } else {
+        light_vp = shadow_uniforms.light_vp_1;
+        cascade = 1u;
+    }
+    let light_pos = light_vp * vec4<f32>(world_pos, 1.0);
+    let proj = light_pos.xyz / light_pos.w;
+    let uv = vec2<f32>(proj.x * 0.5 + 0.5, 1.0 - (proj.y * 0.5 + 0.5));
+    let depth = proj.z;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { return 1.0; }
+    let texel_size = 1.0 / 2048.0;
+    var total = 0.0;
+    for (var x = -1i; x <= 1i; x += 2i) {
+        for (var y = -1i; y <= 1i; y += 2i) {
+            let offset = vec2<f32>(f32(x), f32(y)) * texel_size;
+            total += textureSampleCompareLevel(shadow_map, shadow_sampler, uv + offset, cascade, depth - 0.005);
+        }
+    }
+    return total / 4.0;
+}
+
 struct VertexOutput {
     @builtin(position) pos: vec4<f32>,
     @location(0) normal: vec3<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) world_y: f32,
+    @location(3) world_pos: vec3<f32>,
+    @location(4) view_depth: f32,
 }
 
 @vertex
@@ -69,10 +108,13 @@ fn vs_main(
     @location(2) uv: vec2<f32>,
 ) -> VertexOutput {
     var out: VertexOutput;
-    out.pos = uniforms.view_proj * vec4<f32>(position, 1.0);
+    let clip_pos = uniforms.view_proj * vec4<f32>(position, 1.0);
+    out.pos = clip_pos;
     out.normal = normal;
     out.uv = uv;
     out.world_y = position.y;
+    out.world_pos = position;
+    out.view_depth = clip_pos.w;
     return out;
 }
 
@@ -101,7 +143,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let ndl = max(dot(n, light_dir), 0.0);
     let lighting = 0.3 + ndl * 0.7;
 
-    return vec4<f32>(base_color * lighting, 1.0);
+    // Shadow
+    let shadow = shadow_factor(in.world_pos, in.view_depth);
+    let lit = 0.3 + ndl * 0.7 * shadow;
+
+    return vec4<f32>(base_color * lit, 1.0);
 }
 "#;
 
@@ -235,7 +281,11 @@ pub struct TerrainResources {
 
 impl TerrainResources {
     /// Create terrain GPU resources (pipeline, buffers, bind groups).
-    pub fn new(gpu: &GpuContext, camera: &Camera) -> Result<Self> {
+    pub fn new(
+        gpu: &GpuContext,
+        camera: &Camera,
+        shadow_bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> Result<Self> {
         let device = &gpu.device;
 
         // --- Shader module ---
@@ -295,7 +345,7 @@ impl TerrainResources {
         // --- Pipeline ---
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("terrain_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
+            bind_group_layouts: &[&bind_group_layout, shadow_bind_group_layout],
             push_constant_ranges: &[],
         });
 
