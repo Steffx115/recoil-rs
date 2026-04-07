@@ -3,6 +3,7 @@
 //! Provides GPU initialization, a perspective camera, terrain rendering,
 //! and a top-level [`Renderer`] that ties everything together.
 
+pub mod backend;
 pub mod camera;
 pub mod cob_loader;
 pub mod cob_vm;
@@ -19,6 +20,7 @@ pub mod terrain;
 pub mod unit_mesh;
 pub mod unit_renderer;
 
+pub use backend::{MeshId, NullBackend, RenderBackend, RenderError, TextureId, WgpuBackend};
 pub use camera::Camera;
 pub use gpu::GpuContext;
 pub use model_registry::{LoadedModel, ModelRegistry};
