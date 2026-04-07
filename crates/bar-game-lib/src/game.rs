@@ -5606,6 +5606,37 @@ mod tests {
     }
 
     // ===================================================================
+    // RR-107: End-to-end replay regression test
+    // ===================================================================
+
+    /// Apply a list of PlayerCommands to the ECS world by looking up SimId.
+    fn apply_player_commands(world: &mut World, commands: &[recoil_net::PlayerCommand]) {
+        use recoil_sim::SimId;
+        // Build a map from SimId -> Entity
+        let id_to_entity: std::collections::BTreeMap<u64, bevy_ecs::entity::Entity> = world
+            .query::<(bevy_ecs::entity::Entity, &SimId)>()
+            .iter(world)
+            .map(|(e, sid)| (sid.id, e))
+            .collect();
+
+        // Collect commands to apply (can't mutate world while iterating)
+        let to_apply: Vec<(bevy_ecs::entity::Entity, recoil_sim::Command)> = commands
+            .iter()
+            .filter_map(|pc| {
+                id_to_entity
+                    .get(&pc.target_sim_id)
+                    .map(|&e| (e, pc.command.clone()))
+            })
+            .collect();
+
+        for (entity, cmd) in to_apply {
+            if let Some(mut cq) = world.get_mut::<recoil_sim::CommandQueue>(entity) {
+                cq.replace(cmd);
+            }
+        }
+    }
+
+    // ===================================================================
     // RR-116: CROSS-SYSTEM DETERMINISM AND ENTITY LIFECYCLE CHAIN TESTS
     // ===================================================================
 
@@ -6278,5 +6309,374 @@ mod tests {
             moved_any,
             "At least one unit should have moved toward target after collision"
         );
+    }
+
+    // ===================================================================
+    // RR-107+112: REPLAY REGRESSION AND FUZZ TESTS
+    // ===================================================================
+
+    /// Run a deterministic game scenario, recording commands and checksums.
+    /// Returns (recorded_commands_per_frame, checksums_per_frame).
+    fn run_replay_scenario(tick_count: u64) -> (Vec<Vec<recoil_net::PlayerCommand>>, Vec<u64>) {
+        use recoil_sim::sim_runner::{sim_tick, world_checksum};
+        use recoil_sim::{SimId, SimVec3};
+
+        let mut game = make_test_game();
+        fund_both_teams(&mut game);
+
+        // Collect all commandable entities (those with CommandQueue and SimId)
+        let commandable: Vec<(u64, bevy_ecs::entity::Entity)> = game
+            .world
+            .query::<(bevy_ecs::entity::Entity, &SimId, &recoil_sim::CommandQueue)>()
+            .iter(&game.world)
+            .map(|(e, sid, _)| (sid.id, e))
+            .collect();
+
+        // Deterministic seeded RNG for command generation
+        let mut rng_state: u64 = 0xDEAD_BEEF_CAFE_1234;
+        let mut next_rng = || -> u64 {
+            rng_state = rng_state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            rng_state
+        };
+
+        let mut all_commands: Vec<Vec<recoil_net::PlayerCommand>> = Vec::new();
+        let mut all_checksums: Vec<u64> = Vec::new();
+
+        for frame in 0..tick_count {
+            let mut frame_commands = Vec::new();
+
+            // Every 50 frames, issue move commands to some units
+            if frame % 50 == 0 && !commandable.is_empty() {
+                let num_cmds = (next_rng() % 5 + 1) as usize;
+                for _ in 0..num_cmds.min(commandable.len()) {
+                    let idx = (next_rng() as usize) % commandable.len();
+                    let (sim_id, _) = commandable[idx];
+                    let tx = (next_rng() % 800) as i32 + 50;
+                    let tz = (next_rng() % 800) as i32 + 50;
+                    frame_commands.push(recoil_net::PlayerCommand {
+                        target_sim_id: sim_id,
+                        command: recoil_sim::Command::Move(SimVec3::new(
+                            SimFloat::from_int(tx),
+                            SimFloat::ZERO,
+                            SimFloat::from_int(tz),
+                        )),
+                    });
+                }
+            }
+
+            // Every 100 frames, issue stop commands
+            if frame % 100 == 30 && !commandable.is_empty() {
+                let idx = (next_rng() as usize) % commandable.len();
+                let (sim_id, _) = commandable[idx];
+                frame_commands.push(recoil_net::PlayerCommand {
+                    target_sim_id: sim_id,
+                    command: recoil_sim::Command::Stop,
+                });
+            }
+
+            // Every 200 frames, issue hold position
+            if frame % 200 == 75 && !commandable.is_empty() {
+                let idx = (next_rng() as usize) % commandable.len();
+                let (sim_id, _) = commandable[idx];
+                frame_commands.push(recoil_net::PlayerCommand {
+                    target_sim_id: sim_id,
+                    command: recoil_sim::Command::HoldPosition,
+                });
+            }
+
+            // Apply commands
+            apply_player_commands(&mut game.world, &frame_commands);
+
+            // Run construction + sim tick (same as GameState::tick)
+            recoil_sim::construction::construction_system(&mut game.world);
+            sim_tick(&mut game.world);
+            crate::building::equip_factory_spawned_units(&mut game.world, &game.weapon_def_ids);
+            crate::building::finalize_completed_buildings(&mut game.world);
+
+            let checksum = world_checksum(&mut game.world);
+            all_commands.push(frame_commands);
+            all_checksums.push(checksum);
+        }
+
+        (all_commands, all_checksums)
+    }
+
+    #[test]
+    fn test_replay_regression_1000_ticks() {
+        use recoil_net::replay::{ReplayHeader, ReplayRecorder};
+        use recoil_sim::sim_runner::{sim_tick, world_checksum};
+
+        let tick_count = 1000;
+
+        // --- Run 1: record ---
+        let (recorded_commands, original_checksums) = run_replay_scenario(tick_count);
+
+        // Serialize commands into a replay
+        let mut recorder = ReplayRecorder::new(ReplayHeader {
+            version: 1,
+            map_hash: 0,
+            num_players: 2,
+            game_settings: Vec::new(),
+        });
+        for (frame_idx, cmds) in recorded_commands.iter().enumerate() {
+            recorder.record_frame(vec![recoil_net::CommandFrame {
+                frame: frame_idx as u64,
+                player_id: 0,
+                commands: cmds.clone(),
+            }]);
+        }
+        let replay = recorder.finish();
+
+        // Serialize and deserialize (round-trip through bincode)
+        let bytes = bincode::serialize(&replay).expect("serialize replay");
+        let replayed: recoil_net::replay::Replay =
+            bincode::deserialize(&bytes).expect("deserialize replay");
+
+        assert_eq!(replayed.frames.len(), tick_count as usize);
+
+        // --- Run 2: replay from the deserialized data ---
+        let mut game2 = make_test_game();
+        fund_both_teams(&mut game2);
+
+        let mut replay_player = recoil_net::replay::ReplayPlayer::new(replayed);
+        let mut replay_checksums: Vec<u64> = Vec::new();
+
+        while let Some(frame_cmds) = replay_player.advance() {
+            // Extract PlayerCommands from all CommandFrames for this frame
+            let all_cmds: Vec<recoil_net::PlayerCommand> = frame_cmds
+                .iter()
+                .flat_map(|cf| cf.commands.clone())
+                .collect();
+
+            apply_player_commands(&mut game2.world, &all_cmds);
+
+            recoil_sim::construction::construction_system(&mut game2.world);
+            sim_tick(&mut game2.world);
+            crate::building::equip_factory_spawned_units(&mut game2.world, &game2.weapon_def_ids);
+            crate::building::finalize_completed_buildings(&mut game2.world);
+
+            let checksum = world_checksum(&mut game2.world);
+            replay_checksums.push(checksum);
+        }
+
+        // --- Assert: checksums match at every frame ---
+        assert_eq!(
+            original_checksums.len(),
+            replay_checksums.len(),
+            "frame count mismatch"
+        );
+        for (frame, (orig, replayed)) in original_checksums
+            .iter()
+            .zip(replay_checksums.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                orig, replayed,
+                "replay desync at frame {frame}: original={orig:#x}, replayed={replayed:#x}"
+            );
+        }
+
+        // Verify checksums are not all identical (game actually progressed)
+        let unique: std::collections::BTreeSet<u64> = original_checksums.iter().copied().collect();
+        assert!(
+            unique.len() > 1,
+            "checksums should vary across frames (game should have activity)"
+        );
+    }
+
+    // ===================================================================
+    // RR-112: Fuzz testing — proptest random command sequences
+    // ===================================================================
+
+    mod fuzz_tests {
+        use super::*;
+        use proptest::prelude::*;
+        use recoil_sim::sim_runner::{sim_tick, world_checksum};
+        use recoil_sim::{SimId, SimVec3};
+
+        /// Generate a random Command (only position-based commands to avoid entity references).
+        fn arb_command() -> impl Strategy<Value = recoil_sim::Command> {
+            prop_oneof![
+                // Move to random position
+                (0i32..1000, 0i32..1000).prop_map(|(x, z)| {
+                    recoil_sim::Command::Move(SimVec3::new(
+                        SimFloat::from_int(x),
+                        SimFloat::ZERO,
+                        SimFloat::from_int(z),
+                    ))
+                }),
+                // Patrol to random position
+                (0i32..1000, 0i32..1000).prop_map(|(x, z)| {
+                    recoil_sim::Command::Patrol(SimVec3::new(
+                        SimFloat::from_int(x),
+                        SimFloat::ZERO,
+                        SimFloat::from_int(z),
+                    ))
+                }),
+                // Stop
+                Just(recoil_sim::Command::Stop),
+                // HoldPosition
+                Just(recoil_sim::Command::HoldPosition),
+                // Build at random position (unit_type 0-5)
+                (0u32..6, 0i32..1000, 0i32..1000).prop_map(|(ut, x, z)| {
+                    recoil_sim::Command::Build {
+                        unit_type: ut,
+                        position: SimVec3::new(
+                            SimFloat::from_int(x),
+                            SimFloat::ZERO,
+                            SimFloat::from_int(z),
+                        ),
+                    }
+                }),
+            ]
+        }
+
+        /// Generate a sequence of (target_unit_index, command) pairs.
+        fn arb_command_sequence(
+            max_cmds: usize,
+        ) -> impl Strategy<Value = Vec<(usize, recoil_sim::Command)>> {
+            prop::collection::vec((0usize..20, arb_command()), 0..max_cmds)
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(100))]
+
+            /// Fuzz test: random command sequences must not panic.
+            #[test]
+            fn fuzz_random_commands_no_panic(
+                commands in arb_command_sequence(50),
+                tick_count in 10u64..200,
+            ) {
+                let mut game = make_test_game();
+                fund_both_teams(&mut game);
+
+                // Collect commandable entity SimIds
+                let commandable: Vec<u64> = game
+                    .world
+                    .query::<(&SimId, &recoil_sim::CommandQueue)>()
+                    .iter(&game.world)
+                    .map(|(sid, _)| sid.id)
+                    .collect();
+
+                if commandable.is_empty() || commands.is_empty() {
+                    // Just tick without commands — still must not panic
+                    for _frame in 0..tick_count {
+                        recoil_sim::construction::construction_system(&mut game.world);
+                        sim_tick(&mut game.world);
+                        crate::building::equip_factory_spawned_units(
+                            &mut game.world,
+                            &game.weapon_def_ids,
+                        );
+                        crate::building::finalize_completed_buildings(&mut game.world);
+                    }
+                    let _ = world_checksum(&mut game.world);
+                    return Ok(());
+                }
+
+                let mut cmd_iter = commands.iter().cycle();
+
+                for _frame in 0..tick_count {
+                    // Apply a batch of commands per frame
+                    let batch_size = 3.min(commands.len());
+                    let mut frame_cmds = Vec::new();
+                    for _ in 0..batch_size {
+                        let (idx, cmd) = cmd_iter.next().unwrap();
+                        let sim_id = commandable[*idx % commandable.len()];
+                        frame_cmds.push(recoil_net::PlayerCommand {
+                            target_sim_id: sim_id,
+                            command: cmd.clone(),
+                        });
+                    }
+                    apply_player_commands(&mut game.world, &frame_cmds);
+
+                    recoil_sim::construction::construction_system(&mut game.world);
+                    sim_tick(&mut game.world);
+                    crate::building::equip_factory_spawned_units(
+                        &mut game.world,
+                        &game.weapon_def_ids,
+                    );
+                    crate::building::finalize_completed_buildings(&mut game.world);
+                }
+
+                // If we got here, no panic occurred — that's the assertion.
+                // Also verify checksum is computable (no corrupt state).
+                let _ = world_checksum(&mut game.world);
+            }
+
+            /// Fuzz test: same commands produce same checksums (determinism).
+            #[test]
+            fn fuzz_determinism(
+                commands in arb_command_sequence(30),
+                tick_count in 10u64..100,
+            ) {
+                // Run twice with the same commands, compare checksums.
+                let mut checksums_a = Vec::new();
+                let mut checksums_b = Vec::new();
+
+                for checksums in [&mut checksums_a, &mut checksums_b] {
+                    let mut game = make_test_game();
+                    fund_both_teams(&mut game);
+
+                    let commandable: Vec<u64> = game
+                        .world
+                        .query::<(&SimId, &recoil_sim::CommandQueue)>()
+                        .iter(&game.world)
+                        .map(|(sid, _)| sid.id)
+                        .collect();
+
+                    if commandable.is_empty() || commands.is_empty() {
+                        for _frame in 0..tick_count {
+                            recoil_sim::construction::construction_system(&mut game.world);
+                            sim_tick(&mut game.world);
+                            crate::building::equip_factory_spawned_units(
+                                &mut game.world,
+                                &game.weapon_def_ids,
+                            );
+                            crate::building::finalize_completed_buildings(&mut game.world);
+                            checksums.push(world_checksum(&mut game.world));
+                        }
+                        continue;
+                    }
+
+                    let mut cmd_iter = commands.iter().cycle();
+
+                    for _frame in 0..tick_count {
+                        let batch_size = 2.min(commands.len());
+                        let mut frame_cmds = Vec::new();
+                        for _ in 0..batch_size {
+                            let (idx, cmd) = cmd_iter.next().unwrap();
+                            let sim_id = commandable[*idx % commandable.len()];
+                            frame_cmds.push(recoil_net::PlayerCommand {
+                                target_sim_id: sim_id,
+                                command: cmd.clone(),
+                            });
+                        }
+                        apply_player_commands(&mut game.world, &frame_cmds);
+
+                        recoil_sim::construction::construction_system(&mut game.world);
+                        sim_tick(&mut game.world);
+                        crate::building::equip_factory_spawned_units(
+                            &mut game.world,
+                            &game.weapon_def_ids,
+                        );
+                        crate::building::finalize_completed_buildings(&mut game.world);
+
+                        checksums.push(world_checksum(&mut game.world));
+                    }
+                }
+
+                prop_assert_eq!(checksums_a.len(), checksums_b.len());
+                for (frame, (a, b)) in checksums_a.iter().zip(&checksums_b).enumerate() {
+                    prop_assert_eq!(
+                        a,
+                        b,
+                        "fuzz determinism violation at frame {}",
+                        frame
+                    );
+                }
+            }
+        }
     }
 }
