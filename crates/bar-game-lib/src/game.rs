@@ -3513,4 +3513,370 @@ mod tests {
 
         assert!(spawned >= 2, "Two factories should each produce a unit: got {}", spawned);
     }
+
+    // ===================================================================
+    // MIXED INTERACTION SCENARIO TESTS
+    // ===================================================================
+
+    /// Build economy, produce army, send scouts, expand, fight — all interleaved.
+    #[test]
+    fn mixed_build_expand_fight() {
+        let mut game = make_test_game();
+        fund_both_teams(&mut game);
+
+        let cmd = game.commander_team0.unwrap();
+        let pos = game.world.get::<Position>(cmd).unwrap().pos;
+        let cx = pos.x.to_f32();
+        let cz = pos.z.to_f32();
+
+        // 1. Build solar
+        game.selection.select_single(cmd);
+        game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+        game.handle_place(cx + 10.0, cz - 10.0);
+        for _ in 0..20 { game.tick(); game.frame_count += 1; }
+
+        // 2. Move commander while solar constructs
+        game.click_select(cx, cz, 20.0);
+        game.click_move(cx + 30.0, cz);
+        for _ in 0..50 { game.tick(); game.frame_count += 1; }
+
+        // 3. Build factory at new position
+        let new_pos = game.world.get::<Position>(cmd).unwrap().pos;
+        game.click_select(new_pos.x.to_f32(), new_pos.z.to_f32(), 20.0);
+        game.handle_build_command(PlacementType(building::BUILDING_FACTORY_ID));
+        game.handle_place(new_pos.x.to_f32() + 40.0, new_pos.z.to_f32());
+        for _ in 0..100 { game.tick(); game.frame_count += 1; }
+
+        // 4. Build mex while factory constructs
+        game.click_select(new_pos.x.to_f32(), new_pos.z.to_f32(), 20.0);
+        game.handle_build_command(PlacementType(building::BUILDING_MEX_ID));
+        game.handle_place(new_pos.x.to_f32() - 20.0, new_pos.z.to_f32());
+        for _ in 0..100 { game.tick(); game.frame_count += 1; }
+
+        // 5. Move commander toward enemy base while AI is also active
+        game.click_select(new_pos.x.to_f32(), new_pos.z.to_f32(), 25.0);
+        game.click_move(800.0, 800.0);
+        for _ in 0..500 { game.tick(); game.frame_count += 1; }
+
+        // Should have survived 770 frames with interleaved actions
+        assert!(game.frame_count >= 770);
+        let alive: usize = game.world
+            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .iter(&game.world)
+            .count();
+        assert!(alive > 0 || game.is_game_over(), "Game should still be running or ended");
+    }
+
+    /// Rapidly switch selection between builder and combat unit.
+    #[test]
+    fn mixed_rapid_selection_switching() {
+        let mut game = make_test_game();
+        fund_both_teams(&mut game);
+
+        let cmd = game.commander_team0.unwrap();
+        let cmd_pos = game.world.get::<Position>(cmd).unwrap().pos;
+        let weapon_id = register_test_weapon(&mut game);
+        let fighter = spawn_armed_unit(
+            &mut game,
+            cmd_pos.x.to_f32() as i32 + 20,
+            cmd_pos.z.to_f32() as i32,
+            0, weapon_id, 500,
+        );
+
+        for cycle in 0..10 {
+            // Select commander, start building
+            game.selection.select_single(cmd);
+            assert!(game.selected_is_builder());
+            if cycle < 3 {
+                game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+                let p = game.world.get::<Position>(cmd).unwrap().pos;
+                game.handle_place(
+                    p.x.to_f32() + 10.0 + cycle as f32 * 15.0,
+                    p.z.to_f32() - 10.0,
+                );
+            }
+
+            game.tick();
+            game.frame_count += 1;
+
+            // Switch to fighter, issue move
+            game.selection.select_single(fighter);
+            assert!(!game.selected_is_builder());
+            game.click_move(500.0 + cycle as f32 * 10.0, 500.0);
+
+            game.tick();
+            game.frame_count += 1;
+
+            // Select both via box select
+            let p = game.world.get::<Position>(cmd).unwrap().pos;
+            game.box_select(
+                p.x.to_f32() - 50.0, p.z.to_f32() - 50.0,
+                p.x.to_f32() + 100.0, p.z.to_f32() + 50.0,
+            );
+
+            game.tick();
+            game.frame_count += 1;
+        }
+
+        // No panics after 30 rapid-switch ticks
+        assert!(game.frame_count >= 30);
+    }
+
+    /// Save control groups, produce units, recall groups, issue mixed commands.
+    #[test]
+    fn mixed_control_groups_and_production() {
+        let mut game = make_test_game();
+        fund_both_teams(&mut game);
+
+        let cmd = game.commander_team0.unwrap();
+        let weapon_id = register_test_weapon(&mut game);
+
+        // Spawn 4 combat units
+        let fighters: Vec<bevy_ecs::entity::Entity> = (0..4)
+            .map(|i| spawn_armed_unit(&mut game, 250 + i * 10, 250, 0, weapon_id, 500))
+            .collect();
+
+        // Group 1: commander
+        game.selection.select_single(cmd);
+        game.save_control_group(1);
+
+        // Group 2: first 2 fighters
+        game.selection.clear();
+        game.selection.selected = fighters[..2].to_vec();
+        game.save_control_group(2);
+
+        // Group 3: last 2 fighters
+        game.selection.clear();
+        game.selection.selected = fighters[2..].to_vec();
+        game.save_control_group(3);
+
+        // Recall group 1, build solar
+        game.recall_control_group(1);
+        assert_eq!(game.selected(), Some(cmd));
+        game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+        let p = game.world.get::<Position>(cmd).unwrap().pos;
+        game.handle_place(p.x.to_f32() + 10.0, p.z.to_f32());
+
+        for _ in 0..20 { game.tick(); game.frame_count += 1; }
+
+        // Recall group 2, send to enemy
+        game.recall_control_group(2);
+        assert_eq!(game.selection.selected.len(), 2);
+        for &f in &game.selection.selected.clone() {
+            if let Some(ms) = game.world.get_mut::<recoil_sim::MoveState>(f) {
+                *ms.into_inner() = recoil_sim::MoveState::MovingTo(SimVec3::new(
+                    SimFloat::from_int(800), SimFloat::ZERO, SimFloat::from_int(800),
+                ));
+            }
+        }
+
+        for _ in 0..50 { game.tick(); game.frame_count += 1; }
+
+        // Recall group 3, send to different location
+        game.recall_control_group(3);
+        assert_eq!(game.selection.selected.len(), 2);
+        for &f in &game.selection.selected.clone() {
+            if let Some(ms) = game.world.get_mut::<recoil_sim::MoveState>(f) {
+                *ms.into_inner() = recoil_sim::MoveState::MovingTo(SimVec3::new(
+                    SimFloat::from_int(500), SimFloat::ZERO, SimFloat::from_int(800),
+                ));
+            }
+        }
+
+        for _ in 0..100 { game.tick(); game.frame_count += 1; }
+
+        // Verify groups sent in different directions
+        let g2_pos = game.world.get::<Position>(fighters[0]).unwrap().pos;
+        let g3_pos = game.world.get::<Position>(fighters[2]).unwrap().pos;
+        assert!(
+            (g2_pos.x - g3_pos.x).abs() > SimFloat::from_int(10)
+                || (g2_pos.z - g3_pos.z).abs() > SimFloat::from_int(10),
+            "Groups 2 and 3 should have moved to different locations"
+        );
+    }
+
+    /// Build, let AI attack, rebuild, counterattack — multi-phase game.
+    #[test]
+    fn mixed_attack_defend_rebuild() {
+        let mut game = make_test_game();
+        fund_both_teams(&mut game);
+
+        let cmd = game.commander_team0.unwrap();
+        let pos = game.world.get::<Position>(cmd).unwrap().pos;
+        let cx = pos.x.to_f32();
+        let cz = pos.z.to_f32();
+
+        // Phase 1: Build economy (100 frames)
+        game.selection.select_single(cmd);
+        game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+        game.handle_place(cx + 10.0, cz - 10.0);
+        for _ in 0..100 { game.tick(); game.frame_count += 1; }
+
+        // Phase 2: Let AI attack while we keep building (300 frames)
+        game.click_select(cx, cz, 20.0);
+        game.handle_build_command(PlacementType(building::BUILDING_FACTORY_ID));
+        game.handle_place(cx + 40.0, cz);
+        for _ in 0..300 { game.tick(); game.frame_count += 1; }
+
+        let _mid_alive: usize = game.world
+            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .iter(&game.world)
+            .filter(|a| a.team == 0)
+            .count();
+
+        // Phase 3: Build more economy (200 frames)
+        game.click_select(cx, cz, 25.0);
+        if game.selected_is_builder() {
+            game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+            game.handle_place(cx - 10.0, cz - 10.0);
+        }
+        for _ in 0..200 { game.tick(); game.frame_count += 1; }
+
+        // Phase 4: Send everything toward enemy (500 frames)
+        // Select all nearby units via box select
+        game.box_select(cx - 100.0, cz - 100.0, cx + 100.0, cz + 100.0);
+        let _selected_count = game.selection.selected.len();
+        for &e in &game.selection.selected.clone() {
+            if self_has_movestate(&game, e) {
+                if let Some(ms) = game.world.get_mut::<recoil_sim::MoveState>(e) {
+                    *ms.into_inner() = recoil_sim::MoveState::MovingTo(SimVec3::new(
+                        SimFloat::from_int(800), SimFloat::ZERO, SimFloat::from_int(800),
+                    ));
+                }
+            }
+        }
+        for _ in 0..500 { game.tick(); game.frame_count += 1; }
+
+        assert!(game.frame_count >= 1100);
+        // Game should either still be running or ended
+        let final_alive: usize = game.world
+            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .iter(&game.world)
+            .count();
+        assert!(
+            final_alive > 0 || game.is_game_over(),
+            "Game should be active or ended after full attack-defend cycle"
+        );
+    }
+
+    fn self_has_movestate(game: &GameState, e: Entity) -> bool {
+        game.world.get_entity(e).is_ok()
+            && game.world.get::<recoil_sim::MoveState>(e).is_some()
+    }
+
+    /// Interleave building, area commands, and combat in rapid succession.
+    #[test]
+    fn mixed_area_commands_during_combat() {
+        use recoil_sim::construction::Reclaimable;
+
+        let mut game = make_test_game();
+        fund_both_teams(&mut game);
+
+        let cmd = game.commander_team0.unwrap();
+        let pos = game.world.get::<Position>(cmd).unwrap().pos;
+        let cx = pos.x.to_f32();
+        let cz = pos.z.to_f32();
+        let weapon_id = register_test_weapon(&mut game);
+
+        // Spawn combat units and wreckage
+        for i in 0..3 {
+            spawn_armed_unit(&mut game, cx as i32 + 50 + i * 10, cz as i32, 0, weapon_id, 500);
+            spawn_armed_unit(&mut game, cx as i32 + 80 + i * 10, cz as i32, 1, weapon_id, 500);
+        }
+        for i in 0..3 {
+            game.world.spawn((
+                Position { pos: SimVec3::new(
+                    SimFloat::from_f32(cx + 30.0 + i as f32 * 10.0), SimFloat::ZERO,
+                    SimFloat::from_f32(cz + 20.0),
+                )},
+                Reclaimable { metal_value: SimFloat::from_int(50), reclaim_progress: SimFloat::ZERO },
+                Health { current: SimFloat::from_int(30), max: SimFloat::from_int(30) },
+                recoil_sim::Allegiance { team: 0 },
+            ));
+        }
+
+        // Tick to let combat start
+        for _ in 0..50 { game.tick(); game.frame_count += 1; }
+
+        // Issue area reclaim on commander while combat rages
+        game.selection.select_single(cmd);
+        game.area_reclaim(cx + 30.0, cz + 20.0, 50.0);
+        for _ in 0..50 { game.tick(); game.frame_count += 1; }
+
+        // Select combat units and issue area attack
+        game.box_select(cx + 40.0, cz - 20.0, cx + 120.0, cz + 20.0);
+        game.area_attack(cx + 80.0, cz, 50.0, 0);
+        for _ in 0..100 { game.tick(); game.frame_count += 1; }
+
+        // Build a solar during all this
+        game.selection.select_single(cmd);
+        game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+        game.handle_place(cx - 10.0, cz - 10.0);
+        for _ in 0..100 { game.tick(); game.frame_count += 1; }
+
+        // No panics after 300 frames of mixed chaos
+        assert!(game.frame_count >= 300);
+    }
+
+    /// Stress test: many actions per frame with rapid tick cycles.
+    #[test]
+    fn mixed_stress_rapid_actions() {
+        let mut game = make_test_game();
+        fund_both_teams(&mut game);
+
+        let cmd = game.commander_team0.unwrap();
+        let weapon_id = register_test_weapon(&mut game);
+
+        // Spawn many units
+        for i in 0..10 {
+            spawn_armed_unit(&mut game, 200 + i * 5, 200 + i * 3, 0, weapon_id, 300);
+        }
+
+        for frame in 0u64..500 {
+            // Every 10 frames: do something different
+            match frame % 50 {
+                0 => {
+                    // Select commander, place building
+                    game.selection.select_single(cmd);
+                    game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+                    let p = game.world.get::<Position>(cmd).unwrap().pos;
+                    game.handle_place(p.x.to_f32() + (frame as f32 * 0.5), p.z.to_f32());
+                }
+                10 => {
+                    // Box select all units
+                    game.box_select(100.0, 100.0, 400.0, 400.0);
+                }
+                20 => {
+                    // Move all selected
+                    let targets = game.selection.selected.clone();
+                    for e in targets {
+                        if game.world.get_entity(e).is_ok() {
+                            if let Some(ms) = game.world.get_mut::<recoil_sim::MoveState>(e) {
+                                *ms.into_inner() = recoil_sim::MoveState::MovingTo(SimVec3::new(
+                                    SimFloat::from_f32(300.0 + frame as f32),
+                                    SimFloat::ZERO,
+                                    SimFloat::from_f32(300.0),
+                                ));
+                            }
+                        }
+                    }
+                }
+                30 => {
+                    // Save control group
+                    game.save_control_group((frame / 50 % 10) as u8);
+                }
+                40 => {
+                    // Recall control group
+                    game.recall_control_group((frame / 50 % 10) as u8);
+                }
+                _ => {}
+            }
+
+            game.tick();
+            game.frame_count += 1;
+        }
+
+        // Survived 500 frames of rapid mixed actions
+        assert_eq!(game.frame_count, 500);
+    }
 }
