@@ -379,41 +379,40 @@ impl ShadowResources {
             source: wgpu::ShaderSource::Wgsl(SHADOW_UNIT_SHADER.into()),
         });
 
-        let unit_shadow_pipeline =
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("unit_shadow_pipeline"),
-                layout: Some(&shadow_pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &unit_shadow_shader,
-                    entry_point: Some("vs_main"),
-                    buffers: &[
-                        crate::unit_mesh::UnitVertex::LAYOUT,
-                        crate::unit_renderer::UnitInstance::LAYOUT,
-                    ],
-                    compilation_options: Default::default(),
+        let unit_shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("unit_shadow_pipeline"),
+            layout: Some(&shadow_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &unit_shadow_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[
+                    crate::unit_mesh::UnitVertex::LAYOUT,
+                    crate::unit_renderer::UnitInstance::LAYOUT,
+                ],
+                compilation_options: Default::default(),
+            },
+            fragment: None,
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: GpuContext::DEPTH_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState {
+                    constant: 2,
+                    slope_scale: 2.0,
+                    clamp: 0.0,
                 },
-                fragment: None,
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: Some(wgpu::Face::Back),
-                    ..Default::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: GpuContext::DEPTH_FORMAT,
-                    depth_write_enabled: true,
-                    depth_compare: wgpu::CompareFunction::Less,
-                    stencil: wgpu::StencilState::default(),
-                    bias: wgpu::DepthBiasState {
-                        constant: 2,
-                        slope_scale: 2.0,
-                        clamp: 0.0,
-                    },
-                }),
-                multisample: wgpu::MultisampleState::default(),
-                multiview: None,
-                cache: None,
-            });
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
 
         let light_dir = normalize3([0.4, 0.8, 0.3]);
 
@@ -459,11 +458,7 @@ impl ShadowResources {
         let uniforms = compute_cascade_matrices(camera, self.light_dir);
 
         // Upload combined uniform.
-        queue.write_buffer(
-            &self.uniform_buffer,
-            0,
-            bytemuck::cast_slice(&[uniforms]),
-        );
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
 
         // Upload per-cascade light VP matrices.
         queue.write_buffer(
@@ -546,7 +541,9 @@ fn cascade_matrix(
     max_ls[2] += z_pad;
 
     // Build orthographic projection.
-    let ortho = ortho_projection(min_ls[0], max_ls[0], min_ls[1], max_ls[1], min_ls[2], max_ls[2]);
+    let ortho = ortho_projection(
+        min_ls[0], max_ls[0], min_ls[1], max_ls[1], min_ls[2], max_ls[2],
+    );
 
     mat4_mul(ortho, light_view)
 }
@@ -563,12 +560,7 @@ fn frustum_corners_world(
     let inv_proj = mat4_inverse(proj);
 
     // NDC corners at z=0 (near) and z=1 (far).
-    let ndc_corners = [
-        [-1.0, -1.0],
-        [1.0, -1.0],
-        [1.0, 1.0],
-        [-1.0, 1.0],
-    ];
+    let ndc_corners = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
 
     let mut corners = [[0.0f32; 3]; 8];
 
@@ -748,7 +740,12 @@ fn mat4_inverse(m: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
 
     let det = s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0;
     if det.abs() < 1e-20 {
-        return [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
+        return [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ];
     }
     let inv_det = 1.0 / det;
 
@@ -887,10 +884,7 @@ mod tests {
         // The view matrix should be orthonormal (columns have unit length).
         for col in 0..3 {
             let len = (view[col][0].powi(2) + view[col][1].powi(2) + view[col][2].powi(2)).sqrt();
-            assert!(
-                (len - 1.0).abs() < 1e-4,
-                "column {col} length = {len}"
-            );
+            assert!((len - 1.0).abs() < 1e-4, "column {col} length = {len}");
         }
     }
 }

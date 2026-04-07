@@ -101,7 +101,10 @@ fn all_tests() -> Vec<VisualTest> {
                 let cmd = game.commander_team0.unwrap();
                 let pos = game.world.get::<Position>(cmd).unwrap().pos;
                 let moved = pos.x.to_f32() > 210.0 || pos.z.to_f32() > 210.0;
-                (moved, format!("Commander at ({:.0},{:.0})", pos.x.to_f32(), pos.z.to_f32()))
+                (
+                    moved,
+                    format!("Commander at ({:.0},{:.0})", pos.x.to_f32(), pos.z.to_f32()),
+                )
             }),
         },
         // --- 2. Place solar building ---
@@ -126,7 +129,8 @@ fn all_tests() -> Vec<VisualTest> {
             }),
             check: Box::new(|game| {
                 let sites: usize = game.world.query::<&BuildSite>().iter(&game.world).count();
-                let producers: usize = game.world
+                let producers: usize = game
+                    .world
                     .query::<&recoil_sim::economy::ResourceProducer>()
                     .iter(&game.world)
                     .count();
@@ -156,7 +160,8 @@ fn all_tests() -> Vec<VisualTest> {
                 game.frame_count += 1;
             }),
             check: Box::new(|game| {
-                let t0_count: usize = game.world
+                let t0_count: usize = game
+                    .world
                     .query_filtered::<&Allegiance, Without<Dead>>()
                     .iter(&game.world)
                     .filter(|a| a.team == 0)
@@ -179,7 +184,8 @@ fn all_tests() -> Vec<VisualTest> {
                 game.frame_count += 1;
             }),
             check: Box::new(|game| {
-                let t1_count: usize = game.world
+                let t1_count: usize = game
+                    .world
                     .query_filtered::<&Allegiance, Without<Dead>>()
                     .iter(&game.world)
                     .filter(|a| a.team == 1)
@@ -201,7 +207,11 @@ fn all_tests() -> Vec<VisualTest> {
                 Box::new(move |game, frame| {
                     if frame == 0 {
                         ai0 = Some(bar_game_lib::ai::AiState::new(
-                            99, 0, 1, game.commander_team0, game.commander_team1,
+                            99,
+                            0,
+                            1,
+                            game.commander_team0,
+                            game.commander_team1,
                         ));
                     }
                     game.tick();
@@ -212,7 +222,8 @@ fn all_tests() -> Vec<VisualTest> {
                 })
             },
             check: Box::new(|game| {
-                let total: usize = game.world
+                let total: usize = game
+                    .world
                     .query_filtered::<&Allegiance, Without<Dead>>()
                     .iter(&game.world)
                     .count();
@@ -242,7 +253,10 @@ fn all_tests() -> Vec<VisualTest> {
             check: Box::new(|game| {
                 let over = game.is_game_over();
                 let winner = game.game_over.as_ref().map(|go| go.winner);
-                (over && winner == Some(Some(0)), format!("over={} winner={:?}", over, winner))
+                (
+                    over && winner == Some(Some(0)),
+                    format!("over={} winner={:?}", over, winner),
+                )
             }),
         },
     ]
@@ -254,15 +268,31 @@ fn all_tests() -> Vec<VisualTest> {
 
 fn extract_units(game: &mut GameState) -> Vec<UnitInstance> {
     let sel = game.selected();
-    let mut out: Vec<UnitInstance> = game.world
+    let mut out: Vec<UnitInstance> = game
+        .world
         .query_filtered::<(Entity, &Position, &Heading, &Allegiance, &Health), Without<Dead>>()
         .iter(&game.world)
         .map(|(e, pos, hd, al, hp)| {
-            let mut c = if al.team == 0 { [0.2, 0.5, 0.9] } else { [0.9, 0.2, 0.2] };
+            let mut c = if al.team == 0 {
+                [0.2, 0.5, 0.9]
+            } else {
+                [0.9, 0.2, 0.2]
+            };
             let f = (hp.current.to_f32() / hp.max.to_f32().max(1.0)).clamp(0.2, 1.0);
-            c[0] *= f; c[1] *= f; c[2] *= f;
-            if sel == Some(e) { c[0] = (c[0]+0.3).min(1.0); c[1] = (c[1]+0.3).min(1.0); c[2] = (c[2]+0.3).min(1.0); }
-            UnitInstance { position: [pos.pos.x.to_f32(), 0.0, pos.pos.z.to_f32()], heading: hd.angle.to_f32(), team_color: c, mesh_id: 0 }
+            c[0] *= f;
+            c[1] *= f;
+            c[2] *= f;
+            if sel == Some(e) {
+                c[0] = (c[0] + 0.3).min(1.0);
+                c[1] = (c[1] + 0.3).min(1.0);
+                c[2] = (c[2] + 0.3).min(1.0);
+            }
+            UnitInstance {
+                position: [pos.pos.x.to_f32(), 0.0, pos.pos.z.to_f32()],
+                heading: hd.angle.to_f32(),
+                team_color: c,
+                mesh_id: 0,
+            }
         })
         .collect();
 
@@ -285,13 +315,20 @@ fn extract_units(game: &mut GameState) -> Vec<UnitInstance> {
 
 fn extract_projectiles(game: &mut GameState) -> Vec<ProjectileInstance> {
     use recoil_sim::projectile::Projectile;
-    game.world.query::<(&Position, &Velocity, &Projectile)>()
+    game.world
+        .query::<(&Position, &Velocity, &Projectile)>()
         .iter(&game.world)
         .map(|(pos, vel, _)| ProjectileInstance {
-            position: [pos.pos.x.to_f32(), pos.pos.y.to_f32() + 2.0, pos.pos.z.to_f32()],
+            position: [
+                pos.pos.x.to_f32(),
+                pos.pos.y.to_f32() + 2.0,
+                pos.pos.z.to_f32(),
+            ],
             size: 2.0,
             velocity_dir: [vel.vel.x.to_f32(), vel.vel.y.to_f32(), vel.vel.z.to_f32()],
-            _pad: 0.0, color: [1.0, 0.8, 0.2], _pad2: 0.0,
+            _pad: 0.0,
+            color: [1.0, 0.8, 0.2],
+            _pad2: 0.0,
         })
         .collect()
 }
@@ -351,13 +388,21 @@ impl App {
         self.current_check = Some(test.check);
         self.current_idx += 1;
 
-        eprintln!("\n--- [{}/{}] {} ({} frames) ---",
-            self.current_idx, self.current_idx + self.tests.len(),
-            self.current_name, self.current_max_frames);
+        eprintln!(
+            "\n--- [{}/{}] {} ({} frames) ---",
+            self.current_idx,
+            self.current_idx + self.tests.len(),
+            self.current_name,
+            self.current_max_frames
+        );
 
         if let Some(window) = &self.window {
-            window.set_title(&format!("Visual Test [{}/{}]: {}",
-                self.current_idx, self.current_idx + self.tests.len(), self.current_name));
+            window.set_title(&format!(
+                "Visual Test [{}/{}]: {}",
+                self.current_idx,
+                self.current_idx + self.tests.len(),
+                self.current_name
+            ));
         }
     }
 
@@ -378,7 +423,11 @@ impl App {
         for (name, passed, msg) in &self.results {
             let tag = if *passed { "PASS" } else { "FAIL" };
             eprintln!("  [{}] {} — {}", tag, name, msg);
-            if *passed { pass += 1; } else { fail += 1; }
+            if *passed {
+                pass += 1;
+            } else {
+                fail += 1;
+            }
         }
         eprintln!("=============================");
         eprintln!("{} passed, {} failed", pass, fail);
@@ -391,7 +440,9 @@ impl App {
 
     fn camera(&self) -> Camera {
         // Center on the action: follow team 0 commander or map center.
-        let (cx, cz) = self.game.as_ref()
+        let (cx, cz) = self
+            .game
+            .as_ref()
             .and_then(|g| g.commander_team0)
             .and_then(|e| self.game.as_ref().unwrap().world.get::<Position>(e))
             .map(|p| (p.pos.x.to_f32(), p.pos.z.to_f32()))
@@ -402,14 +453,18 @@ impl App {
             target: [cx, 0.0, cz],
             up: [0.0, 1.0, 0.0],
             fov_y: std::f32::consts::FRAC_PI_4,
-            aspect, near: 1.0, far: 2000.0,
+            aspect,
+            near: 1.0,
+            far: 2000.0,
         }
     }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() { return; }
+        if self.window.is_some() {
+            return;
+        }
 
         let attrs = WindowAttributes::default()
             .with_title("Visual Tests")
@@ -421,18 +476,28 @@ impl ApplicationHandler for App {
         self.start_next_test();
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: winit::event::WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _: WindowId,
+        event: winit::event::WindowEvent,
+    ) {
         match event {
             winit::event::WindowEvent::CloseRequested => event_loop.exit(),
             winit::event::WindowEvent::Resized(size) => {
                 self.window_size = [size.width as f32, size.height as f32];
-                if let Some(r) = self.renderer.as_mut() { r.resize(size.width, size.height); }
+                if let Some(r) = self.renderer.as_mut() {
+                    r.resize(size.width, size.height);
+                }
             }
             winit::event::WindowEvent::KeyboardInput {
-                event: winit::event::KeyEvent {
-                    physical_key: PhysicalKey::Code(KeyCode::Escape),
-                    state: ElementState::Pressed, ..
-                }, ..
+                event:
+                    winit::event::KeyEvent {
+                        physical_key: PhysicalKey::Code(KeyCode::Escape),
+                        state: ElementState::Pressed,
+                        ..
+                    },
+                ..
             } => event_loop.exit(),
             winit::event::WindowEvent::RedrawRequested => {
                 if self.done {
@@ -442,7 +507,10 @@ impl ApplicationHandler for App {
 
                 if self.game.is_none() {
                     self.start_next_test();
-                    if self.done { event_loop.exit(); return; }
+                    if self.done {
+                        event_loop.exit();
+                        return;
+                    }
                 }
 
                 // Step the test.
@@ -455,7 +523,10 @@ impl ApplicationHandler for App {
                     // Test finished — check and move on.
                     self.finish_current_test();
                     self.start_next_test();
-                    if self.done { event_loop.exit(); return; }
+                    if self.done {
+                        event_loop.exit();
+                        return;
+                    }
                 }
 
                 // Render.
@@ -469,7 +540,9 @@ impl ApplicationHandler for App {
                     let _ = renderer.render();
                 }
 
-                if let Some(w) = &self.window { w.request_redraw(); }
+                if let Some(w) = &self.window {
+                    w.request_redraw();
+                }
             }
             _ => {}
         }
