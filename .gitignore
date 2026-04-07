@@ -25,3 +25,4 @@ Thumbs.db
 *.tracy
 flamegraph.svg
 perf.data
+.claude/worktrees/

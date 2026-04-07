@@ -8,6 +8,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use bevy_ecs::system::Resource;
 use recoil_math::SimFloat;
 
 use crate::pathfinding::TerrainGrid;
@@ -48,6 +49,28 @@ pub struct MetalSpot {
     pub x: f64,
     pub z: f64,
     pub metal_per_tick: f64,
+}
+
+/// ECS resource holding all metal spots on the current map.
+#[derive(Resource, Debug, Clone, Default)]
+pub struct MetalSpots {
+    pub spots: Vec<MetalSpot>,
+}
+
+impl MetalSpots {
+    pub fn nearest(&self, x: f64, z: f64, max_distance: f64) -> Option<&MetalSpot> {
+        let max_dist_sq = max_distance * max_distance;
+        self.spots
+            .iter()
+            .map(|s| {
+                let dx = s.x - x;
+                let dz = s.z - z;
+                (s, dx * dx + dz * dz)
+            })
+            .filter(|(_, d)| *d <= max_dist_sq)
+            .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+            .map(|(s, _)| s)
+    }
 }
 
 // ---------------------------------------------------------------------------

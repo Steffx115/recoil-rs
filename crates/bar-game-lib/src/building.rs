@@ -256,6 +256,7 @@ pub fn finalize_completed_buildings(world: &mut World) -> Option<Entity> {
                 queue: VecDeque::new(),
                 current_progress: SimFloat::ZERO,
                 rally_point: rally,
+                    repeat: false,
             });
             tracing::info!(
                 "Team {} factory (type {}) completed at ({:.0}, {:.0})",

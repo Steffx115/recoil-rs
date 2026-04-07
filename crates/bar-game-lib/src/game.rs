@@ -1453,6 +1453,7 @@ mod tests {
                     queue: std::collections::VecDeque::new(),
                     current_progress: SimFloat::ZERO,
                     rally_point: rally,
+                    repeat: false,
                 },
                 recoil_sim::Allegiance { team: 0 },
                 recoil_sim::UnitType {
@@ -1727,6 +1728,7 @@ mod tests {
                     queue: std::collections::VecDeque::new(),
                     current_progress: SimFloat::ZERO,
                     rally_point: SimVec3::ZERO,
+                    repeat: false,
                 },
                 recoil_sim::Allegiance { team: 0 },
                 recoil_sim::UnitType {
@@ -2196,6 +2198,7 @@ mod tests {
                     queue: std::collections::VecDeque::new(),
                     current_progress: SimFloat::ZERO,
                     rally_point: rally,
+                    repeat: false,
                 },
                 recoil_sim::Allegiance { team: 0 },
                 recoil_sim::UnitType {

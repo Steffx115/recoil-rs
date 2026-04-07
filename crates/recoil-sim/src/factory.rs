@@ -56,6 +56,8 @@ pub struct BuildQueue {
     pub current_progress: SimFloat,
     /// Where newly built units are spawned.
     pub rally_point: SimVec3,
+    /// When true, completed items are re-appended to the back of the queue.
+    pub repeat: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +155,12 @@ pub fn factory_system(world: &mut World) {
         bq.current_progress += effective_rate;
 
         if bq.current_progress >= SimFloat::ONE {
-            bq.queue.pop_front();
+            let completed = bq.queue.pop_front();
+            if bq.repeat {
+                if let Some(id) = completed {
+                    bq.queue.push_back(id);
+                }
+            }
             bq.current_progress = SimFloat::ZERO;
 
             // Spawn the completed unit at the rally point.
@@ -212,6 +219,7 @@ mod tests {
                     queue: queue.iter().copied().collect(),
                     current_progress: SimFloat::ZERO,
                     rally_point: rally,
+                    repeat: false,
                 },
                 Allegiance { team: 1 },
                 Position { pos: SimVec3::ZERO },

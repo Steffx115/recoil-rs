@@ -53,6 +53,7 @@ mod tests {
                     queue: VecDeque::new(),
                     current_progress: SimFloat::ZERO,
                     rally_point: recoil_math::SimVec3::ZERO,
+                    repeat: false,
                 },
                 Position {
                     pos: recoil_math::SimVec3::ZERO,
@@ -124,6 +125,7 @@ mod tests {
                     queue: VecDeque::new(),
                     current_progress: SimFloat::ZERO,
                     rally_point: recoil_math::SimVec3::ZERO,
+                    repeat: false,
                 },
                 Position {
                     pos: recoil_math::SimVec3::ZERO,

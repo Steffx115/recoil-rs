@@ -8,6 +8,7 @@ members = [
     "crates/recoil-ui",
     "crates/recoil-audio",
     "crates/bar-game",
+    "crates/bar-game-lib",
 ]
 
 [workspace.package]

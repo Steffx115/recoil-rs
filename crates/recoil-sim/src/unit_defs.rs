@@ -62,13 +62,19 @@ pub struct UnitDef {
     pub icon_path: Option<String>,
     // Categories
     pub categories: Vec<String>,
-    // Production (factory)
+    // Production (factory/builder build list — resolved unit_type_ids)
     pub can_build: Vec<u32>,
+    #[serde(default)]
+    pub can_build_names: Vec<String>,
     // Builder
     pub build_power: Option<f64>,
     // Resource production
     pub metal_production: Option<f64>,
     pub energy_production: Option<f64>,
+    #[serde(default)]
+    pub is_building: bool,
+    #[serde(default)]
+    pub is_builder: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -97,6 +103,15 @@ impl UnitDef {
     /// Defaults to [`ArmorClass::Light`] for unrecognised values.
     pub fn parse_armor_class(&self) -> ArmorClass {
         parse_armor_class_str(&self.armor_class)
+    }
+
+    pub fn is_factory(&self) -> bool {
+        self.is_building && !self.can_build.is_empty()
+    }
+
+    pub fn compute_derived_flags(&mut self) {
+        self.is_building = self.max_speed == 0.0 || self.armor_class == "Building";
+        self.is_builder = self.build_power.is_some();
     }
 }
 
@@ -144,23 +159,51 @@ fn parse_damage_type_str(s: &str) -> DamageType {
 #[derive(Resource, Debug, Clone, Default)]
 pub struct UnitDefRegistry {
     pub defs: BTreeMap<u32, UnitDef>,
+    name_index: BTreeMap<String, u32>,
 }
 
 impl UnitDefRegistry {
-    /// Create an empty registry.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Register a unit definition.  Overwrites any existing def with the same
-    /// `unit_type_id`.
     pub fn register(&mut self, def: UnitDef) {
+        self.name_index
+            .insert(def.name.to_lowercase(), def.unit_type_id);
         self.defs.insert(def.unit_type_id, def);
     }
 
-    /// Look up a definition by its `unit_type_id`.
     pub fn get(&self, unit_type_id: u32) -> Option<&UnitDef> {
         self.defs.get(&unit_type_id)
+    }
+
+    pub fn get_by_name(&self, name: &str) -> Option<&UnitDef> {
+        self.name_index
+            .get(&name.to_lowercase())
+            .and_then(|id| self.defs.get(id))
+    }
+
+    pub fn resolve_build_options(&mut self) {
+        let name_to_id: BTreeMap<String, u32> = self
+            .defs
+            .values()
+            .map(|d| (d.name.to_lowercase(), d.unit_type_id))
+            .collect();
+        for def in self.defs.values_mut() {
+            if !def.can_build_names.is_empty() && def.can_build.is_empty() {
+                def.can_build = def
+                    .can_build_names
+                    .iter()
+                    .filter_map(|name| name_to_id.get(&name.to_lowercase()).copied())
+                    .collect();
+            }
+        }
+    }
+
+    pub fn compute_derived_flags(&mut self) {
+        for def in self.defs.values_mut() {
+            def.compute_derived_flags();
+        }
     }
 
     /// Load all `.ron` files from `dir` and return a populated registry.
@@ -232,9 +275,12 @@ mod tests {
             icon_path: Some("icons/peewee.png".into()),
             categories: vec!["bot".into(), "t1".into(), "combat".into()],
             can_build: vec![],
+            can_build_names: vec![],
             build_power: None,
             metal_production: None,
             energy_production: None,
+            is_building: false,
+            is_builder: false,
         }
     }
 
@@ -257,9 +303,12 @@ mod tests {
             icon_path: None,
             categories: vec!["building".into(), "factory".into()],
             can_build: vec![1, 2, 3],
+            can_build_names: vec![],
             build_power: Some(100.0),
             metal_production: None,
             energy_production: None,
+            is_building: true,
+            is_builder: true,
         }
     }
 

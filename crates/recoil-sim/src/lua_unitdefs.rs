@@ -22,6 +22,11 @@ const SPRING_FPS: f64 = 30.0;
 /// `turnrate * PI / 18000`.
 const CENTIDEG_TO_RAD: f64 = std::f64::consts::PI / 18000.0;
 
+/// Spatial scale factor: Spring maps are ~8192 elmos, our maps are ~1024 world
+/// units.  All spatial quantities (speed, range, sight, collision radius) from
+/// BAR Lua need division by this factor.
+const SPRING_ELMO_SCALE: f64 = 8.0;
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -45,6 +50,30 @@ pub fn load_bar_unitdef(path: &Path) -> Result<UnitDef> {
     let source = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
     parse_bar_unitdef(&source).with_context(|| format!("Failed to parse {}", path.display()))
+}
+
+/// Load all `.lua` files from a directory and all subdirectories.
+pub fn load_bar_unitdefs_recursive(path: &Path) -> Result<UnitDefRegistry> {
+    let mut registry = UnitDefRegistry::new();
+    walk_directory_recursive(path, &mut registry)?;
+    Ok(registry)
+}
+
+fn walk_directory_recursive(path: &Path, registry: &mut UnitDefRegistry) -> Result<()> {
+    let entries = std::fs::read_dir(path)
+        .with_context(|| format!("Failed to read directory: {}", path.display()))?;
+    for entry in entries.flatten() {
+        let file_path = entry.path();
+        if file_path.is_dir() {
+            let _ = walk_directory_recursive(&file_path, registry);
+        } else if file_path.extension().and_then(|e| e.to_str()) == Some("lua") {
+            match load_bar_unitdef(&file_path) {
+                Ok(def) => registry.register(def),
+                Err(e) => eprintln!("Skipping {}: {e:#}", file_path.display()),
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Load all `.lua` files from a directory into a [`UnitDefRegistry`].
@@ -85,6 +114,8 @@ struct LuaTable {
     sub_tables: BTreeMap<String, LuaTable>,
     /// Array entries keyed by integer index (from `[N] = { ... }` syntax).
     array_entries: BTreeMap<u32, LuaTable>,
+    /// Array entries with string/ident values (from `[N] = "string"` syntax).
+    array_string_entries: BTreeMap<u32, String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -311,8 +342,21 @@ fn parse_table_contents(tokens: &[Token], start: usize) -> Result<(LuaTable, usi
                     let (sub, next) = parse_table_contents(tokens, i)?;
                     table.array_entries.insert(idx, sub);
                     i = next;
+                } else if let Some(tok) = tokens.get(i) {
+                    let val = match tok {
+                        Token::StringLit(s) => s.clone(),
+                        Token::Ident(id) => id.clone(),
+                        Token::Number(n) => n.clone(),
+                        _ => String::new(),
+                    };
+                    if !val.is_empty() {
+                        table.array_string_entries.insert(idx, val);
+                    }
+                    i += 1;
+                    if i < tokens.len() && tokens[i] == Token::Comma {
+                        i += 1;
+                    }
                 } else {
-                    // Skip value.
                     i += 1;
                 }
             } else {
@@ -396,15 +440,67 @@ fn build_unitdef(unit_name: &str, table: &LuaTable) -> Result<UnitDef> {
     let turnrate_spring = get_f64("turnrate");
     let footprint_x = get_f64("footprintx");
 
+    // --- Build options ---
+    let can_build_names: Vec<String> = table
+        .sub_tables
+        .get("buildoptions")
+        .map(|bo| bo.array_string_entries.values().cloned().collect())
+        .unwrap_or_default();
+
+    // --- Economy fields (BAR-specific names) ---
+    let energy_make = get_f64("energymake");
+    let energy_upkeep = get_f64("energyupkeep");
+    let energy_production_legacy = get_f64("energyproduction");
+    let energy_production = if energy_make > 0.0 {
+        Some(energy_make)
+    } else if energy_upkeep < 0.0 {
+        Some(-energy_upkeep)
+    } else if energy_production_legacy > 0.0 {
+        Some(energy_production_legacy)
+    } else {
+        None
+    };
+
+    let metal_make = get_f64("metalmake");
+    let extracts_metal = get_f64("extractsmetal");
+    let metal_production_legacy = get_f64("metalproduction");
+    let metal_production = if metal_make > 0.0 {
+        Some(metal_make)
+    } else if extracts_metal > 0.0 {
+        Some(extracts_metal * 1000.0)
+    } else if metal_production_legacy > 0.0 {
+        Some(metal_production_legacy)
+    } else {
+        None
+    };
+
+    let is_builder_flag = get_string("builder")
+        .map(|s| s == "true" || s == "1")
+        .unwrap_or(false);
+    let workertime = get_f64("workertime");
+    let buildpower_legacy = get_f64("buildpower");
+    let build_power = if is_builder_flag && workertime > 0.0 {
+        Some(workertime)
+    } else if buildpower_legacy > 0.0 {
+        Some(buildpower_legacy)
+    } else if is_builder_flag {
+        Some(100.0)
+    } else {
+        None
+    };
+
+    let is_building = max_speed_spring <= 0.0;
+    let is_builder = build_power.is_some();
+
     Ok(UnitDef {
         name: unit_name.to_string(),
         unit_type_id,
         max_health: get_f64("health"),
         armor_class,
-        sight_range: get_f64("sightdistance"),
-        collision_radius: footprint_x * 8.0 / 2.0,
-        max_speed: max_speed_spring / SPRING_FPS,
-        acceleration: acceleration_spring / SPRING_FPS,
+        sight_range: get_f64("sightdistance") / SPRING_ELMO_SCALE,
+        collision_radius: footprint_x * 8.0 / 2.0 / SPRING_ELMO_SCALE,
+        max_speed: max_speed_spring / SPRING_FPS / SPRING_ELMO_SCALE,
+        acceleration: acceleration_spring / SPRING_FPS / SPRING_ELMO_SCALE,
         turn_rate: turnrate_spring * CENTIDEG_TO_RAD,
         metal_cost: get_f64("metalcost"),
         energy_cost: get_f64("energycost"),
@@ -414,30 +510,12 @@ fn build_unitdef(unit_name: &str, table: &LuaTable) -> Result<UnitDef> {
         icon_path: None,
         categories,
         can_build: Vec::new(),
-        build_power: {
-            let bp = get_f64("buildpower");
-            if bp > 0.0 {
-                Some(bp)
-            } else {
-                None
-            }
-        },
-        metal_production: {
-            let mp = get_f64("metalproduction");
-            if mp > 0.0 {
-                Some(mp)
-            } else {
-                None
-            }
-        },
-        energy_production: {
-            let ep = get_f64("energyproduction");
-            if ep > 0.0 {
-                Some(ep)
-            } else {
-                None
-            }
-        },
+        can_build_names,
+        build_power,
+        metal_production,
+        energy_production,
+        is_building,
+        is_builder,
     })
 }
 
@@ -477,10 +555,10 @@ fn parse_weapons(table: &LuaTable) -> Vec<WeaponDefData> {
                 name: name.clone(),
                 damage,
                 damage_type,
-                range: get_f64("range"),
+                range: get_f64("range") / SPRING_ELMO_SCALE,
                 reload_time: (get_f64("reloadtime") * SPRING_FPS) as u32,
-                projectile_speed: get_f64("weaponvelocity") / SPRING_FPS,
-                area_of_effect: get_f64("areaofeffect"),
+                projectile_speed: get_f64("weaponvelocity") / SPRING_FPS / SPRING_ELMO_SCALE,
+                area_of_effect: get_f64("areaofeffect") / SPRING_ELMO_SCALE,
             },
         );
     }
@@ -547,7 +625,7 @@ fn guess_armor_class(table: &LuaTable) -> String {
 }
 
 /// Generate a stable u32 id from a unit name using FNV-1a hash.
-fn hash_unit_name(name: &str) -> u32 {
+pub fn hash_unit_name(name: &str) -> u32 {
     let mut hash: u32 = 2_166_136_261;
     for byte in name.as_bytes() {
         hash ^= *byte as u32;
@@ -605,12 +683,12 @@ return {
         assert_eq!(def.metal_cost, 54.0);
         assert_eq!(def.energy_cost, 900.0);
         assert_eq!(def.build_time, (1650.0 / 30.0) as u32); // 55
-        assert!((def.max_speed - 87.0 / 30.0).abs() < 0.001);
-        assert!((def.acceleration - 0.414 / 30.0).abs() < 0.001);
+        assert!((def.max_speed - 87.0 / 30.0 / 8.0).abs() < 0.001);
+        assert!((def.acceleration - 0.414 / 30.0 / 8.0).abs() < 0.001);
         assert!((def.turn_rate - 1214.40002 * std::f64::consts::PI / 18000.0).abs() < 0.001);
-        assert_eq!(def.sight_range, 429.0);
+        assert!((def.sight_range - 429.0 / 8.0).abs() < 0.1);
         assert_eq!(def.model_path, Some("Units/ARMPW.s3o".to_string()));
-        assert!((def.collision_radius - 8.0).abs() < 0.001); // 2 * 8 / 2 = 8
+        assert!((def.collision_radius - 8.0 / 8.0).abs() < 0.001);
         assert_eq!(def.armor_class, "Light");
     }
 
@@ -623,10 +701,10 @@ return {
         assert_eq!(w.name, "emg");
         assert_eq!(w.damage, 9.0);
         assert_eq!(w.damage_type, "Normal");
-        assert_eq!(w.range, 180.0);
+        assert!((w.range - 180.0 / 8.0).abs() < 0.1);
         assert_eq!(w.reload_time, (0.3 * 30.0) as u32); // 9
-        assert!((w.projectile_speed - 600.0 / 30.0).abs() < 0.001);
-        assert_eq!(w.area_of_effect, 8.0);
+        assert!((w.projectile_speed - 600.0 / 30.0 / 8.0).abs() < 0.001);
+        assert!((w.area_of_effect - 8.0 / 8.0).abs() < 0.01);
     }
 
     #[test]
@@ -653,7 +731,7 @@ return {
         assert_eq!(def.armor_class, "Building");
         assert!(def.weapons.is_empty());
         assert_eq!(def.energy_production, Some(20.0));
-        assert!((def.collision_radius - 16.0).abs() < 0.001); // 4 * 8 / 2
+        assert!((def.collision_radius - 2.0).abs() < 0.001); // (4 * 8 / 2) / 8
     }
 
     #[test]

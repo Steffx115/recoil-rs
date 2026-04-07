@@ -855,6 +855,7 @@ impl SimState {
                         queue: VecDeque::new(),
                         current_progress: SimFloat::ZERO,
                         rally_point: rally,
+                        repeat: false,
                     });
                     tracing::info!("Team {} Factory completed at ({:.0}, {:.0})", team, x, z);
 
