@@ -215,9 +215,7 @@ pub fn construction_system(world: &mut World) {
                 // Clear builder's BuildTarget and stop movement so it doesn't
                 // keep walking toward the completed building.
                 world.entity_mut(builder_entity).remove::<BuildTarget>();
-                if let Some(mut ms) =
-                    world.get_mut::<crate::MoveState>(builder_entity)
-                {
+                if let Some(mut ms) = world.get_mut::<crate::MoveState>(builder_entity) {
                     *ms = crate::MoveState::Idle;
                 }
             }
@@ -248,9 +246,7 @@ pub fn construction_system(world: &mut World) {
 
                 // Clear builder's BuildTarget and stop movement.
                 world.entity_mut(builder_entity).remove::<BuildTarget>();
-                if let Some(mut ms) =
-                    world.get_mut::<crate::MoveState>(builder_entity)
-                {
+                if let Some(mut ms) = world.get_mut::<crate::MoveState>(builder_entity) {
                     *ms = crate::MoveState::Idle;
                 }
             }

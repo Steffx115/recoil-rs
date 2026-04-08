@@ -1,20 +1,16 @@
-use bytemuck::{Pod, Zeroable};
-
 // ---------------------------------------------------------------------------
 // Vertex type
 // ---------------------------------------------------------------------------
 
 /// Unit vertex: position + normal + color.
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct UnitVertex {
-    pub position: [f32; 3],
-    pub normal: [f32; 3],
-    pub color: [f32; 3],
-}
+///
+/// This is a type alias for [`pierce_model::ModelVertex`] for backwards
+/// compatibility. New code should use `ModelVertex` directly.
+pub type UnitVertex = pierce_model::ModelVertex;
 
-impl UnitVertex {
-    pub const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
+/// wgpu vertex buffer layout for [`UnitVertex`] / [`ModelVertex`].
+pub fn unit_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
+    wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<UnitVertex>() as wgpu::BufferAddress,
         step_mode: wgpu::VertexStepMode::Vertex,
         attributes: &[
@@ -37,8 +33,12 @@ impl UnitVertex {
                 format: wgpu::VertexFormat::Float32x3,
             },
         ],
-    };
+    }
 }
+
+// Keep the LAYOUT constant accessible via impl for backwards compat.
+// UnitVertex is now a type alias so we can't add inherent impls. Instead,
+// callers should use `unit_vertex_layout()`.
 
 // ---------------------------------------------------------------------------
 // Placeholder mesh generation

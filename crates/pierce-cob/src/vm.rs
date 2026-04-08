@@ -4,8 +4,8 @@
 //! "thread" runs one script function concurrently. Threads can sleep, wait
 //! for piece moves/turns to complete, and signal each other.
 
-use crate::cob_loader::CobScript;
-use crate::piece_tree::PieceTransform;
+use crate::loader::CobScript;
+use pierce_model::PieceTransform;
 
 // ---------------------------------------------------------------------------
 // COB opcodes
@@ -704,7 +704,7 @@ impl CobVm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cob_loader::{CobFunction, CobScript};
+    use crate::loader::{CobFunction, CobScript};
 
     /// Helper: build a CobScript with given pieces and scripts.
     fn make_script(

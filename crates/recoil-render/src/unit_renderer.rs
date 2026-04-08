@@ -236,7 +236,7 @@ impl UnitRenderer {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[UnitVertex::LAYOUT, UnitInstance::LAYOUT],
+                buffers: &[crate::unit_mesh::unit_vertex_layout(), UnitInstance::LAYOUT],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {

@@ -228,6 +228,9 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "image",
+ "pierce-cob",
+ "pierce-model",
+ "pierce-s3o",
  "pollster",
  "recoil-audio",
  "recoil-math",
@@ -2511,6 +2514,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "pierce-cob"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "pierce-model",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "pierce-model"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "pierce-s3o"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "pierce-model",
+ "tracing",
+]
+
+[[package]]
 name = "pin-project"
 version = "1.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2841,6 +2872,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "pierce-cob",
+ "pierce-model",
+ "pierce-s3o",
  "recoil-sim",
  "thiserror 2.0.18",
  "tracing",

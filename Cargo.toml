@@ -9,6 +9,9 @@ members = [
     "crates/recoil-audio",
     "crates/bar-game",
     "crates/bar-game-lib",
+    "crates/pierce-model",
+    "crates/pierce-cob",
+    "crates/pierce-s3o",
 ]
 
 [workspace.package]

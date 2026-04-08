@@ -1,20 +1,19 @@
-//! Hierarchical piece tree for S3O models.
+//! Hierarchical piece tree for 3D models.
 //!
 //! Instead of flattening all pieces into a single vertex buffer with baked
-//! world offsets (as the original `s3o_loader::load_s3o` does), this module
-//! preserves the parent-child hierarchy so that per-piece transforms can be
-//! applied at runtime by the animation system.
+//! world offsets, this module preserves the parent-child hierarchy so that
+//! per-piece transforms can be applied at runtime by the animation system.
 
-use crate::unit_mesh::UnitVertex;
+use crate::vertex::ModelVertex;
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/// A single node in the S3O piece hierarchy.
+/// A single node in the piece hierarchy.
 #[derive(Debug, Clone)]
 pub struct PieceNode {
-    /// Piece name (extracted from the S3O name table).
+    /// Piece name (extracted from the model's name table).
     pub name: String,
     /// Local translation offset relative to the parent piece.
     pub local_offset: [f32; 3],
@@ -22,7 +21,7 @@ pub struct PieceNode {
     pub vertex_range: std::ops::Range<u32>,
     /// Range of indices owned by this piece in the shared index buffer.
     pub index_range: std::ops::Range<u32>,
-    /// Indices of child pieces in the flat `S3oPieceTree::pieces` vec.
+    /// Indices of child pieces in the flat `PieceTree::pieces` vec.
     pub children: Vec<usize>,
 }
 
@@ -37,18 +36,35 @@ pub struct PieceTransform {
     pub rotate: [f32; 3],
 }
 
-/// A complete S3O model stored as a piece tree with local-space vertices.
+/// A complete model stored as a piece tree with local-space vertices.
 ///
 /// Vertices are in *piece-local* space (not baked with parent offsets).
 /// To produce a renderable buffer, call [`flatten_with_transforms`].
 #[derive(Debug, Clone)]
-pub struct S3oPieceTree {
+pub struct PieceTree {
     /// Flat list of pieces. Index 0 is always the root.
     pub pieces: Vec<PieceNode>,
     /// All vertices in piece-local space.
-    pub vertices: Vec<UnitVertex>,
+    pub vertices: Vec<ModelVertex>,
     /// All indices (referencing into `vertices`).
     pub indices: Vec<u16>,
+}
+
+// ---------------------------------------------------------------------------
+// Model loader trait
+// ---------------------------------------------------------------------------
+
+/// Trait for format-specific model loaders (S3O, OBJ, etc.).
+pub trait ModelLoader {
+    /// Load a model preserving the piece hierarchy.
+    fn load_tree(data: &[u8]) -> anyhow::Result<PieceTree>
+    where
+        Self: Sized;
+
+    /// Load a model as a flat vertex/index buffer (pieces baked in).
+    fn load_flat(data: &[u8]) -> anyhow::Result<(Vec<ModelVertex>, Vec<u16>)>
+    where
+        Self: Sized;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,9 +110,9 @@ fn rotate_normal(n: [f32; 3], rot: [f32; 3]) -> [f32; 3] {
 ///
 /// Returns `(vertices, indices)` ready for GPU upload.
 pub fn flatten_with_transforms(
-    tree: &S3oPieceTree,
+    tree: &PieceTree,
     transforms: &[PieceTransform],
-) -> (Vec<UnitVertex>, Vec<u16>) {
+) -> (Vec<ModelVertex>, Vec<u16>) {
     let mut out_verts = Vec::with_capacity(tree.vertices.len());
     let mut out_indices = Vec::with_capacity(tree.indices.len());
 
@@ -130,7 +146,7 @@ pub fn flatten_with_transforms(
             let src = &tree.vertices[vi as usize];
             let rotated_pos = rotate_point(src.position, world_rot);
             let rotated_normal = rotate_normal(src.normal, world_rot);
-            out_verts.push(UnitVertex {
+            out_verts.push(ModelVertex {
                 position: [
                     rotated_pos[0] + world_off[0],
                     rotated_pos[1] + world_off[1],
@@ -153,7 +169,7 @@ pub fn flatten_with_transforms(
 
 /// Recursively compute world-space offset and rotation for each piece.
 fn compute_world_transforms(
-    tree: &S3oPieceTree,
+    tree: &PieceTree,
     transforms: &[PieceTransform],
     piece_idx: usize,
     parent_offset: [f32; 3],
@@ -210,19 +226,19 @@ mod tests {
     use super::*;
 
     /// Helper: create a simple tree with one root piece.
-    fn single_piece_tree() -> S3oPieceTree {
+    fn single_piece_tree() -> PieceTree {
         let vertices = vec![
-            UnitVertex {
+            ModelVertex {
                 position: [1.0, 0.0, 0.0],
                 normal: [0.0, 1.0, 0.0],
                 color: [0.7, 0.7, 0.7],
             },
-            UnitVertex {
+            ModelVertex {
                 position: [0.0, 1.0, 0.0],
                 normal: [0.0, 1.0, 0.0],
                 color: [0.7, 0.7, 0.7],
             },
-            UnitVertex {
+            ModelVertex {
                 position: [0.0, 0.0, 1.0],
                 normal: [0.0, 1.0, 0.0],
                 color: [0.7, 0.7, 0.7],
@@ -230,7 +246,7 @@ mod tests {
         ];
         let indices = vec![0u16, 1, 2];
 
-        S3oPieceTree {
+        PieceTree {
             pieces: vec![PieceNode {
                 name: "root".to_string(),
                 local_offset: [0.0, 0.0, 0.0],
@@ -244,36 +260,36 @@ mod tests {
     }
 
     /// Helper: create a tree with root + child piece.
-    fn parent_child_tree() -> S3oPieceTree {
+    fn parent_child_tree() -> PieceTree {
         let vertices = vec![
             // Root piece vertices (indices 0..3)
-            UnitVertex {
+            ModelVertex {
                 position: [1.0, 0.0, 0.0],
                 normal: [0.0, 1.0, 0.0],
                 color: [0.7, 0.7, 0.7],
             },
-            UnitVertex {
+            ModelVertex {
                 position: [0.0, 1.0, 0.0],
                 normal: [0.0, 1.0, 0.0],
                 color: [0.7, 0.7, 0.7],
             },
-            UnitVertex {
+            ModelVertex {
                 position: [0.0, 0.0, 1.0],
                 normal: [0.0, 1.0, 0.0],
                 color: [0.7, 0.7, 0.7],
             },
             // Child piece vertices (indices 3..6)
-            UnitVertex {
+            ModelVertex {
                 position: [1.0, 0.0, 0.0],
                 normal: [0.0, 1.0, 0.0],
                 color: [0.7, 0.7, 0.7],
             },
-            UnitVertex {
+            ModelVertex {
                 position: [0.0, 1.0, 0.0],
                 normal: [0.0, 1.0, 0.0],
                 color: [0.7, 0.7, 0.7],
             },
-            UnitVertex {
+            ModelVertex {
                 position: [0.0, 0.0, 1.0],
                 normal: [0.0, 1.0, 0.0],
                 color: [0.7, 0.7, 0.7],
@@ -281,7 +297,7 @@ mod tests {
         ];
         let indices = vec![0u16, 1, 2, 3, 4, 5];
 
-        S3oPieceTree {
+        PieceTree {
             pieces: vec![
                 PieceNode {
                     name: "root".to_string(),
@@ -363,7 +379,7 @@ mod tests {
 
     #[test]
     fn empty_tree_returns_empty() {
-        let tree = S3oPieceTree {
+        let tree = PieceTree {
             pieces: vec![],
             vertices: vec![],
             indices: vec![],

@@ -1,0 +1,12 @@
+[package]
+name = "pierce-cob"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "COB animation bytecode parser and VM for the Pierce RTS engine"
+
+[dependencies]
+pierce-model = { path = "../pierce-model" }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

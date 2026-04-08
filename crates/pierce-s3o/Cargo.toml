@@ -1,0 +1,11 @@
+[package]
+name = "pierce-s3o"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "S3O model format loader for the Pierce RTS engine"
+
+[dependencies]
+pierce-model = { path = "../pierce-model" }
+anyhow = { workspace = true }
+tracing = { workspace = true }

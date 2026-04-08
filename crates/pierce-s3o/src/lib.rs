@@ -2,14 +2,14 @@
 //!
 //! The .s3o format stores hierarchical piece-based models used by the Spring
 //! RTS engine. Each piece has its own vertices, indices, and a translation
-//! offset relative to its parent. This loader flattens all pieces into a
-//! single vertex/index buffer suitable for indexed rendering.
+//! offset relative to its parent. This loader can flatten all pieces into a
+//! single vertex/index buffer or preserve the hierarchy as a [`PieceTree`].
 
 use std::path::Path;
 
 use anyhow::{ensure, Context, Result};
 
-use crate::unit_mesh::UnitVertex;
+use pierce_model::{ModelVertex, PieceNode, PieceTree};
 
 // ---------------------------------------------------------------------------
 // Binary format constants
@@ -150,7 +150,7 @@ fn collect_piece(
     data: &[u8],
     piece_offset: usize,
     parent_offset: [f32; 3],
-    vertices: &mut Vec<UnitVertex>,
+    vertices: &mut Vec<ModelVertex>,
     indices: &mut Vec<u32>,
 ) -> Result<()> {
     let piece = parse_piece(data, piece_offset)?;
@@ -184,7 +184,7 @@ fn collect_piece(
         let znormal = read_f32(data, vo + 20)?;
         // UV at vo+24, vo+28 — skipped.
 
-        vertices.push(UnitVertex {
+        vertices.push(ModelVertex {
             position: [
                 xpos + world_offset[0],
                 ypos + world_offset[1],
@@ -273,14 +273,12 @@ fn read_cstr(data: &[u8], offset: usize) -> Result<String> {
 // Piece tree loading
 // ---------------------------------------------------------------------------
 
-use crate::piece_tree::{PieceNode, S3oPieceTree};
-
 /// Recursively build piece tree nodes, storing vertices in piece-local space.
 fn collect_piece_tree(
     data: &[u8],
     piece_offset: usize,
     pieces: &mut Vec<PieceNode>,
-    vertices: &mut Vec<UnitVertex>,
+    vertices: &mut Vec<ModelVertex>,
     indices: &mut Vec<u16>,
 ) -> Result<usize> {
     let piece = parse_piece(data, piece_offset)?;
@@ -309,7 +307,7 @@ fn collect_piece_tree(
         let ynormal = read_f32(data, vo + 16)?;
         let znormal = read_f32(data, vo + 20)?;
 
-        vertices.push(UnitVertex {
+        vertices.push(ModelVertex {
             position: [xpos, ypos, zpos],
             normal: [xnormal, ynormal, znormal],
             color: base_color,
@@ -395,10 +393,10 @@ fn collect_piece_tree(
 
 /// Parse a .s3o model preserving the piece hierarchy.
 ///
-/// Returns an [`S3oPieceTree`] with vertices in piece-local space and the
+/// Returns a [`PieceTree`] with vertices in piece-local space and the
 /// full parent-child structure intact. Use [`flatten_with_transforms`] to
 /// produce a renderable vertex buffer with animation transforms applied.
-pub fn load_s3o_tree(data: &[u8]) -> Result<S3oPieceTree> {
+pub fn load_s3o_tree(data: &[u8]) -> Result<PieceTree> {
     let header = parse_header(data)?;
 
     let mut pieces = Vec::new();
@@ -415,7 +413,7 @@ pub fn load_s3o_tree(data: &[u8]) -> Result<S3oPieceTree> {
         )?;
     }
 
-    Ok(S3oPieceTree {
+    Ok(PieceTree {
         pieces,
         vertices,
         indices,
@@ -428,7 +426,7 @@ pub fn load_s3o_tree(data: &[u8]) -> Result<S3oPieceTree> {
 /// buffer. Vertex positions include the accumulated piece offsets. Indices
 /// are converted to `u16`; a warning is logged and indices are truncated
 /// if the total vertex count exceeds 65 535.
-pub fn load_s3o(data: &[u8]) -> Result<(Vec<UnitVertex>, Vec<u16>)> {
+pub fn load_s3o(data: &[u8]) -> Result<(Vec<ModelVertex>, Vec<u16>)> {
     let header = parse_header(data)?;
 
     let mut vertices = Vec::new();
@@ -468,7 +466,7 @@ pub fn load_s3o(data: &[u8]) -> Result<(Vec<UnitVertex>, Vec<u16>)> {
 }
 
 /// Load a .s3o model from a file on disk.
-pub fn load_s3o_file(path: &Path) -> Result<(Vec<UnitVertex>, Vec<u16>)> {
+pub fn load_s3o_file(path: &Path) -> Result<(Vec<ModelVertex>, Vec<u16>)> {
     let data = std::fs::read(path)
         .with_context(|| format!("failed to read s3o file: {}", path.display()))?;
     load_s3o(&data)

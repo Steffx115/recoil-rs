@@ -386,7 +386,7 @@ impl ShadowResources {
                 module: &unit_shadow_shader,
                 entry_point: Some("vs_main"),
                 buffers: &[
-                    crate::unit_mesh::UnitVertex::LAYOUT,
+                    crate::unit_mesh::unit_vertex_layout(),
                     crate::unit_renderer::UnitInstance::LAYOUT,
                 ],
                 compilation_options: Default::default(),

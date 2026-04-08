@@ -7,6 +7,9 @@ description = "wgpu rendering pipeline for the Recoil RTS engine"
 
 [dependencies]
 recoil-sim = { path = "../recoil-sim" }
+pierce-model = { path = "../pierce-model" }
+pierce-cob = { path = "../pierce-cob" }
+pierce-s3o = { path = "../pierce-s3o" }
 wgpu = { workspace = true }
 winit = { workspace = true }
 tracing = { workspace = true }

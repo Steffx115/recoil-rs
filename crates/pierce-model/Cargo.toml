@@ -1,0 +1,11 @@
+[package]
+name = "pierce-model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Common model types for the Pierce RTS engine (no wgpu)"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+bytemuck = { workspace = true }
