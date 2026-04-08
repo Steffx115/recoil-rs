@@ -61,32 +61,11 @@ Use `--message-format=short` on cargo build/clippy during iterative fix loops.
 | `pierce-audio` | pierce-sim, kira | Spatial audio (reads positions from sim) |
 | `bar-game` | all crates | Game binary: unit defs, factions, game logic |
 
-## Agent Workflow (RR-61)
+## Agent Workflow
 
-### Workflow Per Story
-
-1. Pull story from sprint. Write brief in Jira description with: acceptance criteria, relevant crate, API boundaries, design decisions.
-2. **Transition the Jira issue to "In Progress"** before starting any work.
-3. Launch agent in a worktree (`isolation: "worktree"`) with the brief.
-4. Agent implements, writes tests, runs `cargo test` and `cargo clippy`.
-5. Agent completes — **transition the Jira issue to "Ready for Merge"**.
-6. Review the diff. If good: merge worktree branch into main. Close story.
-7. If issues: send feedback via `SendMessage`, agent fixes (issue stays "In Progress").
-
-### Jira Status Updates
-
-Agents MUST keep Jira issue status current using `mcp__mcp-atlassian__jira_transition_issue`:
-- **Starting work**: Transition to "In Progress" (id `21`) before writing any code.
-- **Work complete**: Transition to "Ready for Merge" once tests pass and implementation is done.
-- **Merged**: Transition to "Done" (id `31`) after the branch is merged to main.
-
-Use `mcp__mcp-atlassian__jira_get_transitions` to discover available transition IDs if they change.
-
-### Parallel Execution Rules
-
-- Agents can run simultaneously on **different crates**.
-- Two agents NEVER work on the **same crate** at the same time.
-- Shared types (in `pierce-math`, `pierce-model`) must be merged before dependent agents start.
+Use `/start-story RR-123` to begin work on a Jira story (transitions issue, launches worktree agent).
+Use `/merge-story RR-123` to review, merge, and close a completed story.
+Use `/check` to run the full test + clippy pipeline.
 
 ## Testing Strategy (RR-67)
 
