@@ -33,6 +33,15 @@ pub struct MapManifest {
     pub start_positions: Vec<StartPosition>,
     /// Extractable metal deposits.
     pub metal_spots: Vec<MetalSpot>,
+    /// Terrain type map (grass/rock/water), if loaded from SMF.
+    #[serde(default)]
+    pub type_map: Option<Vec<u8>>,
+    /// Width of the type map grid.
+    #[serde(default)]
+    pub type_map_width: u32,
+    /// Height of the type map grid.
+    #[serde(default)]
+    pub type_map_height: u32,
 }
 
 /// A team's starting position on the map.
@@ -49,6 +58,16 @@ pub struct MetalSpot {
     pub x: f64,
     pub z: f64,
     pub metal_per_tick: f64,
+}
+
+/// A pre-placed map feature (tree, rock, wreckage, etc.).
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FeaturePlacement {
+    pub feature_type: String,
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+    pub rotation: f64,
 }
 
 /// ECS resource holding all metal spots on the current map.
@@ -84,6 +103,8 @@ pub struct MapData {
     pub heightmap: Vec<u16>,
     /// Pathfinding cost grid derived from the heightmap.
     pub terrain_grid: TerrainGrid,
+    /// Pre-placed features from the map (trees, rocks, etc.).
+    pub features: Vec<FeaturePlacement>,
 }
 
 // ---------------------------------------------------------------------------
@@ -206,6 +227,9 @@ pub fn generate_flat_map(
         water_level: 0.0,
         start_positions,
         metal_spots,
+        type_map: None,
+        type_map_width: 0,
+        type_map_height: 0,
     };
 
     let terrain_grid = heightmap_to_terrain_grid(&heightmap, width, height);
@@ -214,6 +238,7 @@ pub fn generate_flat_map(
         manifest,
         heightmap,
         terrain_grid,
+        features: Vec::new(),
     }
 }
 
@@ -333,6 +358,9 @@ mod tests {
                 z: 15.0,
                 metal_per_tick: 0.5,
             }],
+            type_map: None,
+            type_map_width: 0,
+            type_map_height: 0,
         };
 
         let dir = std::env::temp_dir();

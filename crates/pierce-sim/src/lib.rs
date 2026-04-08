@@ -18,6 +18,7 @@ pub mod pathfinding;
 pub mod projectile;
 pub mod selection;
 pub mod sim_runner;
+pub mod smf;
 pub mod spatial;
 pub mod targeting;
 pub mod unit_defs;

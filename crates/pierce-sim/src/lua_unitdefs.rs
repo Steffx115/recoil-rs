@@ -107,15 +107,15 @@ pub fn load_bar_unitdefs_directory(path: &Path) -> Result<UnitDefRegistry> {
 
 /// A simplified representation of a Lua table extracted via text parsing.
 #[derive(Debug, Default)]
-struct LuaTable {
+pub(crate) struct LuaTable {
     /// Flat key-value pairs (string or numeric values stored as strings).
-    values: BTreeMap<String, String>,
+    pub(crate) values: BTreeMap<String, String>,
     /// Nested sub-tables keyed by name.
-    sub_tables: BTreeMap<String, LuaTable>,
+    pub(crate) sub_tables: BTreeMap<String, LuaTable>,
     /// Array entries keyed by integer index (from `[N] = { ... }` syntax).
-    array_entries: BTreeMap<u32, LuaTable>,
+    pub(crate) array_entries: BTreeMap<u32, LuaTable>,
     /// Array entries with string/ident values (from `[N] = "string"` syntax).
-    array_string_entries: BTreeMap<u32, String>,
+    pub(crate) array_string_entries: BTreeMap<u32, String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +123,7 @@ struct LuaTable {
 // ---------------------------------------------------------------------------
 
 /// Parse a BAR Lua unit definition source into a [`LuaTable`].
-fn parse_lua_table(source: &str) -> Result<LuaTable> {
+pub(crate) fn parse_lua_table(source: &str) -> Result<LuaTable> {
     let lines = preprocess(source);
     let tokens = tokenize(&lines);
     let (table, _) = parse_table_contents(&tokens, 0)?;
