@@ -161,5 +161,5 @@ fn emit_vertex(
 }
 
 #[cfg(test)]
-#[path = "obj_loader_tests.rs"]
+#[path = "tests/obj_loader_tests.rs"]
 mod tests;

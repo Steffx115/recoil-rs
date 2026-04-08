@@ -204,5 +204,5 @@ pub fn stun_system(world: &mut World) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "damage_tests.rs"]
+#[path = "tests/damage_tests.rs"]
 mod tests;

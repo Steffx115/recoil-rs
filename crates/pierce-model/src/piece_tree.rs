@@ -222,5 +222,5 @@ fn compute_world_transforms(
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "piece_tree_tests.rs"]
+#[path = "tests/piece_tree_tests.rs"]
 mod tests;

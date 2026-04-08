@@ -531,5 +531,5 @@ impl Div<i32> for SimFloat {
 }
 
 #[cfg(test)]
-#[path = "sim_float_tests.rs"]
+#[path = "tests/sim_float_tests.rs"]
 mod tests;

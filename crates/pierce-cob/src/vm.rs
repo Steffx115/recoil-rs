@@ -744,5 +744,5 @@ impl CobVm {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "vm_tests.rs"]
+#[path = "tests/vm_tests.rs"]
 mod tests;

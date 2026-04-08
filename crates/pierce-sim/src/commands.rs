@@ -338,5 +338,5 @@ pub fn command_system(world: &mut World) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "commands_tests.rs"]
+#[path = "tests/commands_tests.rs"]
 mod tests;

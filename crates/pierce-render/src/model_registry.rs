@@ -96,5 +96,5 @@ impl Default for ModelRegistry {
 }
 
 #[cfg(test)]
-#[path = "model_registry_tests.rs"]
+#[path = "tests/model_registry_tests.rs"]
 mod tests;

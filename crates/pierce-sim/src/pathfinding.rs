@@ -544,5 +544,5 @@ impl Pathfinder for HybridPathfinder {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "pathfinding_tests.rs"]
+#[path = "tests/pathfinding_tests.rs"]
 mod tests;

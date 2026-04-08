@@ -149,5 +149,5 @@ pub fn compute_component_hashes(world: &mut World) -> ComponentHashes {
 }
 
 #[cfg(test)]
-#[path = "sync_tests.rs"]
+#[path = "tests/sync_tests.rs"]
 mod tests;

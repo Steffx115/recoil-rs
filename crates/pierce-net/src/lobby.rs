@@ -184,5 +184,5 @@ impl Default for LobbyServer {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "lobby_tests.rs"]
+#[path = "tests/lobby_tests.rs"]
 mod tests;

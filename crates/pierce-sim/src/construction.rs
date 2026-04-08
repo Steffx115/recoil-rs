@@ -325,5 +325,5 @@ pub fn repair_system(world: &mut World) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "construction_tests.rs"]
+#[path = "tests/construction_tests.rs"]
 mod tests;

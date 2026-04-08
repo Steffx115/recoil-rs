@@ -178,5 +178,5 @@ pub fn init_economy(world: &mut World, teams: &[u8]) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "economy_tests.rs"]
+#[path = "tests/economy_tests.rs"]
 mod tests;

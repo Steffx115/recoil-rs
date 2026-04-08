@@ -166,5 +166,5 @@ pub fn draw_replay_controls(
 }
 
 #[cfg(test)]
-#[path = "replay_browser_tests.rs"]
+#[path = "tests/replay_browser_tests.rs"]
 mod tests;

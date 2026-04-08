@@ -249,5 +249,5 @@ pub fn reload_system(world: &mut World) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "targeting_tests.rs"]
+#[path = "tests/targeting_tests.rs"]
 mod tests;

@@ -228,5 +228,5 @@ pub struct BuildingFootprint {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "components_tests.rs"]
+#[path = "tests/components_tests.rs"]
 mod tests;

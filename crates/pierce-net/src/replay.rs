@@ -130,5 +130,5 @@ pub fn load_replay(path: &Path) -> Result<Replay, ReplayError> {
 }
 
 #[cfg(test)]
-#[path = "replay_tests.rs"]
+#[path = "tests/replay_tests.rs"]
 mod tests;

@@ -33,5 +33,5 @@ pub fn queue_unit(world: &mut World, factory_entity: Entity, unit_type_id: u32) 
 }
 
 #[cfg(test)]
-#[path = "production_tests.rs"]
+#[path = "tests/production_tests.rs"]
 mod tests;

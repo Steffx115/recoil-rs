@@ -112,5 +112,5 @@ pub fn movement_system(world: &mut World) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "movement_tests.rs"]
+#[path = "tests/movement_tests.rs"]
 mod tests;

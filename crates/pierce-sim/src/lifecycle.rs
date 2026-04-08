@@ -100,5 +100,5 @@ pub fn init_lifecycle(world: &mut World) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "lifecycle_tests.rs"]
+#[path = "tests/lifecycle_tests.rs"]
 mod tests;

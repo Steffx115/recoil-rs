@@ -510,5 +510,5 @@ impl FlowFieldCache {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "flowfield_tests.rs"]
+#[path = "tests/flowfield_tests.rs"]
 mod tests;

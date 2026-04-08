@@ -178,5 +178,5 @@ pub struct WeaponSet {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "combat_data_tests.rs"]
+#[path = "tests/combat_data_tests.rs"]
 mod tests;

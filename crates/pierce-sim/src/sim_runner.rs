@@ -192,5 +192,5 @@ pub fn init_sim_world(world: &mut World) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "sim_runner_tests.rs"]
+#[path = "tests/sim_runner_tests.rs"]
 mod tests;

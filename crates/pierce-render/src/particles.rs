@@ -154,5 +154,5 @@ impl ParticleSystem {
 }
 
 #[cfg(test)]
-#[path = "particles_tests.rs"]
+#[path = "tests/particles_tests.rs"]
 mod tests;

@@ -214,5 +214,5 @@ pub fn parse_cob(data: &[u8]) -> Result<CobScript> {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "loader_tests.rs"]
+#[path = "tests/loader_tests.rs"]
 mod tests;

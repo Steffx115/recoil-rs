@@ -111,5 +111,5 @@ pub fn footprint_cleanup_system(world: &mut World) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "footprint_tests.rs"]
+#[path = "tests/footprint_tests.rs"]
 mod tests;

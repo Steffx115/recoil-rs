@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "mcp-atlassian": {
+      "type": "stdio",
+      "command": "C:\\Users\\Stefan\\.local\\bin\\uvx.exe",
+      "args": [
+        "mcp-atlassian",
+        "--jira-url",
+        "https://steffx115.atlassian.net",
+        "--jira-username",
+        "steff@gornik.at",
+        "--jira-token",
+        "env:JIRA_API_TOKEN"
+      ],
+      "env": {}
+    }
+  }
+}

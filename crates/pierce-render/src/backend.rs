@@ -264,5 +264,5 @@ impl RenderBackend for NullBackend {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "backend_tests.rs"]
+#[path = "tests/backend_tests.rs"]
 mod tests;

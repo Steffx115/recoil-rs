@@ -186,5 +186,5 @@ pub fn factory_system(world: &mut World) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "factory_tests.rs"]
+#[path = "tests/factory_tests.rs"]
 mod tests;

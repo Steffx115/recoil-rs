@@ -199,5 +199,5 @@ pub fn is_entity_visible(fog: &FogOfWar, team: u8, pos: SimVec3, grid_cell_size:
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "fog_tests.rs"]
+#[path = "tests/fog_tests.rs"]
 mod tests;

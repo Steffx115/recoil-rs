@@ -76,5 +76,5 @@ impl SimVec3 {
 crate::vector_ops::impl_vector_ops!(SimVec3 { x, y, z });
 
 #[cfg(test)]
-#[path = "vec3_tests.rs"]
+#[path = "tests/vec3_tests.rs"]
 mod tests;

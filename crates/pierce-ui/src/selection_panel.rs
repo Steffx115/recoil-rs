@@ -114,5 +114,5 @@ pub fn draw_selection_panel(ui: &mut Ui, selection: &[SelectedUnitInfo]) {
 }
 
 #[cfg(test)]
-#[path = "selection_panel_tests.rs"]
+#[path = "tests/selection_panel_tests.rs"]
 mod tests;

@@ -148,5 +148,5 @@ pub fn collision_system(world: &mut World) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "collision_tests.rs"]
+#[path = "tests/collision_tests.rs"]
 mod tests;

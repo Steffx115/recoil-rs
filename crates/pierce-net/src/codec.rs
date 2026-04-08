@@ -54,5 +54,5 @@ pub fn decode_framed(data: &[u8]) -> Result<NetMessage, CodecError> {
 }
 
 #[cfg(test)]
-#[path = "codec_tests.rs"]
+#[path = "tests/codec_tests.rs"]
 mod tests;

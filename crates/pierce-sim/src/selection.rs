@@ -155,5 +155,5 @@ fn perspective_divide(p: [f32; 4]) -> Option<[f32; 3]> {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "selection_tests.rs"]
+#[path = "tests/selection_tests.rs"]
 mod tests;

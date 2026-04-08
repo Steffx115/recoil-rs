@@ -37,5 +37,5 @@ pub struct AnimationState {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "animation_tests.rs"]
+#[path = "tests/animation_tests.rs"]
 mod tests;

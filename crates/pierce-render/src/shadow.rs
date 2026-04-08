@@ -778,5 +778,5 @@ fn mat4_inverse(m: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "shadow_tests.rs"]
+#[path = "tests/shadow_tests.rs"]
 mod tests;

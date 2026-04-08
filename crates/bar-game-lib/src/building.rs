@@ -423,5 +423,5 @@ pub fn equip_factory_spawned_units(world: &mut World, weapon_def_ids: &BTreeMap<
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "building_tests.rs"]
+#[path = "tests/building_tests.rs"]
 mod tests;

@@ -243,5 +243,5 @@ impl UnitDefRegistry {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "unit_defs_tests.rs"]
+#[path = "tests/unit_defs_tests.rs"]
 mod tests;

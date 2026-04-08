@@ -477,5 +477,5 @@ pub fn load_s3o_file(path: &Path) -> Result<(Vec<ModelVertex>, Vec<u16>)> {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "lib_tests.rs"]
+#[path = "tests/lib_tests.rs"]
 mod tests;

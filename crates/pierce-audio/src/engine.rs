@@ -127,5 +127,5 @@ pub fn compute_attenuation(source: [f32; 3], listener: [f32; 3]) -> f64 {
 }
 
 #[cfg(test)]
-#[path = "engine_tests.rs"]
+#[path = "tests/engine_tests.rs"]
 mod tests;

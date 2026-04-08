@@ -266,5 +266,5 @@ pub fn save_map_manifest(manifest: &MapManifest, path: &Path) -> anyhow::Result<
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "map_tests.rs"]
+#[path = "tests/map_tests.rs"]
 mod tests;

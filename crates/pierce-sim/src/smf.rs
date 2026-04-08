@@ -508,5 +508,5 @@ fn find_smf_in_dir(dir: &Path) -> Result<std::path::PathBuf> {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "smf_tests.rs"]
+#[path = "tests/smf_tests.rs"]
 mod tests;

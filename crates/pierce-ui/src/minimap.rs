@@ -141,5 +141,5 @@ pub fn draw_minimap(ui: &mut Ui, data: &MinimapData, size: f32) -> MinimapRespon
 }
 
 #[cfg(test)]
-#[path = "minimap_tests.rs"]
+#[path = "tests/minimap_tests.rs"]
 mod tests;

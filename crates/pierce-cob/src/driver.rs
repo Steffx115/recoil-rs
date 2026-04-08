@@ -208,5 +208,5 @@ fn vm_call_if_exists(vm: &mut CobVm, script: &CobScript, name: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "driver_tests.rs"]
+#[path = "tests/driver_tests.rs"]
 mod tests;

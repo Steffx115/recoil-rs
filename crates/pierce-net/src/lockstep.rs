@@ -93,5 +93,5 @@ impl LockstepState {
 }
 
 #[cfg(test)]
-#[path = "lockstep_tests.rs"]
+#[path = "tests/lockstep_tests.rs"]
 mod tests;

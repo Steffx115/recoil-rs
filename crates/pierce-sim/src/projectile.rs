@@ -314,5 +314,5 @@ pub fn projectile_movement_system(world: &mut World) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "projectile_tests.rs"]
+#[path = "tests/projectile_tests.rs"]
 mod tests;

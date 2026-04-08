@@ -131,5 +131,5 @@ impl Default for SimMat4 {
 }
 
 #[cfg(test)]
-#[path = "mat4_tests.rs"]
+#[path = "tests/mat4_tests.rs"]
 mod tests;

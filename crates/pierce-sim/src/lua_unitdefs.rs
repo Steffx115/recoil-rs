@@ -639,5 +639,5 @@ pub fn hash_unit_name(name: &str) -> u32 {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "lua_unitdefs_tests.rs"]
+#[path = "tests/lua_unitdefs_tests.rs"]
 mod tests;

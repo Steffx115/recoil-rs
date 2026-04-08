@@ -394,5 +394,5 @@ fn ai_attack(world: &mut World, ai: &mut AiState) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "ai_tests.rs"]
+#[path = "tests/ai_tests.rs"]
 mod tests;

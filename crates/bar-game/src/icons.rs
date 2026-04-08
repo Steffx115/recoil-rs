@@ -115,5 +115,5 @@ fn load_dds_to_color_image(path: &Path) -> anyhow::Result<egui::ColorImage> {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "icons_tests.rs"]
+#[path = "tests/icons_tests.rs"]
 mod tests;

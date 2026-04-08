@@ -336,5 +336,5 @@ fn register_fallback_defs(registry: &mut UnitDefRegistry) {
 }
 
 #[cfg(test)]
-#[path = "unit_loader_tests.rs"]
+#[path = "tests/unit_loader_tests.rs"]
 mod tests;

@@ -127,5 +127,5 @@ impl FpsCounter {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "camera_controller_tests.rs"]
+#[path = "tests/camera_controller_tests.rs"]
 mod tests;

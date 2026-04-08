@@ -120,5 +120,5 @@ impl SpatialGrid {
 }
 
 #[cfg(test)]
-#[path = "spatial_tests.rs"]
+#[path = "tests/spatial_tests.rs"]
 mod tests;
