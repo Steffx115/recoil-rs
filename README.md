@@ -1,6 +1,6 @@
-# Recoil RTS Engine (Rust)
+# Pierce RTS Engine (Rust)
 
-A deterministic real-time strategy engine written in Rust, inspired by the Spring/Recoil RTS engine. Designed for competitive multiplayer with lockstep networking and full replay support.
+A deterministic real-time strategy engine written in Rust, inspired by the Spring/Pierce RTS engine. Designed for competitive multiplayer with lockstep networking and full replay support.
 
 ## Architecture
 
@@ -8,12 +8,12 @@ The engine is organized as a Cargo workspace with strict crate boundaries:
 
 | Crate | Purpose |
 |-------|---------|
-| `recoil-math` | Deterministic fixed-point math (SimFloat, vectors, matrices) |
-| `recoil-sim` | ECS-based simulation: units, combat, economy, pathfinding |
-| `recoil-net` | Lockstep networking protocol, replay recording/playback |
-| `recoil-render` | wgpu-based rendering pipeline, terrain, models |
-| `recoil-ui` | In-game UI framework (egui-based) |
-| `recoil-audio` | Spatial audio via kira |
+| `pierce-math` | Deterministic fixed-point math (SimFloat, vectors, matrices) |
+| `pierce-sim` | ECS-based simulation: units, combat, economy, pathfinding |
+| `pierce-net` | Lockstep networking protocol, replay recording/playback |
+| `pierce-render` | wgpu-based rendering pipeline, terrain, models |
+| `pierce-ui` | In-game UI framework (egui-based) |
+| `pierce-audio` | Spatial audio via kira |
 | `bar-game` | Game binary: unit definitions, factions, game-specific logic |
 
 ## Build & Test

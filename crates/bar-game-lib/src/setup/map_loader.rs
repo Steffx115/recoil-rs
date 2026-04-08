@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use recoil_sim::map::{load_map_manifest, MapManifest};
+use pierce_sim::map::{load_map_manifest, MapManifest};
 
 /// Loaded map data needed by the rest of game setup.
 pub struct MapData {

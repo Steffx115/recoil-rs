@@ -3,8 +3,8 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 
-use recoil_sim::factory::BuildQueue;
-use recoil_sim::unit_defs::UnitDefRegistry;
+use pierce_sim::factory::BuildQueue;
+use pierce_sim::unit_defs::UnitDefRegistry;
 
 /// Queue a unit for production in a factory, looked up by name.
 pub fn queue_unit_by_name(world: &mut World, factory_entity: Entity, unit_name: &str) {
@@ -35,12 +35,12 @@ pub fn queue_unit(world: &mut World, factory_entity: Entity, unit_type_id: u32) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use recoil_sim::factory::{UnitBlueprint, UnitRegistry};
-    use recoil_sim::unit_defs::UnitDef;
+    use pierce_sim::factory::{UnitBlueprint, UnitRegistry};
+    use pierce_sim::unit_defs::UnitDef;
     use std::collections::VecDeque;
 
-    use recoil_math::SimFloat;
-    use recoil_sim::{Allegiance, Health, Position, UnitType};
+    use pierce_math::SimFloat;
+    use pierce_sim::{Allegiance, Health, Position, UnitType};
 
     #[test]
     fn test_queue_unit_by_id() {
@@ -49,14 +49,14 @@ mod tests {
         // Create a factory entity with BuildQueue
         let factory = world
             .spawn((
-                recoil_sim::factory::BuildQueue {
+                pierce_sim::factory::BuildQueue {
                     queue: VecDeque::new(),
                     current_progress: SimFloat::ZERO,
-                    rally_point: recoil_math::SimVec3::ZERO,
+                    rally_point: pierce_math::SimVec3::ZERO,
                     repeat: false,
                 },
                 Position {
-                    pos: recoil_math::SimVec3::ZERO,
+                    pos: pierce_math::SimVec3::ZERO,
                 },
                 Allegiance { team: 0 },
                 UnitType { id: 50002 },
@@ -124,11 +124,11 @@ mod tests {
                 BuildQueue {
                     queue: VecDeque::new(),
                     current_progress: SimFloat::ZERO,
-                    rally_point: recoil_math::SimVec3::ZERO,
+                    rally_point: pierce_math::SimVec3::ZERO,
                     repeat: false,
                 },
                 Position {
-                    pos: recoil_math::SimVec3::ZERO,
+                    pos: pierce_math::SimVec3::ZERO,
                 },
                 Allegiance { team: 0 },
                 UnitType { id: 50002 },

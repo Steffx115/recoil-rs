@@ -1,4 +1,4 @@
-# Recoil RTS Engine — Project Instructions
+# Pierce RTS Engine — Project Instructions
 
 ## Build & Test
 
@@ -29,9 +29,9 @@ Use `--message-format=short` on cargo build/clippy during iterative fix loops.
 
 ## Architecture Rules
 
-- All simulation math MUST use `SimFloat` from `recoil-math`. Never use f32/f64 in sim code.
+- All simulation math MUST use `SimFloat` from `pierce-math`. Never use f32/f64 in sim code.
 - ECS components must derive `Serialize, Deserialize` for checksum/replay support.
-- `recoil-sim` must NOT depend on `recoil-render` or `recoil-ui`. Sim is headless-capable.
+- `pierce-sim` must NOT depend on `pierce-render` or `pierce-ui`. Sim is headless-capable.
 - Systems declare data access via ECS query signatures. No global mutable state.
 - **Determinism**: no `HashMap` iteration in sim (use `BTreeMap` or sorted `Vec`). No thread-local RNG. No system time in sim.
 
@@ -46,12 +46,12 @@ Use `--message-format=short` on cargo build/clippy during iterative fix loops.
 
 | Crate | Depends on | Purpose |
 |-------|-----------|---------|
-| `recoil-math` | serde | SimFloat, SimVec2/3. No other deps. |
-| `recoil-sim` | recoil-math, bevy_ecs | ECS, game systems, spatial grid, pathfinding |
-| `recoil-net` | recoil-sim, tokio | Lockstep protocol, replay |
-| `recoil-render` | recoil-sim, wgpu, winit | Rendering pipeline (read-only sim access) |
-| `recoil-ui` | recoil-render, recoil-sim, egui | UI framework |
-| `recoil-audio` | recoil-sim, kira | Spatial audio (reads positions from sim) |
+| `pierce-math` | serde | SimFloat, SimVec2/3. No other deps. |
+| `pierce-sim` | pierce-math, bevy_ecs | ECS, game systems, spatial grid, pathfinding |
+| `pierce-net` | pierce-sim, tokio | Lockstep protocol, replay |
+| `pierce-render` | pierce-sim, wgpu, winit | Rendering pipeline (read-only sim access) |
+| `pierce-ui` | pierce-render, pierce-sim, egui | UI framework |
+| `pierce-audio` | pierce-sim, kira | Spatial audio (reads positions from sim) |
 | `bar-game` | all crates | Game binary: unit defs, factions, game logic |
 
 ## Library Choices (RR-64)
@@ -74,9 +74,9 @@ Use `--message-format=short` on cargo build/clippy during iterative fix loops.
 
 ### Agent Roles
 
-- **Agent A — Sim/Core**: `recoil-math`, `recoil-sim`. Math types, ECS components, simulation systems, pathfinding, combat.
-- **Agent B — Infrastructure**: `recoil-net`, `recoil-audio`. Networking, lockstep sync, replay, sound. Also CI/CD and build system.
-- **Agent C — Presentation**: `recoil-render`, `recoil-ui`. wgpu pipeline, terrain, models, UI framework, input handling.
+- **Agent A — Sim/Core**: `pierce-math`, `pierce-sim`. Math types, ECS components, simulation systems, pathfinding, combat.
+- **Agent B — Infrastructure**: `pierce-net`, `pierce-audio`. Networking, lockstep sync, replay, sound. Also CI/CD and build system.
+- **Agent C — Presentation**: `pierce-render`, `pierce-ui`. wgpu pipeline, terrain, models, UI framework, input handling.
 
 ### Workflow Per Story
 
@@ -101,7 +101,7 @@ Use `mcp__mcp-atlassian__jira_get_transitions` to discover available transition 
 
 - Agents A, B, C can run simultaneously on **different crates**.
 - Two agents NEVER work on the **same crate** at the same time.
-- Shared types (in `recoil-math`) must be merged before dependent agents start.
+- Shared types (in `pierce-math`) must be merged before dependent agents start.
 
 ### Review Cadence
 

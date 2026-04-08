@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 
-use recoil_render::camera::Camera;
+use pierce_render::camera::Camera;
 
 // ---------------------------------------------------------------------------
 // Constants

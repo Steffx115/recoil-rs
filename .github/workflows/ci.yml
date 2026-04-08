@@ -34,4 +34,4 @@ jobs:
         run: cargo test --workspace
 
   # Cross-platform determinism check: compare checksums from both OS runners
-  # (enabled once recoil-sim has real sim tests that output checksums)
+  # (enabled once pierce-sim has real sim tests that output checksums)

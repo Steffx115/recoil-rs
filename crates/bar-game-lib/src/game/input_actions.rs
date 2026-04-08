@@ -2,7 +2,7 @@
 
 use bevy_ecs::entity::Entity;
 
-use recoil_sim::{Dead, Position};
+use pierce_sim::{Dead, Position};
 
 use crate::building::{self, PlacementType};
 
@@ -26,7 +26,7 @@ impl GameState {
             };
             // Determine team from the builder entity.
             let team = builder
-                .and_then(|e| self.world.get::<recoil_sim::Allegiance>(e))
+                .and_then(|e| self.world.get::<pierce_sim::Allegiance>(e))
                 .map(|a| a.team)
                 .unwrap_or(0);
             building::place_building(&mut self.world, builder, btype.0, x, z, team);
@@ -90,11 +90,11 @@ impl GameState {
             if self.world.get_entity(sel).is_err() {
                 return false;
             }
-            if let Some(ms) = self.world.get_mut::<recoil_sim::MoveState>(sel) {
-                *ms.into_inner() = recoil_sim::MoveState::MovingTo(recoil_math::SimVec3::new(
-                    recoil_math::SimFloat::from_f32(target_x),
-                    recoil_math::SimFloat::ZERO,
-                    recoil_math::SimFloat::from_f32(target_z),
+            if let Some(ms) = self.world.get_mut::<pierce_sim::MoveState>(sel) {
+                *ms.into_inner() = pierce_sim::MoveState::MovingTo(pierce_math::SimVec3::new(
+                    pierce_math::SimFloat::from_f32(target_x),
+                    pierce_math::SimFloat::ZERO,
+                    pierce_math::SimFloat::from_f32(target_z),
                 ));
                 return true;
             }

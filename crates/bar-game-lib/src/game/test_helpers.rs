@@ -6,9 +6,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::world::World;
 
-use recoil_math::{SimFloat, SimVec3};
-use recoil_sim::economy::EconomyState;
-use recoil_sim::{Dead, Health, Position};
+use pierce_math::{SimFloat, SimVec3};
+use pierce_sim::economy::EconomyState;
+use pierce_sim::{Dead, Health, Position};
 
 use super::GameState;
 
@@ -36,24 +36,24 @@ impl Snapshot {
     pub fn capture(game: &mut GameState) -> Self {
         let entity_count = game
             .world
-            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
             .iter(&game.world)
             .count();
         let t0_count = game
             .world
-            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
             .iter(&game.world)
             .filter(|a| a.team == 0)
             .count();
         let t1_count = game
             .world
-            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
             .iter(&game.world)
             .filter(|a| a.team == 1)
             .count();
         let building_count = game
             .world
-            .query_filtered::<&recoil_sim::construction::BuildSite, Without<Dead>>()
+            .query_filtered::<&pierce_sim::construction::BuildSite, Without<Dead>>()
             .iter(&game.world)
             .count();
         let cmd0_pos = game
@@ -96,7 +96,7 @@ impl Snapshot {
     pub fn assert_entity_count_unchanged(&self, game: &mut GameState, msg: &str) {
         let now = game
             .world
-            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
             .iter(&game.world)
             .count();
         assert_eq!(
@@ -109,7 +109,7 @@ impl Snapshot {
     pub fn assert_t0_count_unchanged(&self, game: &mut GameState, msg: &str) {
         let now = game
             .world
-            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
             .iter(&game.world)
             .filter(|a| a.team == 0)
             .count();
@@ -119,7 +119,7 @@ impl Snapshot {
     pub fn assert_t1_count_unchanged(&self, game: &mut GameState, msg: &str) {
         let now = game
             .world
-            .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+            .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
             .iter(&game.world)
             .filter(|a| a.team == 1)
             .count();
@@ -145,7 +145,7 @@ impl Snapshot {
     pub fn assert_no_new_buildings(&self, game: &mut GameState, msg: &str) {
         let now = game
             .world
-            .query_filtered::<&recoil_sim::construction::BuildSite, Without<Dead>>()
+            .query_filtered::<&pierce_sim::construction::BuildSite, Without<Dead>>()
             .iter(&game.world)
             .count();
         assert_eq!(self.building_count, now, "BuildSite count changed: {}", msg);
@@ -193,7 +193,7 @@ pub(crate) fn fund_team(game: &mut GameState, team: u8) {
 
 /// Snapshot all alive entity positions sorted by SimId (deterministic order).
 pub(crate) fn snapshot_positions(game: &mut GameState) -> Vec<(u64, SimVec3)> {
-    use recoil_sim::SimId;
+    use pierce_sim::SimId;
     let mut positions: Vec<(u64, SimVec3)> = game
         .world
         .query_filtered::<(&SimId, &Position), Without<Dead>>()
@@ -221,8 +221,8 @@ pub(crate) fn run_headless_game(frames: u64) -> Vec<Vec<(u64, SimVec3)>> {
 }
 
 pub(crate) fn register_test_weapon(game: &mut GameState) -> u32 {
-    use recoil_sim::combat_data::{DamageType, WeaponDef};
-    use recoil_sim::targeting::WeaponRegistry;
+    use pierce_sim::combat_data::{DamageType, WeaponDef};
+    use pierce_sim::targeting::WeaponRegistry;
 
     let mut registry = game.world.resource_mut::<WeaponRegistry>();
     let id = registry.defs.len() as u32;
@@ -246,58 +246,58 @@ pub(crate) fn spawn_armed_unit(
     weapon_def_id: u32,
     hp: i32,
 ) -> Entity {
-    use recoil_sim::combat_data::{ArmorClass, WeaponInstance, WeaponSet};
+    use pierce_sim::combat_data::{ArmorClass, WeaponInstance, WeaponSet};
 
-    let entity = recoil_sim::lifecycle::spawn_unit(
+    let entity = pierce_sim::lifecycle::spawn_unit(
         &mut game.world,
         Position {
             pos: SimVec3::new(SimFloat::from_int(x), SimFloat::ZERO, SimFloat::from_int(z)),
         },
-        recoil_sim::UnitType { id: 1 },
-        recoil_sim::Allegiance { team },
+        pierce_sim::UnitType { id: 1 },
+        pierce_sim::Allegiance { team },
         Health {
             current: SimFloat::from_int(hp),
             max: SimFloat::from_int(hp),
         },
     );
     game.world.entity_mut(entity).insert((
-        recoil_sim::MoveState::Idle,
-        recoil_sim::MovementParams {
+        pierce_sim::MoveState::Idle,
+        pierce_sim::MovementParams {
             max_speed: SimFloat::from_int(2),
             acceleration: SimFloat::ONE,
             turn_rate: SimFloat::ONE,
         },
-        recoil_sim::CollisionRadius {
+        pierce_sim::CollisionRadius {
             radius: SimFloat::from_int(8),
         },
-        recoil_sim::Heading {
+        pierce_sim::Heading {
             angle: SimFloat::ZERO,
         },
-        recoil_sim::Velocity { vel: SimVec3::ZERO },
+        pierce_sim::Velocity { vel: SimVec3::ZERO },
         ArmorClass::Light,
-        recoil_sim::Target { entity: None },
+        pierce_sim::Target { entity: None },
         WeaponSet {
             weapons: vec![WeaponInstance {
                 def_id: weapon_def_id,
                 reload_remaining: 0,
             }],
         },
-        recoil_sim::SightRange {
+        pierce_sim::SightRange {
             range: SimFloat::from_int(300),
         },
-        recoil_sim::commands::CommandQueue::default(),
+        pierce_sim::commands::CommandQueue::default(),
     ));
     entity
 }
 
 pub(crate) fn self_has_movestate(game: &GameState, e: Entity) -> bool {
-    game.world.get_entity(e).is_ok() && game.world.get::<recoil_sim::MoveState>(e).is_some()
+    game.world.get_entity(e).is_ok() && game.world.get::<pierce_sim::MoveState>(e).is_some()
 }
 
 /// Helper: count entities by UnitType ID.
 pub(crate) fn count_by_type(game: &mut GameState, type_id: u32) -> usize {
     game.world
-        .query_filtered::<&recoil_sim::UnitType, Without<Dead>>()
+        .query_filtered::<&pierce_sim::UnitType, Without<Dead>>()
         .iter(&game.world)
         .filter(|ut| ut.id == type_id)
         .count()
@@ -307,7 +307,7 @@ pub(crate) fn count_by_type(game: &mut GameState, type_id: u32) -> usize {
 pub(crate) fn all_positions(game: &mut GameState) -> Vec<(u64, f32, f32)> {
     let mut out: Vec<_> = game
         .world
-        .query_filtered::<(&recoil_sim::SimId, &Position), Without<Dead>>()
+        .query_filtered::<(&pierce_sim::SimId, &Position), Without<Dead>>()
         .iter(&game.world)
         .map(|(sid, p)| (sid.id, p.pos.x.to_f32(), p.pos.z.to_f32()))
         .collect();
@@ -319,7 +319,7 @@ pub(crate) fn all_positions(game: &mut GameState) -> Vec<(u64, f32, f32)> {
 pub(crate) fn all_health(game: &mut GameState) -> Vec<(u64, f32, f32)> {
     let mut out: Vec<_> = game
         .world
-        .query_filtered::<(&recoil_sim::SimId, &Health), Without<Dead>>()
+        .query_filtered::<(&pierce_sim::SimId, &Health), Without<Dead>>()
         .iter(&game.world)
         .map(|(sid, h)| (sid.id, h.current.to_f32(), h.max.to_f32()))
         .collect();
@@ -328,8 +328,8 @@ pub(crate) fn all_health(game: &mut GameState) -> Vec<(u64, f32, f32)> {
 }
 
 /// Apply a list of PlayerCommands to the ECS world by looking up SimId.
-pub(crate) fn apply_player_commands(world: &mut World, commands: &[recoil_net::PlayerCommand]) {
-    use recoil_sim::SimId;
+pub(crate) fn apply_player_commands(world: &mut World, commands: &[pierce_net::PlayerCommand]) {
+    use pierce_sim::SimId;
     // Build a map from SimId -> Entity
     let id_to_entity: std::collections::BTreeMap<u64, Entity> = world
         .query::<(Entity, &SimId)>()
@@ -338,7 +338,7 @@ pub(crate) fn apply_player_commands(world: &mut World, commands: &[recoil_net::P
         .collect();
 
     // Collect commands to apply (can't mutate world while iterating)
-    let to_apply: Vec<(Entity, recoil_sim::Command)> = commands
+    let to_apply: Vec<(Entity, pierce_sim::Command)> = commands
         .iter()
         .filter_map(|pc| {
             id_to_entity
@@ -348,7 +348,7 @@ pub(crate) fn apply_player_commands(world: &mut World, commands: &[recoil_net::P
         .collect();
 
     for (entity, cmd) in to_apply {
-        if let Some(mut cq) = world.get_mut::<recoil_sim::CommandQueue>(entity) {
+        if let Some(mut cq) = world.get_mut::<pierce_sim::CommandQueue>(entity) {
             cq.replace(cmd);
         }
     }
@@ -358,9 +358,9 @@ pub(crate) fn apply_player_commands(world: &mut World, commands: &[recoil_net::P
 /// Returns (recorded_commands_per_frame, checksums_per_frame).
 pub(crate) fn run_replay_scenario(
     tick_count: u64,
-) -> (Vec<Vec<recoil_net::PlayerCommand>>, Vec<u64>) {
-    use recoil_sim::sim_runner::{sim_tick, world_checksum};
-    use recoil_sim::{SimId, SimVec3};
+) -> (Vec<Vec<pierce_net::PlayerCommand>>, Vec<u64>) {
+    use pierce_sim::sim_runner::{sim_tick, world_checksum};
+    use pierce_sim::{SimId, SimVec3};
 
     let mut game = make_test_game();
     fund_both_teams(&mut game);
@@ -368,7 +368,7 @@ pub(crate) fn run_replay_scenario(
     // Collect all commandable entities (those with CommandQueue and SimId)
     let commandable: Vec<(u64, Entity)> = game
         .world
-        .query::<(Entity, &SimId, &recoil_sim::CommandQueue)>()
+        .query::<(Entity, &SimId, &pierce_sim::CommandQueue)>()
         .iter(&game.world)
         .map(|(e, sid, _)| (sid.id, e))
         .collect();
@@ -382,7 +382,7 @@ pub(crate) fn run_replay_scenario(
         rng_state
     };
 
-    let mut all_commands: Vec<Vec<recoil_net::PlayerCommand>> = Vec::new();
+    let mut all_commands: Vec<Vec<pierce_net::PlayerCommand>> = Vec::new();
     let mut all_checksums: Vec<u64> = Vec::new();
 
     for frame in 0..tick_count {
@@ -396,9 +396,9 @@ pub(crate) fn run_replay_scenario(
                 let (sim_id, _) = commandable[idx];
                 let tx = (next_rng() % 800) as i32 + 50;
                 let tz = (next_rng() % 800) as i32 + 50;
-                frame_commands.push(recoil_net::PlayerCommand {
+                frame_commands.push(pierce_net::PlayerCommand {
                     target_sim_id: sim_id,
-                    command: recoil_sim::Command::Move(SimVec3::new(
+                    command: pierce_sim::Command::Move(SimVec3::new(
                         SimFloat::from_int(tx),
                         SimFloat::ZERO,
                         SimFloat::from_int(tz),
@@ -411,9 +411,9 @@ pub(crate) fn run_replay_scenario(
         if frame % 100 == 30 && !commandable.is_empty() {
             let idx = (next_rng() as usize) % commandable.len();
             let (sim_id, _) = commandable[idx];
-            frame_commands.push(recoil_net::PlayerCommand {
+            frame_commands.push(pierce_net::PlayerCommand {
                 target_sim_id: sim_id,
-                command: recoil_sim::Command::Stop,
+                command: pierce_sim::Command::Stop,
             });
         }
 
@@ -421,9 +421,9 @@ pub(crate) fn run_replay_scenario(
         if frame % 200 == 75 && !commandable.is_empty() {
             let idx = (next_rng() as usize) % commandable.len();
             let (sim_id, _) = commandable[idx];
-            frame_commands.push(recoil_net::PlayerCommand {
+            frame_commands.push(pierce_net::PlayerCommand {
                 target_sim_id: sim_id,
-                command: recoil_sim::Command::HoldPosition,
+                command: pierce_sim::Command::HoldPosition,
             });
         }
 
@@ -431,7 +431,7 @@ pub(crate) fn run_replay_scenario(
         apply_player_commands(&mut game.world, &frame_commands);
 
         // Run construction + sim tick (same as GameState::tick)
-        recoil_sim::construction::construction_system(&mut game.world);
+        pierce_sim::construction::construction_system(&mut game.world);
         sim_tick(&mut game.world);
         crate::building::equip_factory_spawned_units(&mut game.world, &game.weapon_def_ids);
         crate::building::finalize_completed_buildings(&mut game.world);

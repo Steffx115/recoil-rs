@@ -228,16 +228,16 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "image",
+ "pierce-audio",
  "pierce-cob",
+ "pierce-math",
  "pierce-model",
+ "pierce-net",
+ "pierce-render",
  "pierce-s3o",
+ "pierce-sim",
+ "pierce-ui",
  "pollster",
- "recoil-audio",
- "recoil-math",
- "recoil-net",
- "recoil-render",
- "recoil-sim",
- "recoil-ui",
  "ron",
  "tempfile",
  "tracing",
@@ -253,10 +253,10 @@ dependencies = [
  "anyhow",
  "bevy_ecs",
  "bincode",
+ "pierce-math",
+ "pierce-net",
+ "pierce-sim",
  "proptest",
- "recoil-math",
- "recoil-net",
- "recoil-sim",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2514,6 +2514,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pierce-audio"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "kira",
+ "pierce-sim",
+ "tracing",
+]
+
+[[package]]
 name = "pierce-cob"
 version = "0.1.0"
 dependencies = [
@@ -2521,6 +2531,14 @@ dependencies = [
  "pierce-model",
  "thiserror 2.0.18",
  "tracing",
+]
+
+[[package]]
+name = "pierce-math"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
 ]
 
 [[package]]
@@ -2533,11 +2551,69 @@ dependencies = [
 ]
 
 [[package]]
+name = "pierce-net"
+version = "0.1.0"
+dependencies = [
+ "bevy_ecs",
+ "bincode",
+ "pierce-sim",
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "pierce-render"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "pierce-cob",
+ "pierce-model",
+ "pierce-s3o",
+ "pierce-sim",
+ "thiserror 2.0.18",
+ "tracing",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "pierce-s3o"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "pierce-model",
+ "tracing",
+]
+
+[[package]]
+name = "pierce-sim"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bevy_ecs",
+ "bincode",
+ "criterion",
+ "pierce-math",
+ "proptest",
+ "ron",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "pierce-ui"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "egui-wgpu",
+ "egui-winit",
+ "pierce-render",
+ "pierce-sim",
  "tracing",
 ]
 
@@ -2833,82 +2909,6 @@ checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
-]
-
-[[package]]
-name = "recoil-audio"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "kira",
- "recoil-sim",
- "tracing",
-]
-
-[[package]]
-name = "recoil-math"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "serde",
-]
-
-[[package]]
-name = "recoil-net"
-version = "0.1.0"
-dependencies = [
- "bevy_ecs",
- "bincode",
- "recoil-sim",
- "serde",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "recoil-render"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "pierce-cob",
- "pierce-model",
- "pierce-s3o",
- "recoil-sim",
- "thiserror 2.0.18",
- "tracing",
- "wgpu",
- "winit",
-]
-
-[[package]]
-name = "recoil-sim"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bevy_ecs",
- "bincode",
- "criterion",
- "proptest",
- "recoil-math",
- "ron",
- "serde",
- "tempfile",
- "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
-name = "recoil-ui"
-version = "0.1.0"
-dependencies = [
- "egui",
- "egui-wgpu",
- "egui-winit",
- "recoil-render",
- "recoil-sim",
- "tracing",
 ]
 
 [[package]]

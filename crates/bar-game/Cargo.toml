@@ -7,15 +7,15 @@ description = "BAR-inspired RTS game binary"
 
 [dependencies]
 bar-game-lib = { path = "../bar-game-lib" }
-recoil-math = { path = "../recoil-math" }
-recoil-sim = { path = "../recoil-sim" }
-recoil-net = { path = "../recoil-net" }
-recoil-render = { path = "../recoil-render" }
+pierce-math = { path = "../pierce-math" }
+pierce-sim = { path = "../pierce-sim" }
+pierce-net = { path = "../pierce-net" }
+pierce-render = { path = "../pierce-render" }
 pierce-model = { path = "../pierce-model" }
 pierce-cob = { path = "../pierce-cob" }
 pierce-s3o = { path = "../pierce-s3o" }
-recoil-ui = { path = "../recoil-ui" }
-recoil-audio = { path = "../recoil-audio" }
+pierce-ui = { path = "../pierce-ui" }
+pierce-audio = { path = "../pierce-audio" }
 anyhow = { workspace = true }
 bevy_ecs = { workspace = true }
 egui = { workspace = true }

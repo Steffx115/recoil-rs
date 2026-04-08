@@ -1,4 +1,4 @@
-//! Recoil RTS — game binary.
+//! Pierce RTS — game binary.
 //!
 //! Thin shell: window, renderer, input dispatch, egui overlay.
 //! All game logic lives in `bar-game-lib`.
@@ -14,11 +14,11 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{ModifiersState, PhysicalKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 
-use recoil_render::particles::ParticleSystem;
-use recoil_render::unit_renderer::UnitInstance;
-use recoil_render::Renderer;
-use recoil_sim::unit_defs::UnitDefRegistry;
-use recoil_sim::Position;
+use pierce_render::particles::ParticleSystem;
+use pierce_render::unit_renderer::UnitInstance;
+use pierce_render::Renderer;
+use pierce_sim::unit_defs::UnitDefRegistry;
+use pierce_sim::Position;
 
 use bar_game_lib::GameState;
 
@@ -95,7 +95,7 @@ impl App {
             .camera(self.window_size[0] / self.window_size[1]);
         let vp = cam.view_projection();
         let inv_vp = mat4_inverse(vp)?;
-        recoil_sim::selection::screen_to_ground_raw(
+        pierce_sim::selection::screen_to_ground_raw(
             self.cursor_pos[0],
             self.cursor_pos[1],
             self.window_size[0],
@@ -127,7 +127,7 @@ impl App {
             if !s3o_path.exists() {
                 continue;
             }
-            if let Ok((mut verts, indices)) = recoil_render::load_s3o_file(&s3o_path) {
+            if let Ok((mut verts, indices)) = pierce_render::load_s3o_file(&s3o_path) {
                 for v in &mut verts {
                     let (x, z) = (v.position[0], v.position[2]);
                     v.position[0] = z * scale;
@@ -145,7 +145,7 @@ impl App {
         if let Some((_, ref first_path)) = model_entries.first() {
             let filename = first_path.strip_prefix("Units/").unwrap_or(first_path);
             let s3o_path = bar_models_dir.join(filename);
-            if let Ok((mut verts, indices)) = recoil_render::load_s3o_file(&s3o_path) {
+            if let Ok((mut verts, indices)) = pierce_render::load_s3o_file(&s3o_path) {
                 for v in &mut verts {
                     let (x, z) = (v.position[0], v.position[2]);
                     v.position[0] = z * scale;
@@ -173,7 +173,7 @@ impl ApplicationHandler for App {
         }
 
         let attrs = WindowAttributes::default()
-            .with_title("Recoil RTS")
+            .with_title("Pierce RTS")
             .with_inner_size(PhysicalSize::new(1280u32, 720u32));
         let window = Arc::new(event_loop.create_window(attrs).expect("window"));
         let mut renderer =
@@ -343,7 +343,7 @@ impl App {
     fn render_frame(
         &mut self,
         instances: &[UnitInstance],
-        proj: &[recoil_render::projectile_renderer::ProjectileInstance],
+        proj: &[pierce_render::projectile_renderer::ProjectileInstance],
         fps: f32,
     ) {
         let (Some(renderer), Some(egui_state), Some(egui_renderer), Some(window)) = (
@@ -451,7 +451,7 @@ fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    tracing::info!("Recoil RTS starting...");
+    tracing::info!("Pierce RTS starting...");
 
     let event_loop = EventLoop::new().expect("event loop");
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);

@@ -1,12 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/recoil-math",
-    "crates/recoil-sim",
-    "crates/recoil-net",
-    "crates/recoil-render",
-    "crates/recoil-ui",
-    "crates/recoil-audio",
+    "crates/pierce-math",
+    "crates/pierce-sim",
+    "crates/pierce-net",
+    "crates/pierce-render",
+    "crates/pierce-ui",
+    "crates/pierce-audio",
     "crates/bar-game",
     "crates/bar-game-lib",
     "crates/pierce-model",

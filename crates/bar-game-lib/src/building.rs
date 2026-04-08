@@ -12,15 +12,15 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::world::World;
 
-use recoil_math::{SimFloat, SimVec3};
-use recoil_sim::combat_data::{ArmorClass, WeaponInstance, WeaponSet};
-use recoil_sim::commands::CommandQueue;
-use recoil_sim::construction::{BuildSite, BuildTarget, Builder};
-use recoil_sim::economy::{EconomyState, ResourceProducer};
-use recoil_sim::factory::BuildQueue;
-use recoil_sim::pathfinding::{mark_building_footprint, TerrainGrid};
-use recoil_sim::unit_defs::UnitDefRegistry;
-use recoil_sim::{
+use pierce_math::{SimFloat, SimVec3};
+use pierce_sim::combat_data::{ArmorClass, WeaponInstance, WeaponSet};
+use pierce_sim::commands::CommandQueue;
+use pierce_sim::construction::{BuildSite, BuildTarget, Builder};
+use pierce_sim::economy::{EconomyState, ResourceProducer};
+use pierce_sim::factory::BuildQueue;
+use pierce_sim::pathfinding::{mark_building_footprint, TerrainGrid};
+use pierce_sim::unit_defs::UnitDefRegistry;
+use pierce_sim::{
     Allegiance, CollisionRadius, Dead, Heading, Health, MoveState, MovementParams, Position,
     SightRange, SimVec2, Target, UnitType, Velocity,
 };
@@ -225,7 +225,7 @@ pub fn finalize_completed_buildings(world: &mut World) -> Option<Entity> {
             let actual_metal = if metal_prod.is_some() && energy_prod.is_none() {
                 // Looks like a pure metal producer (mex) — link to nearest spot.
                 world
-                    .get_resource::<recoil_sim::map::MetalSpots>()
+                    .get_resource::<pierce_sim::map::MetalSpots>()
                     .and_then(|spots| spots.nearest(x as f64, z as f64, 30.0))
                     .map(|spot| spot.metal_per_tick)
                     .unwrap_or(metal_prod.unwrap_or(0.0))
@@ -402,8 +402,8 @@ pub fn equip_factory_spawned_units(world: &mut World, weapon_def_ids: &BTreeMap<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use recoil_sim::economy::init_economy;
-    use recoil_sim::sim_runner;
+    use pierce_sim::economy::init_economy;
+    use pierce_sim::sim_runner;
 
     fn setup_world_with_economy() -> World {
         let mut world = World::new();
@@ -419,7 +419,7 @@ mod tests {
         }
         // Insert a minimal UnitDefRegistry with a solar building def
         let mut registry = UnitDefRegistry::default();
-        registry.register(recoil_sim::unit_defs::UnitDef {
+        registry.register(pierce_sim::unit_defs::UnitDef {
             name: "testsolar".into(),
             unit_type_id: BUILDING_SOLAR_ID,
             max_health: 500.0,
@@ -473,7 +473,7 @@ mod tests {
         }
         // Insert a minimal registry
         let mut registry = UnitDefRegistry::default();
-        registry.register(recoil_sim::unit_defs::UnitDef {
+        registry.register(pierce_sim::unit_defs::UnitDef {
             name: "testsolar".into(),
             unit_type_id: BUILDING_SOLAR_ID,
             max_health: 500.0,

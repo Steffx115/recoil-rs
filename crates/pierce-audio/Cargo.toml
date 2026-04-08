@@ -1,0 +1,12 @@
+[package]
+name = "pierce-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Spatial audio for the Pierce RTS engine"
+
+[dependencies]
+pierce-sim = { path = "../pierce-sim" }
+kira = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }

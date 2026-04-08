@@ -6,11 +6,11 @@ use std::path::Path;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 
-use recoil_math::{SimFloat, SimVec3};
-use recoil_sim::construction::Builder;
-use recoil_sim::economy::EconomyState;
-use recoil_sim::factory::BuildQueue;
-use recoil_sim::{Dead, Health, Position};
+use pierce_math::{SimFloat, SimVec3};
+use pierce_sim::construction::Builder;
+use pierce_sim::economy::EconomyState;
+use pierce_sim::factory::BuildQueue;
+use pierce_sim::{Dead, Health, Position};
 
 use crate::building::{self, PlacementType};
 use crate::production;
@@ -52,7 +52,7 @@ fn test_place_and_build_solar() {
     // Verify build site was created
     let build_sites: Vec<_> = game
         .world
-        .query::<&recoil_sim::construction::BuildSite>()
+        .query::<&pierce_sim::construction::BuildSite>()
         .iter(&game.world)
         .collect();
     assert!(
@@ -113,11 +113,11 @@ fn test_solar_produces_energy() {
             current: SimFloat::from_int(500),
             max: SimFloat::from_int(500),
         },
-        recoil_sim::Allegiance { team: 0 },
-        recoil_sim::UnitType {
+        pierce_sim::Allegiance { team: 0 },
+        pierce_sim::UnitType {
             id: building::BUILDING_SOLAR_ID,
         },
-        recoil_sim::CollisionRadius {
+        pierce_sim::CollisionRadius {
             radius: SimFloat::from_int(16),
         },
     ));
@@ -178,11 +178,11 @@ fn test_mex_produces_metal() {
             current: SimFloat::from_int(500),
             max: SimFloat::from_int(500),
         },
-        recoil_sim::Allegiance { team: 0 },
-        recoil_sim::UnitType {
+        pierce_sim::Allegiance { team: 0 },
+        pierce_sim::UnitType {
             id: building::BUILDING_MEX_ID,
         },
-        recoil_sim::CollisionRadius {
+        pierce_sim::CollisionRadius {
             radius: SimFloat::from_int(16),
         },
     ));
@@ -213,8 +213,8 @@ fn test_mex_produces_metal() {
 
 #[test]
 fn test_combat_units_take_damage() {
-    use recoil_sim::combat_data::{DamageType, WeaponDef, WeaponInstance, WeaponSet};
-    use recoil_sim::targeting::WeaponRegistry;
+    use pierce_sim::combat_data::{DamageType, WeaponDef, WeaponInstance, WeaponSet};
+    use pierce_sim::targeting::WeaponRegistry;
 
     let mut game = make_test_game();
 
@@ -246,76 +246,76 @@ fn test_combat_units_take_damage() {
         SimFloat::from_int(500),
     );
 
-    let unit_a = recoil_sim::lifecycle::spawn_unit(
+    let unit_a = pierce_sim::lifecycle::spawn_unit(
         &mut game.world,
         Position { pos: pos_a },
-        recoil_sim::UnitType { id: 1 },
-        recoil_sim::Allegiance { team: 0 },
+        pierce_sim::UnitType { id: 1 },
+        pierce_sim::Allegiance { team: 0 },
         Health {
             current: SimFloat::from_int(500),
             max: SimFloat::from_int(500),
         },
     );
     game.world.entity_mut(unit_a).insert((
-        recoil_sim::MoveState::Idle,
-        recoil_sim::MovementParams {
+        pierce_sim::MoveState::Idle,
+        pierce_sim::MovementParams {
             max_speed: SimFloat::from_int(2),
             acceleration: SimFloat::ONE,
             turn_rate: SimFloat::ONE,
         },
-        recoil_sim::CollisionRadius {
+        pierce_sim::CollisionRadius {
             radius: SimFloat::from_int(8),
         },
-        recoil_sim::Heading {
+        pierce_sim::Heading {
             angle: SimFloat::ZERO,
         },
-        recoil_sim::Velocity { vel: SimVec3::ZERO },
-        recoil_sim::combat_data::ArmorClass::Light,
-        recoil_sim::Target { entity: None },
+        pierce_sim::Velocity { vel: SimVec3::ZERO },
+        pierce_sim::combat_data::ArmorClass::Light,
+        pierce_sim::Target { entity: None },
         WeaponSet {
             weapons: vec![WeaponInstance {
                 def_id: weapon_def_id,
                 reload_remaining: 0,
             }],
         },
-        recoil_sim::SightRange {
+        pierce_sim::SightRange {
             range: SimFloat::from_int(300),
         },
     ));
 
-    let unit_b = recoil_sim::lifecycle::spawn_unit(
+    let unit_b = pierce_sim::lifecycle::spawn_unit(
         &mut game.world,
         Position { pos: pos_b },
-        recoil_sim::UnitType { id: 1 },
-        recoil_sim::Allegiance { team: 1 },
+        pierce_sim::UnitType { id: 1 },
+        pierce_sim::Allegiance { team: 1 },
         Health {
             current: SimFloat::from_int(500),
             max: SimFloat::from_int(500),
         },
     );
     game.world.entity_mut(unit_b).insert((
-        recoil_sim::MoveState::Idle,
-        recoil_sim::MovementParams {
+        pierce_sim::MoveState::Idle,
+        pierce_sim::MovementParams {
             max_speed: SimFloat::from_int(2),
             acceleration: SimFloat::ONE,
             turn_rate: SimFloat::ONE,
         },
-        recoil_sim::CollisionRadius {
+        pierce_sim::CollisionRadius {
             radius: SimFloat::from_int(8),
         },
-        recoil_sim::Heading {
+        pierce_sim::Heading {
             angle: SimFloat::ZERO,
         },
-        recoil_sim::Velocity { vel: SimVec3::ZERO },
-        recoil_sim::combat_data::ArmorClass::Light,
-        recoil_sim::Target { entity: None },
+        pierce_sim::Velocity { vel: SimVec3::ZERO },
+        pierce_sim::combat_data::ArmorClass::Light,
+        pierce_sim::Target { entity: None },
         WeaponSet {
             weapons: vec![WeaponInstance {
                 def_id: weapon_def_id,
                 reload_remaining: 0,
             }],
         },
-        recoil_sim::SightRange {
+        pierce_sim::SightRange {
             range: SimFloat::from_int(300),
         },
     ));
@@ -392,8 +392,8 @@ fn test_place_mex() {
     let build_sites: Vec<_> = game
         .world
         .query_filtered::<
-            &recoil_sim::UnitType,
-            bevy_ecs::query::With<recoil_sim::construction::BuildSite>,
+            &pierce_sim::UnitType,
+            bevy_ecs::query::With<pierce_sim::construction::BuildSite>,
         >()
         .iter(&game.world)
         .filter(|ut| ut.id == building::BUILDING_MEX_ID)
@@ -424,10 +424,10 @@ fn test_equip_factory_spawned_units() {
                     SimFloat::from_f32(300.0),
                 ),
             },
-            recoil_sim::UnitType {
-                id: recoil_sim::lua_unitdefs::hash_unit_name("armpw"),
+            pierce_sim::UnitType {
+                id: pierce_sim::lua_unitdefs::hash_unit_name("armpw"),
             },
-            recoil_sim::Allegiance { team: 0 },
+            pierce_sim::Allegiance { team: 0 },
             Health {
                 current: SimFloat::from_int(200),
                 max: SimFloat::from_int(200),
@@ -436,19 +436,19 @@ fn test_equip_factory_spawned_units() {
         .id();
 
     // Should NOT have MoveState yet
-    assert!(game.world.get::<recoil_sim::MoveState>(bare_unit).is_none());
+    assert!(game.world.get::<pierce_sim::MoveState>(bare_unit).is_none());
 
     // Equip
     building::equip_factory_spawned_units(&mut game.world, &game.weapon_def_ids);
 
     // Now it should have movement, weapons, etc.
     assert!(
-        game.world.get::<recoil_sim::MoveState>(bare_unit).is_some(),
+        game.world.get::<pierce_sim::MoveState>(bare_unit).is_some(),
         "Equipped unit should have MoveState"
     );
     assert!(
         game.world
-            .get::<recoil_sim::combat_data::WeaponSet>(bare_unit)
+            .get::<pierce_sim::combat_data::WeaponSet>(bare_unit)
             .is_some(),
         "Equipped unit should have WeaponSet"
     );
@@ -469,7 +469,7 @@ fn test_bot_vs_bot() {
 
     let unit_count: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .count();
     assert!(
@@ -492,8 +492,8 @@ fn test_factory_produces_unit() {
             .world
             .query_filtered::<(
                 Entity,
-                &recoil_sim::UnitType,
-            ), bevy_ecs::query::With<recoil_sim::construction::BuildSite>>()
+                &pierce_sim::UnitType,
+            ), bevy_ecs::query::With<pierce_sim::construction::BuildSite>>()
             .iter(&game.world)
             .filter(|(_, ut)| ut.id == building::BUILDING_FACTORY_ID)
             .map(|(e, _)| e)
@@ -504,7 +504,7 @@ fn test_factory_produces_unit() {
     if let Some(factory) = factory_entity {
         game.world
             .entity_mut(factory)
-            .remove::<recoil_sim::construction::BuildSite>();
+            .remove::<pierce_sim::construction::BuildSite>();
         building::finalize_completed_buildings(&mut game.world);
         assert!(
             game.world.get::<BuildQueue>(factory).is_some(),
@@ -519,7 +519,7 @@ fn test_factory_produces_unit() {
 
 #[test]
 fn test_construction_completes_over_time() {
-    use recoil_sim::construction::{BuildSite, BuildTarget};
+    use pierce_sim::construction::{BuildSite, BuildTarget};
 
     let mut game = make_test_game();
     fund_team(&mut game, 0);
@@ -576,7 +576,7 @@ fn test_construction_completes_over_time() {
 
 #[test]
 fn test_reclaim_wreckage() {
-    use recoil_sim::construction::{BuildTarget, Reclaimable};
+    use pierce_sim::construction::{BuildTarget, Reclaimable};
 
     let mut game = make_test_game();
 
@@ -609,7 +609,7 @@ fn test_reclaim_wreckage() {
                 current: SimFloat::from_int(100),
                 max: SimFloat::from_int(100),
             },
-            recoil_sim::Allegiance { team: 0 },
+            pierce_sim::Allegiance { team: 0 },
         ))
         .id();
 
@@ -672,8 +672,8 @@ fn test_economy_stall_slows_factory() {
             .world
             .query_filtered::<(
                 Entity,
-                &recoil_sim::UnitType,
-            ), bevy_ecs::query::With<recoil_sim::construction::BuildSite>>()
+                &pierce_sim::UnitType,
+            ), bevy_ecs::query::With<pierce_sim::construction::BuildSite>>()
             .iter(&game.world)
             .filter(|(_, ut)| ut.id == building::BUILDING_FACTORY_ID)
             .map(|(e, _)| e)
@@ -684,7 +684,7 @@ fn test_economy_stall_slows_factory() {
     if let Some(factory) = factory_entity {
         game.world
             .entity_mut(factory)
-            .remove::<recoil_sim::construction::BuildSite>();
+            .remove::<pierce_sim::construction::BuildSite>();
         building::finalize_completed_buildings(&mut game.world);
 
         // Queue a unit
@@ -712,7 +712,7 @@ fn test_economy_stall_slows_factory() {
 
 #[test]
 fn test_command_queue_move() {
-    use recoil_sim::commands::{Command, CommandQueue};
+    use pierce_sim::commands::{Command, CommandQueue};
 
     let mut game = make_test_game();
     let weapon_id = register_test_weapon(&mut game);
@@ -755,7 +755,7 @@ fn test_command_queue_move() {
 
 #[test]
 fn test_command_stop() {
-    use recoil_sim::commands::{Command, CommandQueue};
+    use pierce_sim::commands::{Command, CommandQueue};
 
     let mut game = make_test_game();
     let weapon_id = register_test_weapon(&mut game);
@@ -767,8 +767,8 @@ fn test_command_stop() {
         SimFloat::ZERO,
         SimFloat::from_int(500),
     );
-    *game.world.get_mut::<recoil_sim::MoveState>(unit).unwrap() =
-        recoil_sim::MoveState::MovingTo(target);
+    *game.world.get_mut::<pierce_sim::MoveState>(unit).unwrap() =
+        pierce_sim::MoveState::MovingTo(target);
 
     // Tick a few frames to start moving
     for _ in 0..10 {
@@ -786,8 +786,8 @@ fn test_command_stop() {
     game.tick();
     game.frame_count += 1;
 
-    let ms = game.world.get::<recoil_sim::MoveState>(unit).unwrap();
-    assert_eq!(*ms, recoil_sim::MoveState::Idle, "Stop should set Idle");
+    let ms = game.world.get::<pierce_sim::MoveState>(unit).unwrap();
+    assert_eq!(*ms, pierce_sim::MoveState::Idle, "Stop should set Idle");
 
     let cq = game.world.get::<CommandQueue>(unit).unwrap();
     assert!(cq.is_empty(), "Stop should clear the command queue");
@@ -809,16 +809,16 @@ fn test_unit_arrives_at_target() {
         SimFloat::ZERO,
         SimFloat::from_int(100),
     );
-    *game.world.get_mut::<recoil_sim::MoveState>(unit).unwrap() =
-        recoil_sim::MoveState::MovingTo(target);
+    *game.world.get_mut::<pierce_sim::MoveState>(unit).unwrap() =
+        pierce_sim::MoveState::MovingTo(target);
 
     // Tick until idle (arrived)
     for _ in 0..200 {
         game.tick();
         game.frame_count += 1;
 
-        let ms = game.world.get::<recoil_sim::MoveState>(unit).unwrap();
-        if *ms == recoil_sim::MoveState::Idle {
+        let ms = game.world.get::<pierce_sim::MoveState>(unit).unwrap();
+        if *ms == pierce_sim::MoveState::Idle {
             // Check position is near target
             let pos = game.world.get::<Position>(unit).unwrap().pos;
             let dx = (pos.x - target.x).abs();
@@ -839,9 +839,9 @@ fn test_unit_arrives_at_target() {
 
 #[test]
 fn test_projectiles_spawn_and_impact() {
-    use recoil_sim::combat_data::{DamageType, WeaponDef};
-    use recoil_sim::projectile::Projectile;
-    use recoil_sim::targeting::WeaponRegistry;
+    use pierce_sim::combat_data::{DamageType, WeaponDef};
+    use pierce_sim::projectile::Projectile;
+    use pierce_sim::targeting::WeaponRegistry;
 
     let mut game = make_test_game();
 
@@ -896,7 +896,7 @@ fn test_projectiles_spawn_and_impact() {
 
 #[test]
 fn test_fog_of_war_updates() {
-    use recoil_sim::fog::{CellVisibility, FogOfWar};
+    use pierce_sim::fog::{CellVisibility, FogOfWar};
 
     let mut game = make_test_game();
 
@@ -930,8 +930,8 @@ fn test_fog_of_war_updates() {
 
 #[test]
 fn test_dead_units_cleaned_up() {
-    use recoil_sim::combat_data::{DamageType, WeaponDef};
-    use recoil_sim::targeting::WeaponRegistry;
+    use pierce_sim::combat_data::{DamageType, WeaponDef};
+    use pierce_sim::targeting::WeaponRegistry;
 
     let mut game = make_test_game();
 
@@ -981,7 +981,7 @@ fn test_dead_units_cleaned_up() {
 
 #[test]
 fn test_stun_decrements_over_time() {
-    use recoil_sim::components::Stunned;
+    use pierce_sim::components::Stunned;
 
     let mut game = make_test_game();
     let weapon_id = register_test_weapon(&mut game);
@@ -1015,7 +1015,7 @@ fn test_stun_decrements_over_time() {
 
 #[test]
 fn test_factory_full_production_pipeline() {
-    use recoil_sim::factory::{UnitBlueprint, UnitRegistry};
+    use pierce_sim::factory::{UnitBlueprint, UnitRegistry};
 
     let mut game = make_test_game();
     fund_team(&mut game, 0);
@@ -1054,8 +1054,8 @@ fn test_factory_full_production_pipeline() {
                 rally_point: rally,
                 repeat: false,
             },
-            recoil_sim::Allegiance { team: 0 },
-            recoil_sim::UnitType {
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::UnitType {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
@@ -1071,7 +1071,7 @@ fn test_factory_full_production_pipeline() {
     // Count initial units with UnitType 7777
     let initial_count: usize = game
         .world
-        .query::<&recoil_sim::UnitType>()
+        .query::<&pierce_sim::UnitType>()
         .iter(&game.world)
         .filter(|ut| ut.id == 7777)
         .count();
@@ -1085,7 +1085,7 @@ fn test_factory_full_production_pipeline() {
     // A new entity with UnitType 7777 should exist
     let final_count: usize = game
         .world
-        .query::<&recoil_sim::UnitType>()
+        .query::<&pierce_sim::UnitType>()
         .iter(&game.world)
         .filter(|ut| ut.id == 7777)
         .count();
@@ -1108,8 +1108,8 @@ fn test_factory_full_production_pipeline() {
 
 #[test]
 fn test_aoe_damage() {
-    use recoil_sim::combat_data::{DamageType, WeaponDef};
-    use recoil_sim::targeting::WeaponRegistry;
+    use pierce_sim::combat_data::{DamageType, WeaponDef};
+    use pierce_sim::targeting::WeaponRegistry;
 
     let mut game = make_test_game();
 
@@ -1191,7 +1191,7 @@ fn test_determinism_world_checksum() {
 
             // Sample every 50 frames to keep it fast
             if game.frame_count.is_multiple_of(50) {
-                checksums.push(recoil_sim::sim_runner::world_checksum(&mut game.world));
+                checksums.push(pierce_sim::sim_runner::world_checksum(&mut game.world));
             }
         }
         checksums
@@ -1227,8 +1227,8 @@ fn test_selected_is_factory() {
         game.world
             .query_filtered::<(
                 Entity,
-                &recoil_sim::UnitType,
-            ), bevy_ecs::query::With<recoil_sim::construction::BuildSite>>()
+                &pierce_sim::UnitType,
+            ), bevy_ecs::query::With<pierce_sim::construction::BuildSite>>()
             .iter(&game.world)
             .find(|(_, ut)| ut.id == building::BUILDING_FACTORY_ID)
             .map(|(e, _)| e)
@@ -1237,7 +1237,7 @@ fn test_selected_is_factory() {
     if let Some(factory) = factory_entity {
         game.world
             .entity_mut(factory)
-            .remove::<recoil_sim::construction::BuildSite>();
+            .remove::<pierce_sim::construction::BuildSite>();
         building::finalize_completed_buildings(&mut game.world);
 
         game.selection.select_single(factory);
@@ -1329,8 +1329,8 @@ fn test_handle_factory_queue() {
                 rally_point: SimVec3::ZERO,
                 repeat: false,
             },
-            recoil_sim::Allegiance { team: 0 },
-            recoil_sim::UnitType {
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::UnitType {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
@@ -1352,7 +1352,7 @@ fn test_handle_factory_queue() {
 
 #[test]
 fn test_multi_building_economy_balance() {
-    use recoil_sim::economy::ResourceProducer;
+    use pierce_sim::economy::ResourceProducer;
 
     let mut game = make_test_game();
 
@@ -1381,11 +1381,11 @@ fn test_multi_building_economy_balance() {
                 current: SimFloat::from_int(500),
                 max: SimFloat::from_int(500),
             },
-            recoil_sim::Allegiance { team: 0 },
-            recoil_sim::UnitType {
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::UnitType {
                 id: building::BUILDING_SOLAR_ID,
             },
-            recoil_sim::CollisionRadius {
+            pierce_sim::CollisionRadius {
                 radius: SimFloat::from_int(16),
             },
         ));
@@ -1403,11 +1403,11 @@ fn test_multi_building_economy_balance() {
                 current: SimFloat::from_int(500),
                 max: SimFloat::from_int(500),
             },
-            recoil_sim::Allegiance { team: 0 },
-            recoil_sim::UnitType {
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::UnitType {
                 id: building::BUILDING_MEX_ID,
             },
-            recoil_sim::CollisionRadius {
+            pierce_sim::CollisionRadius {
                 radius: SimFloat::from_int(16),
             },
         ));
@@ -1419,7 +1419,7 @@ fn test_multi_building_economy_balance() {
     // Verify producers were added
     let producer_count = game
         .world
-        .query::<(&ResourceProducer, &recoil_sim::Allegiance)>()
+        .query::<(&ResourceProducer, &pierce_sim::Allegiance)>()
         .iter(&game.world)
         .filter(|(_, a)| a.team == 0)
         .count();
@@ -1471,7 +1471,7 @@ fn test_long_running_bot_vs_bot() {
     // At least one team should still have some units alive
     let alive_count: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .count();
     assert!(
@@ -1507,8 +1507,8 @@ fn test_tick_returns_events() {
 
 #[test]
 fn test_from_config() {
-    use recoil_sim::economy::init_economy;
-    use recoil_sim::sim_runner;
+    use pierce_sim::economy::init_economy;
+    use pierce_sim::sim_runner;
 
     let mut world = bevy_ecs::world::World::new();
     sim_runner::init_sim_world(&mut world);
@@ -1537,7 +1537,7 @@ fn test_placement_type_labels() {
     let game = make_test_game();
     let registry = game
         .world
-        .resource::<recoil_sim::unit_defs::UnitDefRegistry>();
+        .resource::<pierce_sim::unit_defs::UnitDefRegistry>();
 
     // Labels should format as "Build <name>" for known types
     let solar = PlacementType(building::BUILDING_SOLAR_ID);
@@ -1626,9 +1626,9 @@ fn ui_right_click_moves_unit() {
     assert!(moved, "Should issue move command");
 
     // Verify MoveState changed
-    let ms = game.world.get::<recoil_sim::MoveState>(cmd).unwrap();
+    let ms = game.world.get::<pierce_sim::MoveState>(cmd).unwrap();
     assert!(
-        matches!(ms, recoil_sim::MoveState::MovingTo(_)),
+        matches!(ms, pierce_sim::MoveState::MovingTo(_)),
         "Unit should be MovingTo"
     );
 
@@ -1685,22 +1685,22 @@ fn ui_full_building_flow() {
     // Verify: BuildSite was created at the location
     let sites: Vec<_> = game
         .world
-        .query::<(&recoil_sim::construction::BuildSite, &Position)>()
+        .query::<(&pierce_sim::construction::BuildSite, &Position)>()
         .iter(&game.world)
         .collect();
     assert!(!sites.is_empty(), "A build site should exist");
 
     // Step 4: Tick construction system directly (avoids AI interference)
     for _ in 0..500 {
-        recoil_sim::construction::construction_system(&mut game.world);
-        recoil_sim::sim_runner::sim_tick(&mut game.world);
+        pierce_sim::construction::construction_system(&mut game.world);
+        pierce_sim::sim_runner::sim_tick(&mut game.world);
         game.frame_count += 1;
     }
 
     // Verify some progress was made
     let site = game
         .world
-        .query::<&recoil_sim::construction::BuildSite>()
+        .query::<&pierce_sim::construction::BuildSite>()
         .iter(&game.world)
         .next();
     // Site either completed (removed) or has progress
@@ -1746,7 +1746,7 @@ fn ui_cannot_build_without_resources() {
     // Should NOT have created a build site (can't afford)
     let site_count = game
         .world
-        .query::<&recoil_sim::construction::BuildSite>()
+        .query::<&pierce_sim::construction::BuildSite>()
         .iter(&game.world)
         .count();
     assert_eq!(site_count, 0, "Should not place building without resources");
@@ -1754,7 +1754,7 @@ fn ui_cannot_build_without_resources() {
 
 #[test]
 fn ui_factory_queue_and_produce() {
-    use recoil_sim::factory::{UnitBlueprint, UnitRegistry};
+    use pierce_sim::factory::{UnitBlueprint, UnitRegistry};
 
     let mut game = make_test_game();
     fund_team(&mut game, 0);
@@ -1794,8 +1794,8 @@ fn ui_factory_queue_and_produce() {
                 rally_point: rally,
                 repeat: false,
             },
-            recoil_sim::Allegiance { team: 0 },
-            recoil_sim::UnitType {
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::UnitType {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
@@ -1819,7 +1819,7 @@ fn ui_factory_queue_and_produce() {
     // Step 3: Tick until production completes
     let initial_units: usize = game
         .world
-        .query::<&recoil_sim::UnitType>()
+        .query::<&pierce_sim::UnitType>()
         .iter(&game.world)
         .filter(|ut| ut.id == test_unit_id)
         .count();
@@ -1831,7 +1831,7 @@ fn ui_factory_queue_and_produce() {
 
     let final_units: usize = game
         .world
-        .query::<&recoil_sim::UnitType>()
+        .query::<&pierce_sim::UnitType>()
         .iter(&game.world)
         .filter(|ut| ut.id == test_unit_id)
         .count();
@@ -1861,10 +1861,10 @@ fn ui_select_reveals_unit_type() {
 
     // Verify we can access the unit's UnitDef
     let sel = game.selected().unwrap();
-    let ut = game.world.get::<recoil_sim::UnitType>(sel).unwrap();
+    let ut = game.world.get::<pierce_sim::UnitType>(sel).unwrap();
     let registry = game
         .world
-        .resource::<recoil_sim::unit_defs::UnitDefRegistry>();
+        .resource::<pierce_sim::unit_defs::UnitDefRegistry>();
     let def = registry.get(ut.id);
     assert!(def.is_some(), "Selected unit should have a UnitDef");
     let def = def.unwrap();
@@ -1923,8 +1923,8 @@ fn ui_full_game_sequence() {
     // 2. Place a solar (if commander can build one)
     let registry = game
         .world
-        .resource::<recoil_sim::unit_defs::UnitDefRegistry>();
-    let cmd_ut = game.world.get::<recoil_sim::UnitType>(cmd).unwrap().id;
+        .resource::<pierce_sim::unit_defs::UnitDefRegistry>();
+    let cmd_ut = game.world.get::<pierce_sim::UnitType>(cmd).unwrap().id;
     let solar_id = registry
         .get(cmd_ut)
         .and_then(|d| {
@@ -1944,7 +1944,7 @@ fn ui_full_game_sequence() {
         // Verify placement
         let sites = game
             .world
-            .query::<&recoil_sim::construction::BuildSite>()
+            .query::<&pierce_sim::construction::BuildSite>()
             .iter(&game.world)
             .count();
         assert!(sites > 0, "Should have placed a build site");
@@ -1997,7 +1997,7 @@ fn ui_no_phantom_units_without_action() {
     // Count all alive entities at game start (should be 2 commanders only)
     let initial_alive: Vec<(u8, bool)> = game
         .world
-        .query_filtered::<(&recoil_sim::Allegiance, Option<&recoil_sim::MoveState>), Without<Dead>>(
+        .query_filtered::<(&pierce_sim::Allegiance, Option<&pierce_sim::MoveState>), Without<Dead>>(
         )
         .iter(&game.world)
         .map(|(a, ms)| (a.team, ms.is_some()))
@@ -2013,8 +2013,8 @@ fn ui_no_phantom_units_without_action() {
     // Tick 100 frames WITHOUT AI (disable AI by not calling ai_tick)
     // We call sim systems directly instead of game.tick() to skip AI
     for _ in 0..100 {
-        recoil_sim::construction::construction_system(&mut game.world);
-        recoil_sim::sim_runner::sim_tick(&mut game.world);
+        pierce_sim::construction::construction_system(&mut game.world);
+        pierce_sim::sim_runner::sim_tick(&mut game.world);
         building::equip_factory_spawned_units(&mut game.world, &game.weapon_def_ids);
         building::finalize_completed_buildings(&mut game.world);
         game.frame_count += 1;
@@ -2023,7 +2023,7 @@ fn ui_no_phantom_units_without_action() {
     // Count again — should be unchanged (no AI to produce units)
     let after_alive: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .count();
 
@@ -2042,7 +2042,7 @@ fn ui_ai_produces_units_over_time() {
     // Count initial units
     let initial: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .count();
 
@@ -2054,7 +2054,7 @@ fn ui_ai_produces_units_over_time() {
 
     let after: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .count();
 
@@ -2069,7 +2069,7 @@ fn ui_ai_produces_units_over_time() {
     // All new units should be team 1 (AI team) or buildings placed by AI
     let t1_units: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .filter(|a| a.team == 1)
         .count();
@@ -2166,11 +2166,11 @@ fn ui_move_all_selected() {
     let target_x = 400.0;
     let target_z = 400.0;
     for &e in &game.selection.selected.clone() {
-        if let Some(ms) = game.world.get_mut::<recoil_sim::MoveState>(e) {
-            *ms.into_inner() = recoil_sim::MoveState::MovingTo(recoil_math::SimVec3::new(
-                recoil_math::SimFloat::from_f32(target_x),
-                recoil_math::SimFloat::ZERO,
-                recoil_math::SimFloat::from_f32(target_z),
+        if let Some(ms) = game.world.get_mut::<pierce_sim::MoveState>(e) {
+            *ms.into_inner() = pierce_sim::MoveState::MovingTo(pierce_math::SimVec3::new(
+                pierce_math::SimFloat::from_f32(target_x),
+                pierce_math::SimFloat::ZERO,
+                pierce_math::SimFloat::from_f32(target_z),
             ));
         }
     }
@@ -2201,7 +2201,7 @@ fn ui_move_all_selected() {
 /// Factory produces a unit and that unit has MoveState (can accept move orders).
 #[test]
 fn action_factory_spawned_unit_has_movestate() {
-    use recoil_sim::factory::{UnitBlueprint, UnitRegistry};
+    use pierce_sim::factory::{UnitBlueprint, UnitRegistry};
 
     let mut game = make_test_game();
     fund_team(&mut game, 0);
@@ -2221,8 +2221,8 @@ fn action_factory_spawned_unit_has_movestate() {
     {
         let mut reg = game
             .world
-            .resource_mut::<recoil_sim::unit_defs::UnitDefRegistry>();
-        let mut def = recoil_sim::unit_defs::UnitDef {
+            .resource_mut::<pierce_sim::unit_defs::UnitDefRegistry>();
+        let mut def = pierce_sim::unit_defs::UnitDef {
             name: "testunit".into(),
             unit_type_id: test_id,
             max_health: 100.0,
@@ -2271,8 +2271,8 @@ fn action_factory_spawned_unit_has_movestate() {
                 ),
                 repeat: false,
             },
-            recoil_sim::Allegiance { team: 0 },
-            recoil_sim::UnitType {
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::UnitType {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
@@ -2292,7 +2292,7 @@ fn action_factory_spawned_unit_has_movestate() {
     // Find spawned unit
     let spawned: Vec<Entity> = game
         .world
-        .query_filtered::<(Entity, &recoil_sim::UnitType), Without<Dead>>()
+        .query_filtered::<(Entity, &pierce_sim::UnitType), Without<Dead>>()
         .iter(&game.world)
         .filter(|(_, ut)| ut.id == test_id)
         .map(|(e, _)| e)
@@ -2301,7 +2301,7 @@ fn action_factory_spawned_unit_has_movestate() {
     assert!(!spawned.is_empty(), "Factory should have spawned a unit");
     let unit = spawned[0];
     assert!(
-        game.world.get::<recoil_sim::MoveState>(unit).is_some(),
+        game.world.get::<pierce_sim::MoveState>(unit).is_some(),
         "Spawned unit MUST have MoveState to accept move commands"
     );
 }
@@ -2309,7 +2309,7 @@ fn action_factory_spawned_unit_has_movestate() {
 /// Select a factory-spawned unit and move it via right-click.
 #[test]
 fn action_select_and_move_spawned_unit() {
-    use recoil_sim::factory::{UnitBlueprint, UnitRegistry};
+    use pierce_sim::factory::{UnitBlueprint, UnitRegistry};
 
     let mut game = make_test_game();
     fund_team(&mut game, 0);
@@ -2328,8 +2328,8 @@ fn action_select_and_move_spawned_unit() {
     {
         let mut reg = game
             .world
-            .resource_mut::<recoil_sim::unit_defs::UnitDefRegistry>();
-        let mut def = recoil_sim::unit_defs::UnitDef {
+            .resource_mut::<pierce_sim::unit_defs::UnitDefRegistry>();
+        let mut def = pierce_sim::unit_defs::UnitDef {
             name: "mover".into(),
             unit_type_id: test_id,
             max_health: 100.0,
@@ -2379,8 +2379,8 @@ fn action_select_and_move_spawned_unit() {
                 rally_point: rally,
                 repeat: false,
             },
-            recoil_sim::Allegiance { team: 0 },
-            recoil_sim::UnitType {
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::UnitType {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
@@ -2435,15 +2435,15 @@ fn action_place_building_completes() {
     // Verify BuildSite exists
     let sites: usize = game
         .world
-        .query::<&recoil_sim::construction::BuildSite>()
+        .query::<&pierce_sim::construction::BuildSite>()
         .iter(&game.world)
         .count();
     assert!(sites > 0, "BuildSite should exist after placement");
 
     // Tick — use direct systems to avoid AI interference
     for _ in 0..1000 {
-        recoil_sim::construction::construction_system(&mut game.world);
-        recoil_sim::sim_runner::sim_tick(&mut game.world);
+        pierce_sim::construction::construction_system(&mut game.world);
+        pierce_sim::sim_runner::sim_tick(&mut game.world);
         building::equip_factory_spawned_units(&mut game.world, &game.weapon_def_ids);
         building::finalize_completed_buildings(&mut game.world);
         game.frame_count += 1;
@@ -2452,7 +2452,7 @@ fn action_place_building_completes() {
     // Building should have completed or progressed
     let remaining: usize = game
         .world
-        .query::<&recoil_sim::construction::BuildSite>()
+        .query::<&pierce_sim::construction::BuildSite>()
         .iter(&game.world)
         .count();
     // Either completed (0 sites) or still progressing
@@ -2462,8 +2462,8 @@ fn action_place_building_completes() {
 /// Area reclaim queues commands on selected builders.
 #[test]
 fn action_area_reclaim() {
-    use recoil_sim::commands::CommandQueue;
-    use recoil_sim::construction::Reclaimable;
+    use pierce_sim::commands::CommandQueue;
+    use pierce_sim::construction::Reclaimable;
 
     let mut game = make_test_game();
     let cmd = game.commander_team0.unwrap();
@@ -2485,7 +2485,7 @@ fn action_area_reclaim() {
             current: SimFloat::from_int(50),
             max: SimFloat::from_int(50),
         },
-        recoil_sim::Allegiance { team: 0 },
+        pierce_sim::Allegiance { team: 0 },
     ));
 
     game.selection.select_single(cmd);
@@ -2502,7 +2502,7 @@ fn action_area_reclaim() {
 /// Area attack queues attack commands on selected combat units.
 #[test]
 fn action_area_attack() {
-    use recoil_sim::commands::CommandQueue;
+    use pierce_sim::commands::CommandQueue;
 
     let mut game = make_test_game();
     let weapon_id = register_test_weapon(&mut game);
@@ -2632,7 +2632,7 @@ fn gameplay_full_loop() {
     // --- Phase 4: Count alive entities ---
     let t0_alive: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .filter(|a| a.team == 0)
         .count();
@@ -2641,7 +2641,7 @@ fn gameplay_full_loop() {
     // AI on team 1 has also been building
     let t1_alive: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .filter(|a| a.team == 1)
         .count();
@@ -2662,7 +2662,7 @@ fn gameplay_full_loop() {
     // After 1550+ ticks with AI and combat, something should have happened
     let total_alive: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .count();
     assert!(
@@ -2728,7 +2728,7 @@ fn gameplay_mixed_actions() {
     // 6. Verify some building activity happened
     let t0_entities: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .filter(|a| a.team == 0)
         .count();
@@ -2745,7 +2745,7 @@ fn gameplay_mixed_actions() {
 
 #[test]
 fn action_factory_repeat_mode() {
-    use recoil_sim::factory::{UnitBlueprint, UnitRegistry};
+    use pierce_sim::factory::{UnitBlueprint, UnitRegistry};
 
     let mut game = make_test_game();
     fund_team(&mut game, 0);
@@ -2778,8 +2778,8 @@ fn action_factory_repeat_mode() {
                 rally_point: SimVec3::ZERO,
                 repeat: true,
             },
-            recoil_sim::Allegiance { team: 0 },
-            recoil_sim::UnitType {
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::UnitType {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
@@ -2807,7 +2807,7 @@ fn action_factory_repeat_mode() {
 
 #[test]
 fn action_area_repair() {
-    use recoil_sim::commands::CommandQueue;
+    use pierce_sim::commands::CommandQueue;
 
     let mut game = make_test_game();
     let cmd = game.commander_team0.unwrap();
@@ -2827,8 +2827,8 @@ fn action_area_repair() {
                 current: SimFloat::from_int(50),
                 max: SimFloat::from_int(200),
             },
-            recoil_sim::Allegiance { team: 0 },
-            recoil_sim::UnitType { id: 1 },
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::UnitType { id: 1 },
         ))
         .id();
 
@@ -2853,7 +2853,7 @@ fn action_select_dead_entity_graceful() {
 
     // Kill unit and force despawn
     game.world.entity_mut(unit).insert(Dead);
-    recoil_sim::lifecycle::cleanup_dead(&mut game.world);
+    pierce_sim::lifecycle::cleanup_dead(&mut game.world);
 
     // Entity is despawned by cleanup_dead. Selection still holds the entity
     // reference but the entity no longer exists in the world. Operations on
@@ -2907,11 +2907,11 @@ fn action_move_to_current_position() {
         game.frame_count += 1;
     }
 
-    let ms = game.world.get::<recoil_sim::MoveState>(cmd).unwrap();
+    let ms = game.world.get::<pierce_sim::MoveState>(cmd).unwrap();
     // Should be Idle or Arriving (close enough to target)
     let at_rest = matches!(
         ms,
-        recoil_sim::MoveState::Idle | recoil_sim::MoveState::Arriving
+        pierce_sim::MoveState::Idle | pierce_sim::MoveState::Arriving
     );
     assert!(
         at_rest,
@@ -2941,7 +2941,7 @@ fn action_selection_persists_across_ticks() {
 
 #[test]
 fn action_resource_depletion_stalls_factory() {
-    use recoil_sim::factory::{UnitBlueprint, UnitRegistry};
+    use pierce_sim::factory::{UnitBlueprint, UnitRegistry};
 
     let mut game = make_test_game();
     // Set team 0 to near-zero resources
@@ -2977,8 +2977,8 @@ fn action_resource_depletion_stalls_factory() {
                 rally_point: SimVec3::ZERO,
                 repeat: false,
             },
-            recoil_sim::Allegiance { team: 0 },
-            recoil_sim::UnitType {
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::UnitType {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
@@ -2998,13 +2998,13 @@ fn action_resource_depletion_stalls_factory() {
     // Factory should be heavily stalled — either 0 units or progress very low
     let spawned: usize = game
         .world
-        .query_filtered::<&recoil_sim::UnitType, Without<Dead>>()
+        .query_filtered::<&pierce_sim::UnitType, Without<Dead>>()
         .iter(&game.world)
         .filter(|ut| ut.id == test_id)
         .count();
     let progress = game
         .world
-        .get::<recoil_sim::factory::BuildQueue>(factory)
+        .get::<pierce_sim::factory::BuildQueue>(factory)
         .unwrap()
         .current_progress;
     // With 1 metal vs 1000 cost, stall_ratio is ~0.001, so production is glacially slow
@@ -3035,13 +3035,13 @@ fn action_two_teams_combat_to_death() {
     // At least one side should have taken casualties
     let t0: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .filter(|a| a.team == 0)
         .count();
     let t1: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .filter(|a| a.team == 1)
         .count();
@@ -3057,9 +3057,9 @@ fn action_two_teams_combat_to_death() {
 
 #[test]
 fn action_wreckage_spawns_on_death() {
-    use recoil_sim::combat_data::{DamageType, WeaponDef};
-    use recoil_sim::construction::Reclaimable;
-    use recoil_sim::targeting::WeaponRegistry;
+    use pierce_sim::combat_data::{DamageType, WeaponDef};
+    use pierce_sim::construction::Reclaimable;
+    use pierce_sim::targeting::WeaponRegistry;
 
     let mut game = make_test_game();
 
@@ -3103,7 +3103,7 @@ fn action_wreckage_spawns_on_death() {
 
 #[test]
 fn action_multiple_factories_produce_simultaneously() {
-    use recoil_sim::factory::{UnitBlueprint, UnitRegistry};
+    use pierce_sim::factory::{UnitBlueprint, UnitRegistry};
 
     let mut game = make_test_game();
     fund_team(&mut game, 0);
@@ -3122,8 +3122,8 @@ fn action_multiple_factories_produce_simultaneously() {
     {
         let mut reg = game
             .world
-            .resource_mut::<recoil_sim::unit_defs::UnitDefRegistry>();
-        let mut def = recoil_sim::unit_defs::UnitDef {
+            .resource_mut::<pierce_sim::unit_defs::UnitDefRegistry>();
+        let mut def = pierce_sim::unit_defs::UnitDef {
             name: "multitest".into(),
             unit_type_id: test_id,
             max_health: 100.0,
@@ -3174,8 +3174,8 @@ fn action_multiple_factories_produce_simultaneously() {
                     ),
                     repeat: false,
                 },
-                recoil_sim::Allegiance { team: 0 },
-                recoil_sim::UnitType {
+                pierce_sim::Allegiance { team: 0 },
+                pierce_sim::UnitType {
                     id: building::BUILDING_FACTORY_ID,
                 },
                 Health {
@@ -3194,7 +3194,7 @@ fn action_multiple_factories_produce_simultaneously() {
 
     let spawned: usize = game
         .world
-        .query_filtered::<&recoil_sim::UnitType, Without<Dead>>()
+        .query_filtered::<&pierce_sim::UnitType, Without<Dead>>()
         .iter(&game.world)
         .filter(|ut| ut.id == test_id)
         .count();
@@ -3269,7 +3269,7 @@ fn mixed_build_expand_fight() {
     assert!(game.frame_count >= 770);
     let alive: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .count();
     assert!(
@@ -3381,8 +3381,8 @@ fn mixed_control_groups_and_production() {
     game.recall_control_group(2);
     assert_eq!(game.selection.selected.len(), 2);
     for &f in &game.selection.selected.clone() {
-        if let Some(ms) = game.world.get_mut::<recoil_sim::MoveState>(f) {
-            *ms.into_inner() = recoil_sim::MoveState::MovingTo(SimVec3::new(
+        if let Some(ms) = game.world.get_mut::<pierce_sim::MoveState>(f) {
+            *ms.into_inner() = pierce_sim::MoveState::MovingTo(SimVec3::new(
                 SimFloat::from_int(800),
                 SimFloat::ZERO,
                 SimFloat::from_int(800),
@@ -3399,8 +3399,8 @@ fn mixed_control_groups_and_production() {
     game.recall_control_group(3);
     assert_eq!(game.selection.selected.len(), 2);
     for &f in &game.selection.selected.clone() {
-        if let Some(ms) = game.world.get_mut::<recoil_sim::MoveState>(f) {
-            *ms.into_inner() = recoil_sim::MoveState::MovingTo(SimVec3::new(
+        if let Some(ms) = game.world.get_mut::<pierce_sim::MoveState>(f) {
+            *ms.into_inner() = pierce_sim::MoveState::MovingTo(SimVec3::new(
                 SimFloat::from_int(500),
                 SimFloat::ZERO,
                 SimFloat::from_int(800),
@@ -3454,7 +3454,7 @@ fn mixed_attack_defend_rebuild() {
 
     let _mid_alive: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .filter(|a| a.team == 0)
         .count();
@@ -3476,8 +3476,8 @@ fn mixed_attack_defend_rebuild() {
     let _selected_count = game.selection.selected.len();
     for &e in &game.selection.selected.clone() {
         if self_has_movestate(&game, e) {
-            if let Some(ms) = game.world.get_mut::<recoil_sim::MoveState>(e) {
-                *ms.into_inner() = recoil_sim::MoveState::MovingTo(SimVec3::new(
+            if let Some(ms) = game.world.get_mut::<pierce_sim::MoveState>(e) {
+                *ms.into_inner() = pierce_sim::MoveState::MovingTo(SimVec3::new(
                     SimFloat::from_int(800),
                     SimFloat::ZERO,
                     SimFloat::from_int(800),
@@ -3494,7 +3494,7 @@ fn mixed_attack_defend_rebuild() {
     // Game should either still be running or ended
     let final_alive: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .count();
     assert!(
@@ -3506,7 +3506,7 @@ fn mixed_attack_defend_rebuild() {
 /// Interleave building, area commands, and combat in rapid succession.
 #[test]
 fn mixed_area_commands_during_combat() {
-    use recoil_sim::construction::Reclaimable;
+    use pierce_sim::construction::Reclaimable;
 
     let mut game = make_test_game();
     fund_both_teams(&mut game);
@@ -3553,7 +3553,7 @@ fn mixed_area_commands_during_combat() {
                 current: SimFloat::from_int(30),
                 max: SimFloat::from_int(30),
             },
-            recoil_sim::Allegiance { team: 0 },
+            pierce_sim::Allegiance { team: 0 },
         ));
     }
 
@@ -3625,8 +3625,8 @@ fn mixed_stress_rapid_actions() {
                 let targets = game.selection.selected.clone();
                 for e in targets {
                     if game.world.get_entity(e).is_ok() {
-                        if let Some(ms) = game.world.get_mut::<recoil_sim::MoveState>(e) {
-                            *ms.into_inner() = recoil_sim::MoveState::MovingTo(SimVec3::new(
+                        if let Some(ms) = game.world.get_mut::<pierce_sim::MoveState>(e) {
+                            *ms.into_inner() = pierce_sim::MoveState::MovingTo(SimVec3::new(
                                 SimFloat::from_f32(300.0 + frame as f32),
                                 SimFloat::ZERO,
                                 SimFloat::from_f32(300.0),
@@ -3701,7 +3701,7 @@ fn negative_no_building_without_resources() {
 
     let sites: usize = game
         .world
-        .query::<&recoil_sim::construction::BuildSite>()
+        .query::<&pierce_sim::construction::BuildSite>()
         .iter(&game.world)
         .count();
     assert_eq!(sites, 0, "Must NOT place building without resources");
@@ -3714,14 +3714,14 @@ fn negative_no_spontaneous_spawns() {
 
     let initial: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .count();
 
     // Tick WITHOUT calling game.tick() (which includes AI)
     for _ in 0..200 {
-        recoil_sim::construction::construction_system(&mut game.world);
-        recoil_sim::sim_runner::sim_tick(&mut game.world);
+        pierce_sim::construction::construction_system(&mut game.world);
+        pierce_sim::sim_runner::sim_tick(&mut game.world);
         building::equip_factory_spawned_units(&mut game.world, &game.weapon_def_ids);
         building::finalize_completed_buildings(&mut game.world);
         game.frame_count += 1;
@@ -3729,7 +3729,7 @@ fn negative_no_spontaneous_spawns() {
 
     let after: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .count();
     assert_eq!(
@@ -3747,7 +3747,7 @@ fn negative_cannot_select_dead_unit() {
 
     // Kill and despawn
     game.world.entity_mut(unit).insert(Dead);
-    recoil_sim::lifecycle::cleanup_dead(&mut game.world);
+    pierce_sim::lifecycle::cleanup_dead(&mut game.world);
 
     // Try to select at the unit's old position
     let sel = game.click_select(400.0, 400.0, 20.0);
@@ -3784,12 +3784,12 @@ fn negative_no_actions_after_game_over() {
     game.tick();
     let _sites: usize = game
         .world
-        .query::<&recoil_sim::construction::BuildSite>()
+        .query::<&pierce_sim::construction::BuildSite>()
         .iter(&game.world)
         .count();
     let t0_alive: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .filter(|a| a.team == 0)
         .count();
@@ -3898,7 +3898,7 @@ fn collision_zero_radius_no_push() {
     let mut game = make_test_game();
 
     // Spawn two units with zero collision radius at same position
-    let u1 = recoil_sim::lifecycle::spawn_unit(
+    let u1 = pierce_sim::lifecycle::spawn_unit(
         &mut game.world,
         Position {
             pos: SimVec3::new(
@@ -3907,30 +3907,30 @@ fn collision_zero_radius_no_push() {
                 SimFloat::from_int(500),
             ),
         },
-        recoil_sim::UnitType { id: 1 },
-        recoil_sim::Allegiance { team: 0 },
+        pierce_sim::UnitType { id: 1 },
+        pierce_sim::Allegiance { team: 0 },
         Health {
             current: SimFloat::from_int(100),
             max: SimFloat::from_int(100),
         },
     );
     game.world.entity_mut(u1).insert((
-        recoil_sim::MoveState::Idle,
-        recoil_sim::CollisionRadius {
+        pierce_sim::MoveState::Idle,
+        pierce_sim::CollisionRadius {
             radius: SimFloat::ZERO,
         },
-        recoil_sim::Heading {
+        pierce_sim::Heading {
             angle: SimFloat::ZERO,
         },
-        recoil_sim::Velocity { vel: SimVec3::ZERO },
-        recoil_sim::MovementParams {
+        pierce_sim::Velocity { vel: SimVec3::ZERO },
+        pierce_sim::MovementParams {
             max_speed: SimFloat::from_int(2),
             acceleration: SimFloat::ONE,
             turn_rate: SimFloat::ONE,
         },
     ));
 
-    let u2 = recoil_sim::lifecycle::spawn_unit(
+    let u2 = pierce_sim::lifecycle::spawn_unit(
         &mut game.world,
         Position {
             pos: SimVec3::new(
@@ -3939,23 +3939,23 @@ fn collision_zero_radius_no_push() {
                 SimFloat::from_int(500),
             ),
         },
-        recoil_sim::UnitType { id: 1 },
-        recoil_sim::Allegiance { team: 0 },
+        pierce_sim::UnitType { id: 1 },
+        pierce_sim::Allegiance { team: 0 },
         Health {
             current: SimFloat::from_int(100),
             max: SimFloat::from_int(100),
         },
     );
     game.world.entity_mut(u2).insert((
-        recoil_sim::MoveState::Idle,
-        recoil_sim::CollisionRadius {
+        pierce_sim::MoveState::Idle,
+        pierce_sim::CollisionRadius {
             radius: SimFloat::ZERO,
         },
-        recoil_sim::Heading {
+        pierce_sim::Heading {
             angle: SimFloat::ZERO,
         },
-        recoil_sim::Velocity { vel: SimVec3::ZERO },
-        recoil_sim::MovementParams {
+        pierce_sim::Velocity { vel: SimVec3::ZERO },
+        pierce_sim::MovementParams {
             max_speed: SimFloat::from_int(2),
             acceleration: SimFloat::ONE,
             turn_rate: SimFloat::ONE,
@@ -3965,7 +3965,7 @@ fn collision_zero_radius_no_push() {
     let p1_before = game.world.get::<Position>(u1).unwrap().pos;
 
     for _ in 0..5 {
-        recoil_sim::sim_runner::sim_tick(&mut game.world);
+        pierce_sim::sim_runner::sim_tick(&mut game.world);
     }
 
     let p1_after = game.world.get::<Position>(u1).unwrap().pos;
@@ -3985,14 +3985,14 @@ fn collision_moving_units_dont_overlap() {
     let u2 = spawn_armed_unit(&mut game, 520, 500, 0, weapon_id, 500);
 
     // Move toward each other
-    *game.world.get_mut::<recoil_sim::MoveState>(u1).unwrap() =
-        recoil_sim::MoveState::MovingTo(SimVec3::new(
+    *game.world.get_mut::<pierce_sim::MoveState>(u1).unwrap() =
+        pierce_sim::MoveState::MovingTo(SimVec3::new(
             SimFloat::from_int(520),
             SimFloat::ZERO,
             SimFloat::from_int(500),
         ));
-    *game.world.get_mut::<recoil_sim::MoveState>(u2).unwrap() =
-        recoil_sim::MoveState::MovingTo(SimVec3::new(
+    *game.world.get_mut::<pierce_sim::MoveState>(u2).unwrap() =
+        pierce_sim::MoveState::MovingTo(SimVec3::new(
             SimFloat::from_int(500),
             SimFloat::ZERO,
             SimFloat::from_int(500),
@@ -4007,12 +4007,12 @@ fn collision_moving_units_dont_overlap() {
     let p2 = game.world.get::<Position>(u2).unwrap().pos;
     let r1 = game
         .world
-        .get::<recoil_sim::CollisionRadius>(u1)
+        .get::<pierce_sim::CollisionRadius>(u1)
         .unwrap()
         .radius;
     let r2 = game
         .world
-        .get::<recoil_sim::CollisionRadius>(u2)
+        .get::<pierce_sim::CollisionRadius>(u2)
         .unwrap()
         .radius;
 
@@ -4045,7 +4045,7 @@ fn collision_symmetric_displacement() {
     let mid_before = (p1_before.x + p2_before.x) / SimFloat::TWO;
 
     // Single tick of collision
-    recoil_sim::sim_runner::sim_tick(&mut game.world);
+    pierce_sim::sim_runner::sim_tick(&mut game.world);
 
     let p1_after = game.world.get::<Position>(u1).unwrap().pos;
     let p2_after = game.world.get::<Position>(u2).unwrap().pos;
@@ -4075,7 +4075,7 @@ fn collision_buildings_immovable() {
 
     // Find the building
     let building_entity = game.world
-        .query_filtered::<(Entity, &Position), bevy_ecs::query::With<recoil_sim::construction::BuildSite>>()
+        .query_filtered::<(Entity, &Position), bevy_ecs::query::With<pierce_sim::construction::BuildSite>>()
         .iter(&game.world)
         .next()
         .map(|(e, _)| e);
@@ -4138,8 +4138,8 @@ fn verified_move_only_affects_target() {
 
     // Run sim without AI (direct systems)
     for _ in 0..50 {
-        recoil_sim::construction::construction_system(&mut game.world);
-        recoil_sim::sim_runner::sim_tick(&mut game.world);
+        pierce_sim::construction::construction_system(&mut game.world);
+        pierce_sim::sim_runner::sim_tick(&mut game.world);
         game.frame_count += 1;
     }
 
@@ -4183,7 +4183,7 @@ fn verified_place_building_only_adds_one() {
     // Exactly one new entity (the BuildSite)
     let new_count = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .count();
     assert_eq!(
@@ -4195,7 +4195,7 @@ fn verified_place_building_only_adds_one() {
     // BuildSite count increased by 1
     let new_sites = game
         .world
-        .query_filtered::<&recoil_sim::construction::BuildSite, Without<Dead>>()
+        .query_filtered::<&pierce_sim::construction::BuildSite, Without<Dead>>()
         .iter(&game.world)
         .count();
     assert_eq!(
@@ -4231,8 +4231,8 @@ fn verified_queue_unit_no_immediate_spawn() {
                 rally_point: SimVec3::ZERO,
                 repeat: false,
             },
-            recoil_sim::Allegiance { team: 0 },
-            recoil_sim::UnitType {
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::UnitType {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
@@ -4304,7 +4304,7 @@ fn verified_step_by_step_sequence() {
     assert!(game.placement_mode.is_none(), "step3: mode cleared");
     let sites_now = game
         .world
-        .query_filtered::<&recoil_sim::construction::BuildSite, Without<Dead>>()
+        .query_filtered::<&pierce_sim::construction::BuildSite, Without<Dead>>()
         .iter(&game.world)
         .count();
     assert_eq!(
@@ -4317,8 +4317,8 @@ fn verified_step_by_step_sequence() {
     // Step 4: Tick construction (no AI)
     let snap4 = Snapshot::capture(&mut game);
     for _ in 0..50 {
-        recoil_sim::construction::construction_system(&mut game.world);
-        recoil_sim::sim_runner::sim_tick(&mut game.world);
+        pierce_sim::construction::construction_system(&mut game.world);
+        pierce_sim::sim_runner::sim_tick(&mut game.world);
         building::equip_factory_spawned_units(&mut game.world, &game.weapon_def_ids);
         building::finalize_completed_buildings(&mut game.world);
         game.frame_count += 1;
@@ -4335,8 +4335,8 @@ fn verified_step_by_step_sequence() {
 
     // Step 6: Tick to execute move (no AI)
     for _ in 0..50 {
-        recoil_sim::construction::construction_system(&mut game.world);
-        recoil_sim::sim_runner::sim_tick(&mut game.world);
+        pierce_sim::construction::construction_system(&mut game.world);
+        pierce_sim::sim_runner::sim_tick(&mut game.world);
         game.frame_count += 1;
     }
     // Commander should have moved now
@@ -4356,7 +4356,7 @@ fn verified_step_by_step_sequence() {
 /// Factory produces exactly one unit — nothing else changes.
 #[test]
 fn sim_factory_produces_one_unit_nothing_else() {
-    use recoil_sim::factory::{UnitBlueprint, UnitRegistry};
+    use pierce_sim::factory::{UnitBlueprint, UnitRegistry};
 
     let mut game = make_test_game();
     fund_team(&mut game, 0);
@@ -4375,8 +4375,8 @@ fn sim_factory_produces_one_unit_nothing_else() {
     {
         let mut reg = game
             .world
-            .resource_mut::<recoil_sim::unit_defs::UnitDefRegistry>();
-        let mut def = recoil_sim::unit_defs::UnitDef {
+            .resource_mut::<pierce_sim::unit_defs::UnitDefRegistry>();
+        let mut def = pierce_sim::unit_defs::UnitDef {
             name: "prodtest".into(),
             unit_type_id: unit_id,
             max_health: 100.0,
@@ -4425,8 +4425,8 @@ fn sim_factory_produces_one_unit_nothing_else() {
                 ),
                 repeat: false,
             },
-            recoil_sim::Allegiance { team: 0 },
-            recoil_sim::UnitType {
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::UnitType {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
@@ -4447,8 +4447,8 @@ fn sim_factory_produces_one_unit_nothing_else() {
 
     // Tick enough for production (no AI — direct systems)
     for _ in 0..30 {
-        recoil_sim::construction::construction_system(&mut game.world);
-        recoil_sim::sim_runner::sim_tick(&mut game.world);
+        pierce_sim::construction::construction_system(&mut game.world);
+        pierce_sim::sim_runner::sim_tick(&mut game.world);
         building::equip_factory_spawned_units(&mut game.world, &game.weapon_def_ids);
         building::finalize_completed_buildings(&mut game.world);
         game.frame_count += 1;
@@ -4461,7 +4461,7 @@ fn sim_factory_produces_one_unit_nothing_else() {
     // Total entity count: +1
     let new_total = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .count();
     assert_eq!(
@@ -4527,8 +4527,8 @@ fn sim_idle_tick_changes_nothing() {
     let snap = Snapshot::capture(&mut game);
 
     // Single tick with NO AI (direct systems only)
-    recoil_sim::construction::construction_system(&mut game.world);
-    recoil_sim::sim_runner::sim_tick(&mut game.world);
+    pierce_sim::construction::construction_system(&mut game.world);
+    pierce_sim::sim_runner::sim_tick(&mut game.world);
     building::equip_factory_spawned_units(&mut game.world, &game.weapon_def_ids);
     building::finalize_completed_buildings(&mut game.world);
 
@@ -4562,11 +4562,11 @@ fn sim_building_complete_only_adds_producer() {
             current: SimFloat::from_int(500),
             max: SimFloat::from_int(500),
         },
-        recoil_sim::Allegiance { team: 0 },
-        recoil_sim::UnitType {
+        pierce_sim::Allegiance { team: 0 },
+        pierce_sim::UnitType {
             id: building::BUILDING_SOLAR_ID,
         },
-        recoil_sim::CollisionRadius {
+        pierce_sim::CollisionRadius {
             radius: SimFloat::from_int(2),
         },
     ));
@@ -4574,7 +4574,7 @@ fn sim_building_complete_only_adds_producer() {
     let snap = Snapshot::capture(&mut game);
     let producers_before: usize = game
         .world
-        .query::<&recoil_sim::economy::ResourceProducer>()
+        .query::<&pierce_sim::economy::ResourceProducer>()
         .iter(&game.world)
         .count();
     let health_before = all_health(&mut game);
@@ -4584,7 +4584,7 @@ fn sim_building_complete_only_adds_producer() {
 
     let producers_after: usize = game
         .world
-        .query::<&recoil_sim::economy::ResourceProducer>()
+        .query::<&pierce_sim::economy::ResourceProducer>()
         .iter(&game.world)
         .count();
     assert_eq!(
@@ -4618,8 +4618,8 @@ fn sim_combat_only_affects_combatants() {
 
     // Run 50 ticks (no AI)
     for _ in 0..50 {
-        recoil_sim::construction::construction_system(&mut game.world);
-        recoil_sim::sim_runner::sim_tick(&mut game.world);
+        pierce_sim::construction::construction_system(&mut game.world);
+        pierce_sim::sim_runner::sim_tick(&mut game.world);
         game.frame_count += 1;
     }
 
@@ -4654,7 +4654,7 @@ fn sim_combat_only_affects_combatants() {
     // No new entities spawned (except possibly wreckage if someone died)
     let t0_now: usize = game
         .world
-        .query_filtered::<&recoil_sim::Allegiance, Without<Dead>>()
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
         .iter(&game.world)
         .filter(|a| a.team == 0)
         .count();
@@ -4675,16 +4675,16 @@ fn sim_move_only_moves_one_unit() {
     let snap = Snapshot::capture(&mut game);
 
     // Move only the mover
-    *game.world.get_mut::<recoil_sim::MoveState>(mover).unwrap() =
-        recoil_sim::MoveState::MovingTo(SimVec3::new(
+    *game.world.get_mut::<pierce_sim::MoveState>(mover).unwrap() =
+        pierce_sim::MoveState::MovingTo(SimVec3::new(
             SimFloat::from_int(350),
             SimFloat::ZERO,
             SimFloat::from_int(350),
         ));
 
     for _ in 0..50 {
-        recoil_sim::construction::construction_system(&mut game.world);
-        recoil_sim::sim_runner::sim_tick(&mut game.world);
+        pierce_sim::construction::construction_system(&mut game.world);
+        pierce_sim::sim_runner::sim_tick(&mut game.world);
         game.frame_count += 1;
     }
 
@@ -4740,7 +4740,7 @@ fn sim_construction_only_changes_progress() {
 
     let site_entity = game
         .world
-        .query_filtered::<(Entity, &recoil_sim::construction::BuildSite), Without<Dead>>()
+        .query_filtered::<(Entity, &pierce_sim::construction::BuildSite), Without<Dead>>()
         .iter(&game.world)
         .next()
         .map(|(e, _)| e);
@@ -4749,18 +4749,18 @@ fn sim_construction_only_changes_progress() {
     let snap = Snapshot::capture(&mut game);
     let progress_before = game
         .world
-        .get::<recoil_sim::construction::BuildSite>(site_entity.unwrap())
+        .get::<pierce_sim::construction::BuildSite>(site_entity.unwrap())
         .unwrap()
         .progress;
 
     // Tick construction only
     for _ in 0..20 {
-        recoil_sim::construction::construction_system(&mut game.world);
+        pierce_sim::construction::construction_system(&mut game.world);
     }
 
     let site_still = game
         .world
-        .get::<recoil_sim::construction::BuildSite>(site_entity.unwrap());
+        .get::<pierce_sim::construction::BuildSite>(site_entity.unwrap());
     if let Some(site) = site_still {
         assert!(
             site.progress >= progress_before,
@@ -4782,8 +4782,8 @@ fn sim_construction_only_changes_progress() {
 
 #[test]
 fn test_replay_regression_1000_ticks() {
-    use recoil_net::replay::{ReplayHeader, ReplayRecorder};
-    use recoil_sim::sim_runner::{sim_tick, world_checksum};
+    use pierce_net::replay::{ReplayHeader, ReplayRecorder};
+    use pierce_sim::sim_runner::{sim_tick, world_checksum};
 
     let tick_count = 1000;
 
@@ -4798,7 +4798,7 @@ fn test_replay_regression_1000_ticks() {
         game_settings: Vec::new(),
     });
     for (frame_idx, cmds) in recorded_commands.iter().enumerate() {
-        recorder.record_frame(vec![recoil_net::CommandFrame {
+        recorder.record_frame(vec![pierce_net::CommandFrame {
             frame: frame_idx as u64,
             player_id: 0,
             commands: cmds.clone(),
@@ -4808,7 +4808,7 @@ fn test_replay_regression_1000_ticks() {
 
     // Serialize and deserialize (round-trip through bincode)
     let bytes = bincode::serialize(&replay).expect("serialize replay");
-    let replayed: recoil_net::replay::Replay =
+    let replayed: pierce_net::replay::Replay =
         bincode::deserialize(&bytes).expect("deserialize replay");
 
     assert_eq!(replayed.frames.len(), tick_count as usize);
@@ -4817,19 +4817,19 @@ fn test_replay_regression_1000_ticks() {
     let mut game2 = make_test_game();
     fund_both_teams(&mut game2);
 
-    let mut replay_player = recoil_net::replay::ReplayPlayer::new(replayed);
+    let mut replay_player = pierce_net::replay::ReplayPlayer::new(replayed);
     let mut replay_checksums: Vec<u64> = Vec::new();
 
     while let Some(frame_cmds) = replay_player.advance() {
         // Extract PlayerCommands from all CommandFrames for this frame
-        let all_cmds: Vec<recoil_net::PlayerCommand> = frame_cmds
+        let all_cmds: Vec<pierce_net::PlayerCommand> = frame_cmds
             .iter()
             .flat_map(|cf| cf.commands.clone())
             .collect();
 
         apply_player_commands(&mut game2.world, &all_cmds);
 
-        recoil_sim::construction::construction_system(&mut game2.world);
+        pierce_sim::construction::construction_system(&mut game2.world);
         sim_tick(&mut game2.world);
         crate::building::equip_factory_spawned_units(&mut game2.world, &game2.weapon_def_ids);
         crate::building::finalize_completed_buildings(&mut game2.world);
@@ -4876,8 +4876,8 @@ fn determinism_cross_system_2000_frames() {
         fund_both_teams(&mut game);
 
         let weapon_id = {
-            use recoil_sim::combat_data::{DamageType, WeaponDef};
-            use recoil_sim::targeting::WeaponRegistry;
+            use pierce_sim::combat_data::{DamageType, WeaponDef};
+            use pierce_sim::targeting::WeaponRegistry;
             let mut registry = game.world.resource_mut::<WeaponRegistry>();
             let id = registry.defs.len() as u32;
             registry.defs.push(WeaponDef {
@@ -4912,13 +4912,13 @@ fn determinism_cross_system_2000_frames() {
 
         let mut checksums = Vec::new();
         for _ in 0..2000 {
-            recoil_sim::construction::construction_system(&mut game.world);
+            pierce_sim::construction::construction_system(&mut game.world);
             game.tick();
             crate::ai::ai_tick(&mut game.world, &mut ai0, game.frame_count);
             game.frame_count += 1;
 
             if game.frame_count.is_multiple_of(100) {
-                checksums.push(recoil_sim::sim_runner::world_checksum(&mut game.world));
+                checksums.push(pierce_sim::sim_runner::world_checksum(&mut game.world));
             }
         }
         checksums
@@ -4942,7 +4942,7 @@ fn determinism_cross_system_2000_frames() {
 #[test]
 fn determinism_factory_production_during_combat() {
     fn run_factory_combat() -> Vec<u64> {
-        use recoil_sim::factory::{UnitBlueprint, UnitRegistry};
+        use pierce_sim::factory::{UnitBlueprint, UnitRegistry};
 
         let mut game = make_test_game();
         fund_both_teams(&mut game);
@@ -4982,8 +4982,8 @@ fn determinism_factory_production_during_combat() {
                     ),
                     repeat: true,
                 },
-                recoil_sim::Allegiance { team: 0 },
-                recoil_sim::UnitType {
+                pierce_sim::Allegiance { team: 0 },
+                pierce_sim::UnitType {
                     id: building::BUILDING_FACTORY_ID,
                 },
                 Health {
@@ -5005,7 +5005,7 @@ fn determinism_factory_production_during_combat() {
             game.tick();
             game.frame_count += 1;
             if game.frame_count.is_multiple_of(50) {
-                checksums.push(recoil_sim::sim_runner::world_checksum(&mut game.world));
+                checksums.push(pierce_sim::sim_runner::world_checksum(&mut game.world));
             }
         }
         checksums
@@ -5049,11 +5049,11 @@ fn determinism_construction_under_attack() {
 
         let mut checksums = Vec::new();
         for _ in 0..500 {
-            recoil_sim::construction::construction_system(&mut game.world);
+            pierce_sim::construction::construction_system(&mut game.world);
             game.tick();
             game.frame_count += 1;
             if game.frame_count.is_multiple_of(50) {
-                checksums.push(recoil_sim::sim_runner::world_checksum(&mut game.world));
+                checksums.push(pierce_sim::sim_runner::world_checksum(&mut game.world));
             }
         }
         checksums
@@ -5096,11 +5096,11 @@ fn multi_team_economy_isolation() {
                 current: SimFloat::from_int(500),
                 max: SimFloat::from_int(500),
             },
-            recoil_sim::Allegiance { team: 0 },
-            recoil_sim::UnitType {
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::UnitType {
                 id: building::BUILDING_SOLAR_ID,
             },
-            recoil_sim::CollisionRadius {
+            pierce_sim::CollisionRadius {
                 radius: SimFloat::from_int(16),
             },
         ));
@@ -5114,8 +5114,8 @@ fn multi_team_economy_isolation() {
 
     // Tick to let economy system run (skip AI to avoid it placing buildings)
     for _ in 0..200 {
-        recoil_sim::construction::construction_system(&mut game.world);
-        recoil_sim::sim_runner::sim_tick(&mut game.world);
+        pierce_sim::construction::construction_system(&mut game.world);
+        pierce_sim::sim_runner::sim_tick(&mut game.world);
         game.frame_count += 1;
     }
 
@@ -5143,7 +5143,7 @@ fn multi_team_economy_isolation() {
 /// -> resources returned.
 #[test]
 fn entity_lifecycle_chain() {
-    use recoil_sim::construction::Reclaimable;
+    use pierce_sim::construction::Reclaimable;
 
     let mut game = make_test_game();
     fund_both_teams(&mut game);
@@ -5158,8 +5158,8 @@ fn entity_lifecycle_chain() {
     }
 
     let weapon_id = {
-        use recoil_sim::combat_data::{DamageType, WeaponDef};
-        use recoil_sim::targeting::WeaponRegistry;
+        use pierce_sim::combat_data::{DamageType, WeaponDef};
+        use pierce_sim::targeting::WeaponRegistry;
         let mut registry = game.world.resource_mut::<WeaponRegistry>();
         let id = registry.defs.len() as u32;
         registry.defs.push(WeaponDef {
@@ -5218,13 +5218,13 @@ fn entity_lifecycle_chain() {
     let cmd = game.commander_team0.unwrap();
     game.world
         .entity_mut(cmd)
-        .insert(recoil_sim::construction::BuildTarget {
+        .insert(pierce_sim::construction::BuildTarget {
             target: wreck_entity,
         });
 
     // Move commander near the wreck
-    *game.world.get_mut::<recoil_sim::MoveState>(cmd).unwrap() =
-        recoil_sim::MoveState::MovingTo(SimVec3::new(victim_pos.x, SimFloat::ZERO, victim_pos.z));
+    *game.world.get_mut::<pierce_sim::MoveState>(cmd).unwrap() =
+        pierce_sim::MoveState::MovingTo(SimVec3::new(victim_pos.x, SimFloat::ZERO, victim_pos.z));
 
     let metal_before_reclaim = {
         game.world
@@ -5272,7 +5272,7 @@ fn entity_lifecycle_chain() {
 /// Stunned unit must not move — MoveState stays Idle while stunned.
 #[test]
 fn robustness_stunned_unit_does_not_move() {
-    use recoil_sim::components::Stunned;
+    use pierce_sim::components::Stunned;
 
     let mut game = make_test_game();
     let weapon_id = register_test_weapon(&mut game);
@@ -5282,8 +5282,8 @@ fn robustness_stunned_unit_does_not_move() {
     game.world.entity_mut(unit).insert(Stunned {
         remaining_frames: 100,
     });
-    *game.world.get_mut::<recoil_sim::MoveState>(unit).unwrap() =
-        recoil_sim::MoveState::MovingTo(SimVec3::new(
+    *game.world.get_mut::<pierce_sim::MoveState>(unit).unwrap() =
+        pierce_sim::MoveState::MovingTo(SimVec3::new(
             SimFloat::from_int(500),
             SimFloat::ZERO,
             SimFloat::from_int(500),
@@ -5315,7 +5315,7 @@ fn robustness_stunned_unit_does_not_move() {
 /// Stun wears off and unit resumes (no panic).
 #[test]
 fn robustness_stun_wears_off_no_panic() {
-    use recoil_sim::components::Stunned;
+    use pierce_sim::components::Stunned;
 
     let mut game = make_test_game();
     let weapon_id = register_test_weapon(&mut game);
@@ -5327,8 +5327,8 @@ fn robustness_stun_wears_off_no_panic() {
     });
 
     // Set a move order
-    *game.world.get_mut::<recoil_sim::MoveState>(unit).unwrap() =
-        recoil_sim::MoveState::MovingTo(SimVec3::new(
+    *game.world.get_mut::<pierce_sim::MoveState>(unit).unwrap() =
+        pierce_sim::MoveState::MovingTo(SimVec3::new(
             SimFloat::from_int(400),
             SimFloat::ZERO,
             SimFloat::from_int(400),
@@ -5352,7 +5352,7 @@ fn robustness_stun_wears_off_no_panic() {
         "Unit should still exist after stun wears off"
     );
     assert!(
-        game.world.get::<recoil_sim::MoveState>(unit).is_some(),
+        game.world.get::<pierce_sim::MoveState>(unit).is_some(),
         "Unit should still have MoveState"
     );
 }
@@ -5360,7 +5360,7 @@ fn robustness_stun_wears_off_no_panic() {
 /// Commands targeting dead/despawned entities are no-ops (no panic).
 #[test]
 fn robustness_commands_targeting_dead_entities() {
-    use recoil_sim::commands::{Command, CommandQueue};
+    use pierce_sim::commands::{Command, CommandQueue};
 
     let mut game = make_test_game();
     let weapon_id = register_test_weapon(&mut game);
@@ -5376,7 +5376,7 @@ fn robustness_commands_targeting_dead_entities() {
 
     // Kill and despawn the victim
     game.world.entity_mut(victim).insert(Dead);
-    recoil_sim::lifecycle::cleanup_dead(&mut game.world);
+    pierce_sim::lifecycle::cleanup_dead(&mut game.world);
 
     assert!(
         game.world.get_entity(victim).is_err(),
@@ -5399,7 +5399,7 @@ fn robustness_commands_targeting_dead_entities() {
 /// Command queue cleared when unit dies.
 #[test]
 fn robustness_command_queue_cleared_on_death() {
-    use recoil_sim::commands::{Command, CommandQueue};
+    use pierce_sim::commands::{Command, CommandQueue};
 
     let mut game = make_test_game();
     let weapon_id = register_test_weapon(&mut game);
@@ -5445,7 +5445,7 @@ fn robustness_dead_entity_selection_and_command() {
 
     // Mark dead and despawn
     game.world.entity_mut(unit).insert(Dead);
-    recoil_sim::lifecycle::cleanup_dead(&mut game.world);
+    pierce_sim::lifecycle::cleanup_dead(&mut game.world);
 
     // Selection still holds a stale reference — API calls must not panic
     let _ = game.selected();
@@ -5477,8 +5477,8 @@ fn robustness_units_survive_collision_push() {
 
     // All move toward same distant target (will collide along the way)
     for &u in &[u1, u2, u3] {
-        *game.world.get_mut::<recoil_sim::MoveState>(u).unwrap() =
-            recoil_sim::MoveState::MovingTo(SimVec3::new(
+        *game.world.get_mut::<pierce_sim::MoveState>(u).unwrap() =
+            pierce_sim::MoveState::MovingTo(SimVec3::new(
                 SimFloat::from_int(700),
                 SimFloat::ZERO,
                 SimFloat::from_int(500),
@@ -5522,15 +5522,15 @@ fn robustness_units_survive_collision_push() {
 mod fuzz_tests {
     use super::*;
     use proptest::prelude::*;
-    use recoil_sim::sim_runner::{sim_tick, world_checksum};
-    use recoil_sim::{SimId, SimVec3};
+    use pierce_sim::sim_runner::{sim_tick, world_checksum};
+    use pierce_sim::{SimId, SimVec3};
 
     /// Generate a random Command (only position-based commands to avoid entity references).
-    fn arb_command() -> impl Strategy<Value = recoil_sim::Command> {
+    fn arb_command() -> impl Strategy<Value = pierce_sim::Command> {
         prop_oneof![
             // Move to random position
             (0i32..1000, 0i32..1000).prop_map(|(x, z)| {
-                recoil_sim::Command::Move(SimVec3::new(
+                pierce_sim::Command::Move(SimVec3::new(
                     SimFloat::from_int(x),
                     SimFloat::ZERO,
                     SimFloat::from_int(z),
@@ -5538,19 +5538,19 @@ mod fuzz_tests {
             }),
             // Patrol to random position
             (0i32..1000, 0i32..1000).prop_map(|(x, z)| {
-                recoil_sim::Command::Patrol(SimVec3::new(
+                pierce_sim::Command::Patrol(SimVec3::new(
                     SimFloat::from_int(x),
                     SimFloat::ZERO,
                     SimFloat::from_int(z),
                 ))
             }),
             // Stop
-            Just(recoil_sim::Command::Stop),
+            Just(pierce_sim::Command::Stop),
             // HoldPosition
-            Just(recoil_sim::Command::HoldPosition),
+            Just(pierce_sim::Command::HoldPosition),
             // Build at random position (unit_type 0-5)
             (0u32..6, 0i32..1000, 0i32..1000).prop_map(|(ut, x, z)| {
-                recoil_sim::Command::Build {
+                pierce_sim::Command::Build {
                     unit_type: ut,
                     position: SimVec3::new(
                         SimFloat::from_int(x),
@@ -5565,7 +5565,7 @@ mod fuzz_tests {
     /// Generate a sequence of (target_unit_index, command) pairs.
     fn arb_command_sequence(
         max_cmds: usize,
-    ) -> impl Strategy<Value = Vec<(usize, recoil_sim::Command)>> {
+    ) -> impl Strategy<Value = Vec<(usize, pierce_sim::Command)>> {
         prop::collection::vec((0usize..20, arb_command()), 0..max_cmds)
     }
 
@@ -5584,7 +5584,7 @@ mod fuzz_tests {
             // Collect commandable entity SimIds
             let commandable: Vec<u64> = game
                 .world
-                .query::<(&SimId, &recoil_sim::CommandQueue)>()
+                .query::<(&SimId, &pierce_sim::CommandQueue)>()
                 .iter(&game.world)
                 .map(|(sid, _)| sid.id)
                 .collect();
@@ -5592,7 +5592,7 @@ mod fuzz_tests {
             if commandable.is_empty() || commands.is_empty() {
                 // Just tick without commands — still must not panic
                 for _frame in 0..tick_count {
-                    recoil_sim::construction::construction_system(&mut game.world);
+                    pierce_sim::construction::construction_system(&mut game.world);
                     sim_tick(&mut game.world);
                     crate::building::equip_factory_spawned_units(
                         &mut game.world,
@@ -5613,14 +5613,14 @@ mod fuzz_tests {
                 for _ in 0..batch_size {
                     let (idx, cmd) = cmd_iter.next().unwrap();
                     let sim_id = commandable[*idx % commandable.len()];
-                    frame_cmds.push(recoil_net::PlayerCommand {
+                    frame_cmds.push(pierce_net::PlayerCommand {
                         target_sim_id: sim_id,
                         command: cmd.clone(),
                     });
                 }
                 apply_player_commands(&mut game.world, &frame_cmds);
 
-                recoil_sim::construction::construction_system(&mut game.world);
+                pierce_sim::construction::construction_system(&mut game.world);
                 sim_tick(&mut game.world);
                 crate::building::equip_factory_spawned_units(
                     &mut game.world,
@@ -5650,14 +5650,14 @@ mod fuzz_tests {
 
                 let commandable: Vec<u64> = game
                     .world
-                    .query::<(&SimId, &recoil_sim::CommandQueue)>()
+                    .query::<(&SimId, &pierce_sim::CommandQueue)>()
                     .iter(&game.world)
                     .map(|(sid, _)| sid.id)
                     .collect();
 
                 if commandable.is_empty() || commands.is_empty() {
                     for _frame in 0..tick_count {
-                        recoil_sim::construction::construction_system(&mut game.world);
+                        pierce_sim::construction::construction_system(&mut game.world);
                         sim_tick(&mut game.world);
                         crate::building::equip_factory_spawned_units(
                             &mut game.world,
@@ -5677,14 +5677,14 @@ mod fuzz_tests {
                     for _ in 0..batch_size {
                         let (idx, cmd) = cmd_iter.next().unwrap();
                         let sim_id = commandable[*idx % commandable.len()];
-                        frame_cmds.push(recoil_net::PlayerCommand {
+                        frame_cmds.push(pierce_net::PlayerCommand {
                             target_sim_id: sim_id,
                             command: cmd.clone(),
                         });
                     }
                     apply_player_commands(&mut game.world, &frame_cmds);
 
-                    recoil_sim::construction::construction_system(&mut game.world);
+                    pierce_sim::construction::construction_system(&mut game.world);
                     sim_tick(&mut game.world);
                     crate::building::equip_factory_spawned_units(
                         &mut game.world,

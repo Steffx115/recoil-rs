@@ -8,7 +8,11 @@
       "Bash(git -C /c/Users/Stefan/source/repos/bar/recoil-rust status)",
       "Bash(git:*)",
       "Bash(RUST_MIN_STACK=8388608 cargo build --workspace --message-format=short)",
-      "Bash(RUST_MIN_STACK=8388608 cargo fmt --all)"
+      "Bash(RUST_MIN_STACK=8388608 cargo fmt --all)",
+      "Bash(RUST_LOG=info target/debug/bar-game.exe)",
+      "Bash(kill %1)",
+      "Bash(RUST_LOG=warn target/debug/bar-game.exe)",
+      "Bash(target/debug/bar-game.exe)"
     ]
   }
 }

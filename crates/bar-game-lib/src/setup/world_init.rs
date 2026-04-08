@@ -5,18 +5,18 @@ use std::collections::BTreeMap;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 
-use recoil_math::{SimFloat, SimVec3};
-use recoil_sim::combat_data::{ArmorClass, WeaponInstance, WeaponSet};
-use recoil_sim::commands::CommandQueue;
-use recoil_sim::construction::Builder;
-use recoil_sim::economy::{init_economy, ResourceProducer};
-use recoil_sim::factory::{UnitBlueprint, UnitRegistry};
-use recoil_sim::fog::FogOfWar;
-use recoil_sim::lifecycle::spawn_unit;
-use recoil_sim::map::MapManifest;
-use recoil_sim::targeting::WeaponRegistry;
-use recoil_sim::unit_defs::UnitDefRegistry;
-use recoil_sim::{
+use pierce_math::{SimFloat, SimVec3};
+use pierce_sim::combat_data::{ArmorClass, WeaponInstance, WeaponSet};
+use pierce_sim::commands::CommandQueue;
+use pierce_sim::construction::Builder;
+use pierce_sim::economy::{init_economy, ResourceProducer};
+use pierce_sim::factory::{UnitBlueprint, UnitRegistry};
+use pierce_sim::fog::FogOfWar;
+use pierce_sim::lifecycle::spawn_unit;
+use pierce_sim::map::MapManifest;
+use pierce_sim::targeting::WeaponRegistry;
+use pierce_sim::unit_defs::UnitDefRegistry;
+use pierce_sim::{
     Allegiance, CollisionRadius, Heading, Health, MoveState, MovementParams, Position, SightRange,
     Target, UnitType, Velocity,
 };
@@ -56,7 +56,7 @@ pub fn init_world(
             manifest
                 .metal_spots
                 .iter()
-                .map(|ms| recoil_sim::map::MetalSpot {
+                .map(|ms| pierce_sim::map::MetalSpot {
                     x: ms.x,
                     z: ms.z,
                     metal_per_tick: ms.metal_per_tick,
@@ -65,7 +65,7 @@ pub fn init_world(
         } else {
             Vec::new()
         };
-        world.insert_resource(recoil_sim::map::MetalSpots { spots });
+        world.insert_resource(pierce_sim::map::MetalSpots { spots });
     }
 
     // Fog of War
@@ -241,7 +241,7 @@ pub fn spawn_commander(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use recoil_sim::sim_runner;
+    use pierce_sim::sim_runner;
 
     #[test]
     fn test_spawn_commander_fallback() {

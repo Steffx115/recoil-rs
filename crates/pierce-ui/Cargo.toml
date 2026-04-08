@@ -1,0 +1,14 @@
+[package]
+name = "pierce-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "In-game UI framework for the Pierce RTS engine"
+
+[dependencies]
+pierce-sim = { path = "../pierce-sim" }
+pierce-render = { path = "../pierce-render" }
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+egui-winit = { workspace = true }
+tracing = { workspace = true }

@@ -3,13 +3,13 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 
-use recoil_math::SimFloat;
-use recoil_render::projectile_renderer::ProjectileInstance;
-use recoil_render::unit_renderer::UnitInstance;
-use recoil_sim::construction::BuildSite;
-use recoil_sim::economy::EconomyState;
-use recoil_sim::unit_defs::UnitDefRegistry;
-use recoil_sim::{Allegiance, Dead, Heading, Health, Position, UnitType, Velocity};
+use pierce_math::SimFloat;
+use pierce_render::projectile_renderer::ProjectileInstance;
+use pierce_render::unit_renderer::UnitInstance;
+use pierce_sim::construction::BuildSite;
+use pierce_sim::economy::EconomyState;
+use pierce_sim::unit_defs::UnitDefRegistry;
+use pierce_sim::{Allegiance, Dead, Heading, Health, Position, UnitType, Velocity};
 
 use bar_game_lib::GameState;
 
@@ -109,7 +109,7 @@ pub fn building_instances(game: &mut GameState) -> Vec<UnitInstance> {
 }
 
 pub fn projectile_instances(game: &mut GameState) -> Vec<ProjectileInstance> {
-    use recoil_sim::projectile::Projectile;
+    use pierce_sim::projectile::Projectile;
     game.world
         .query::<(&Position, &Velocity, &Projectile)>()
         .iter(&game.world)
@@ -254,7 +254,7 @@ pub fn gather_ui_data(
             .unwrap_or_default()
     };
     let (metal_income, energy_income) = {
-        use recoil_sim::economy::ResourceProducer;
+        use pierce_sim::economy::ResourceProducer;
         let (mut mi, mut ei) = (0.0f32, 0.0f32);
         for (prod, al) in game
             .world
@@ -349,7 +349,7 @@ pub fn gather_ui_data(
                     }
                 }
             }
-            if let Some(bq) = game.world.get::<recoil_sim::factory::BuildQueue>(sel) {
+            if let Some(bq) = game.world.get::<pierce_sim::factory::BuildQueue>(sel) {
                 factory_queue_len = bq.queue.len();
                 factory_progress = bq.current_progress.to_f32();
                 let registry = game.world.resource::<UnitDefRegistry>();
@@ -449,7 +449,7 @@ pub fn gather_ui_data(
 ///
 /// Prefers the file stem of `icon_path` (e.g. "armpw" from "armpw.dds"),
 /// falling back to the lowercased display name.
-fn icon_key_for_def(def: &recoil_sim::unit_defs::UnitDef) -> String {
+fn icon_key_for_def(def: &pierce_sim::unit_defs::UnitDef) -> String {
     def.icon_path
         .as_ref()
         .and_then(|p| std::path::Path::new(p).file_stem())
@@ -1036,16 +1036,16 @@ pub fn handle_mouse_press(
                     tracing::debug!("Right-click: no units selected");
                 }
                 for e in targets {
-                    let has_ms = game.world.get::<recoil_sim::MoveState>(e).is_some();
+                    let has_ms = game.world.get::<pierce_sim::MoveState>(e).is_some();
                     if !has_ms {
                         tracing::warn!("Selected entity {:?} has no MoveState — cannot move", e);
                     }
-                    if let Some(ms) = game.world.get_mut::<recoil_sim::MoveState>(e) {
+                    if let Some(ms) = game.world.get_mut::<pierce_sim::MoveState>(e) {
                         *ms.into_inner() =
-                            recoil_sim::MoveState::MovingTo(recoil_math::SimVec3::new(
-                                recoil_math::SimFloat::from_f32(wx),
-                                recoil_math::SimFloat::ZERO,
-                                recoil_math::SimFloat::from_f32(wz),
+                            pierce_sim::MoveState::MovingTo(pierce_math::SimVec3::new(
+                                pierce_math::SimFloat::from_f32(wx),
+                                pierce_math::SimFloat::ZERO,
+                                pierce_math::SimFloat::from_f32(wz),
                             ));
                     }
                 }

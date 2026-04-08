@@ -7,12 +7,12 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::world::World;
 
-use recoil_math::{SimFloat, SimVec3};
-use recoil_sim::construction::Builder;
-use recoil_sim::economy::EconomyState;
-use recoil_sim::factory::BuildQueue;
-use recoil_sim::unit_defs::UnitDefRegistry;
-use recoil_sim::{Allegiance, Dead, MoveState, Position, UnitType};
+use pierce_math::{SimFloat, SimVec3};
+use pierce_sim::construction::Builder;
+use pierce_sim::economy::EconomyState;
+use pierce_sim::factory::BuildQueue;
+use pierce_sim::unit_defs::UnitDefRegistry;
+use pierce_sim::{Allegiance, Dead, MoveState, Position, UnitType};
 
 use crate::building;
 use crate::production;
@@ -79,7 +79,7 @@ impl AiState {
 fn find_buildable(
     registry: &UnitDefRegistry,
     builder_type_id: u32,
-    predicate: impl Fn(&recoil_sim::unit_defs::UnitDef) -> bool,
+    predicate: impl Fn(&pierce_sim::unit_defs::UnitDef) -> bool,
 ) -> Option<u32> {
     let builder_def = registry.get(builder_type_id)?;
     builder_def
@@ -225,7 +225,7 @@ fn ai_expand(
     if let Some(mid) = mex_id {
         // Find nearest unclaimed metal spot.
         let spots = world
-            .get_resource::<recoil_sim::map::MetalSpots>()
+            .get_resource::<pierce_sim::map::MetalSpots>()
             .map(|ms| ms.spots.clone())
             .unwrap_or_default();
 
@@ -396,8 +396,8 @@ fn ai_attack(world: &mut World, ai: &mut AiState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use recoil_sim::economy::init_economy;
-    use recoil_sim::sim_runner;
+    use pierce_sim::economy::init_economy;
+    use pierce_sim::sim_runner;
 
     fn make_ai_world() -> (World, AiState) {
         use crate::setup;
@@ -420,7 +420,7 @@ mod tests {
         sim_runner::init_sim_world(&mut world);
         init_economy(&mut world, &[0, 1]);
         world.insert_resource(UnitDefRegistry::default());
-        world.insert_resource(recoil_sim::map::MetalSpots::default());
+        world.insert_resource(pierce_sim::map::MetalSpots::default());
 
         let mut ai = AiState::new(42, 1, 0, None, None);
         ai_tick(&mut world, &mut ai, AI_TICK_INTERVAL);
@@ -448,8 +448,8 @@ mod tests {
             if frame.is_multiple_of(AI_TICK_INTERVAL) {
                 ai_tick(&mut world, &mut ai, frame);
             }
-            recoil_sim::construction::construction_system(&mut world);
-            recoil_sim::sim_runner::sim_tick(&mut world);
+            pierce_sim::construction::construction_system(&mut world);
+            pierce_sim::sim_runner::sim_tick(&mut world);
             crate::building::finalize_completed_buildings(&mut world);
         }
 
@@ -487,8 +487,8 @@ mod tests {
             if frame.is_multiple_of(AI_TICK_INTERVAL) {
                 ai_tick(&mut world, &mut ai, frame);
             }
-            recoil_sim::construction::construction_system(&mut world);
-            recoil_sim::sim_runner::sim_tick(&mut world);
+            pierce_sim::construction::construction_system(&mut world);
+            pierce_sim::sim_runner::sim_tick(&mut world);
             crate::building::equip_factory_spawned_units(&mut world, &weapon_def_ids);
             crate::building::finalize_completed_buildings(&mut world);
         }
@@ -537,14 +537,14 @@ mod tests {
             if frame.is_multiple_of(AI_TICK_INTERVAL) {
                 ai_tick(&mut world, &mut ai, frame);
             }
-            recoil_sim::construction::construction_system(&mut world);
-            recoil_sim::sim_runner::sim_tick(&mut world);
+            pierce_sim::construction::construction_system(&mut world);
+            pierce_sim::sim_runner::sim_tick(&mut world);
             crate::building::finalize_completed_buildings(&mut world);
         }
 
         // AI should have claimed metal spots if the map has any.
         let has_spots = world
-            .get_resource::<recoil_sim::map::MetalSpots>()
+            .get_resource::<pierce_sim::map::MetalSpots>()
             .map(|ms| !ms.spots.is_empty())
             .unwrap_or(false);
         if has_spots {

@@ -6,14 +6,14 @@ license.workspace = true
 description = "BAR game logic library — headless-capable, no rendering deps"
 
 [dependencies]
-recoil-math = { path = "../recoil-math" }
-recoil-sim = { path = "../recoil-sim" }
+pierce-math = { path = "../pierce-math" }
+pierce-sim = { path = "../pierce-sim" }
 anyhow = { workspace = true }
 bevy_ecs = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }
-recoil-net = { path = "../recoil-net" }
+pierce-net = { path = "../pierce-net" }
 proptest = { workspace = true }
 bincode = { workspace = true }

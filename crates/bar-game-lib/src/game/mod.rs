@@ -15,13 +15,13 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::world::World;
 
-use recoil_math::SimFloat;
-use recoil_sim::construction::Builder;
-use recoil_sim::factory::BuildQueue;
-use recoil_sim::projectile::ImpactEventQueue;
-use recoil_sim::{Dead, Health, Position};
+use pierce_math::SimFloat;
+use pierce_sim::construction::Builder;
+use pierce_sim::factory::BuildQueue;
+use pierce_sim::projectile::ImpactEventQueue;
+use pierce_sim::{Dead, Health, Position};
 
-use recoil_sim::selection::SelectionState;
+use pierce_sim::selection::SelectionState;
 
 use crate::ai::{self, AiState};
 use crate::building::{self, PlacementType};
@@ -199,10 +199,10 @@ impl GameState {
             .collect();
 
         // Run construction_system (not included in sim_tick)
-        recoil_sim::construction::construction_system(&mut self.world);
+        pierce_sim::construction::construction_system(&mut self.world);
 
         // Run all systems via sim_runner
-        recoil_sim::sim_runner::sim_tick(&mut self.world);
+        pierce_sim::sim_runner::sim_tick(&mut self.world);
 
         // Equip factory-spawned units with full components
         building::equip_factory_spawned_units(&mut self.world, &self.weapon_def_ids);

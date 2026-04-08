@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use recoil_sim::unit_defs::{UnitDef, UnitDefRegistry};
+use pierce_sim::unit_defs::{UnitDef, UnitDefRegistry};
 
 /// Load unit defs from BAR Lua directory or fallback RON assets.
 ///
@@ -35,7 +35,7 @@ pub fn load_unit_defs(bar_units_path: &Path) -> UnitDefRegistry {
         for dir in &bar_dirs {
             let path = bar_units_path.join(dir);
             if path.exists() {
-                if let Ok(reg) = recoil_sim::lua_unitdefs::load_bar_unitdefs_recursive(&path) {
+                if let Ok(reg) = pierce_sim::lua_unitdefs::load_bar_unitdefs_recursive(&path) {
                     for (_id, def) in reg.defs {
                         unit_def_registry.register(def);
                     }
@@ -49,7 +49,7 @@ pub fn load_unit_defs(bar_units_path: &Path) -> UnitDefRegistry {
             .flatten()
         {
             if e.path().extension().is_some_and(|ext| ext == "lua") {
-                if let Ok(def) = recoil_sim::lua_unitdefs::load_bar_unitdef(&e.path()) {
+                if let Ok(def) = pierce_sim::lua_unitdefs::load_bar_unitdef(&e.path()) {
                     unit_def_registry.register(def);
                 }
             }
@@ -118,10 +118,10 @@ fn register_fallback_defs(registry: &mut UnitDefRegistry) {
                 metal_production: Option<f64>,
                 energy_production: Option<f64>,
                 can_build_names: Vec<String>,
-                weapons: Vec<recoil_sim::unit_defs::WeaponDefData>| {
+                weapons: Vec<pierce_sim::unit_defs::WeaponDefData>| {
         let mut def = UnitDef {
             name: name.to_string(),
-            unit_type_id: recoil_sim::lua_unitdefs::hash_unit_name(name),
+            unit_type_id: pierce_sim::lua_unitdefs::hash_unit_name(name),
             max_health,
             armor_class: armor_class.to_string(),
             sight_range: 300.0,
@@ -161,7 +161,7 @@ fn register_fallback_defs(registry: &mut UnitDefRegistry) {
         Some(0.5),
         Some(20.0),
         vec!["armsolar".into(), "armmex".into(), "armlab".into()],
-        vec![recoil_sim::unit_defs::WeaponDefData {
+        vec![pierce_sim::unit_defs::WeaponDefData {
             name: "Lightning Gun".into(),
             damage: 75.0,
             damage_type: "Laser".into(),
@@ -183,7 +183,7 @@ fn register_fallback_defs(registry: &mut UnitDefRegistry) {
         Some(0.5),
         Some(20.0),
         vec!["corsolar".into(), "cormex".into(), "corlab".into()],
-        vec![recoil_sim::unit_defs::WeaponDefData {
+        vec![pierce_sim::unit_defs::WeaponDefData {
             name: "Lightning Gun".into(),
             damage: 75.0,
             damage_type: "Laser".into(),
@@ -319,7 +319,7 @@ fn register_fallback_defs(registry: &mut UnitDefRegistry) {
             None,
             None,
             vec![],
-            vec![recoil_sim::unit_defs::WeaponDefData {
+            vec![pierce_sim::unit_defs::WeaponDefData {
                 name: "weapon".into(),
                 damage: dmg,
                 damage_type: "Normal".into(),

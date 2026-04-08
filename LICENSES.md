@@ -16,7 +16,7 @@ Our engine code is original work. We reference BAR data files during development
 | **Requires** | Source disclosure, same license (GPL) for derivatives, license notice |
 | **Prohibits** | Proprietary distribution of derivative engine code |
 
-**Impact on us:** Our engine is a clean-room reimplementation, not a fork. We do NOT use any Spring/Recoil engine source code. **No GPL obligation applies** unless we copy engine code.
+**Impact on us:** Our engine is a clean-room reimplementation, not a fork. We do NOT use any Spring/Pierce engine source code. **No GPL obligation applies** unless we copy engine code.
 
 ---
 

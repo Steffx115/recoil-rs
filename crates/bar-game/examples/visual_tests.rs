@@ -17,14 +17,14 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 
-use recoil_math::SimFloat;
-use recoil_render::camera::Camera;
-use recoil_render::projectile_renderer::ProjectileInstance;
-use recoil_render::unit_renderer::UnitInstance;
-use recoil_render::Renderer;
-use recoil_sim::construction::BuildSite;
-use recoil_sim::economy::EconomyState;
-use recoil_sim::{Allegiance, Dead, Heading, Health, Position, Velocity};
+use pierce_math::SimFloat;
+use pierce_render::camera::Camera;
+use pierce_render::projectile_renderer::ProjectileInstance;
+use pierce_render::unit_renderer::UnitInstance;
+use pierce_render::Renderer;
+use pierce_sim::construction::BuildSite;
+use pierce_sim::economy::EconomyState;
+use pierce_sim::{Allegiance, Dead, Heading, Health, Position, Velocity};
 
 use bar_game_lib::building::{PlacementType, BUILDING_FACTORY_ID, BUILDING_SOLAR_ID};
 use bar_game_lib::GameState;
@@ -131,7 +131,7 @@ fn all_tests() -> Vec<VisualTest> {
                 let sites: usize = game.world.query::<&BuildSite>().iter(&game.world).count();
                 let producers: usize = game
                     .world
-                    .query::<&recoil_sim::economy::ResourceProducer>()
+                    .query::<&pierce_sim::economy::ResourceProducer>()
                     .iter(&game.world)
                     .count();
                 // Either still building or completed
@@ -316,7 +316,7 @@ fn extract_units(game: &mut GameState) -> Vec<UnitInstance> {
 }
 
 fn extract_projectiles(game: &mut GameState) -> Vec<ProjectileInstance> {
-    use recoil_sim::projectile::Projectile;
+    use pierce_sim::projectile::Projectile;
     game.world
         .query::<(&Position, &Velocity, &Projectile)>()
         .iter(&game.world)

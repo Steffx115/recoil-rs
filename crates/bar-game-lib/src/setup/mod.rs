@@ -10,7 +10,7 @@ use std::path::Path;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 
-use recoil_sim::sim_runner;
+use pierce_sim::sim_runner;
 
 // Re-export public items so callers see the same API as before.
 pub use unit_loader::load_unit_defs;

@@ -2,15 +2,15 @@
 
 use bevy_ecs::query::Without;
 
-use recoil_sim::{Dead, Health, Position};
+use pierce_sim::{Dead, Health, Position};
 
 use super::GameState;
 
 impl GameState {
     /// Issue area reclaim: selected builders reclaim all reclaimable entities in radius.
     pub fn area_reclaim(&mut self, cx: f32, cz: f32, radius: f32) {
-        use recoil_sim::commands::{Command, CommandQueue};
-        use recoil_sim::construction::Reclaimable;
+        use pierce_sim::commands::{Command, CommandQueue};
+        use pierce_sim::construction::Reclaimable;
 
         let radius_sq = radius * radius;
         let targets: Vec<bevy_ecs::entity::Entity> = self
@@ -36,7 +36,7 @@ impl GameState {
 
     /// Issue area repair: selected builders repair all damaged friendlies in radius.
     pub fn area_repair(&mut self, cx: f32, cz: f32, radius: f32) {
-        use recoil_sim::commands::{Command, CommandQueue};
+        use pierce_sim::commands::{Command, CommandQueue};
 
         let radius_sq = radius * radius;
         let targets: Vec<bevy_ecs::entity::Entity> = self
@@ -45,7 +45,7 @@ impl GameState {
                 bevy_ecs::entity::Entity,
                 &Position,
                 &Health,
-                &recoil_sim::Allegiance,
+                &pierce_sim::Allegiance,
             ), Without<Dead>>()
             .iter(&self.world)
             .filter(|(_, p, hp, _)| {
@@ -67,12 +67,12 @@ impl GameState {
 
     /// Issue area attack: selected combat units attack all enemies in radius.
     pub fn area_attack(&mut self, cx: f32, cz: f32, radius: f32, my_team: u8) {
-        use recoil_sim::commands::{Command, CommandQueue};
+        use pierce_sim::commands::{Command, CommandQueue};
 
         let radius_sq = radius * radius;
         let targets: Vec<bevy_ecs::entity::Entity> = self
             .world
-            .query_filtered::<(bevy_ecs::entity::Entity, &Position, &recoil_sim::Allegiance), Without<Dead>>()
+            .query_filtered::<(bevy_ecs::entity::Entity, &Position, &pierce_sim::Allegiance), Without<Dead>>()
             .iter(&self.world)
             .filter(|(_, p, al)| {
                 let dx = p.pos.x.to_f32() - cx;
