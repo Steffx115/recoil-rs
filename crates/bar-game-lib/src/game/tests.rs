@@ -1753,6 +1753,80 @@ fn ui_cannot_build_without_resources() {
 }
 
 #[test]
+fn ui_cannot_place_building_on_existing_building() {
+    let mut game = make_test_game();
+    fund_team(&mut game, 0);
+
+    // Use a larger terrain grid so building footprints are tracked.
+    game.world
+        .insert_resource(pierce_sim::pathfinding::TerrainGrid::new(
+            512,
+            512,
+            SimFloat::ONE,
+        ));
+
+    let cmd = game.commander_team0.unwrap();
+    game.selection.select_single(cmd);
+
+    // Place first solar at a position within the grid.
+    game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+    game.handle_place(100.0, 100.0);
+
+    let count_before = game
+        .world
+        .query::<&pierce_sim::construction::BuildSite>()
+        .iter(&game.world)
+        .count();
+    assert_eq!(count_before, 1, "first building should be placed");
+
+    // Try to place second solar at the same location.
+    game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+    game.handle_place(100.0, 100.0);
+
+    let count_after = game
+        .world
+        .query::<&pierce_sim::construction::BuildSite>()
+        .iter(&game.world)
+        .count();
+    assert_eq!(
+        count_after, 1,
+        "overlapping building should be rejected — still only 1 site"
+    );
+}
+
+#[test]
+fn ui_can_place_buildings_side_by_side() {
+    let mut game = make_test_game();
+    fund_team(&mut game, 0);
+
+    // Use a larger terrain grid so building footprints are tracked.
+    game.world
+        .insert_resource(pierce_sim::pathfinding::TerrainGrid::new(
+            512,
+            512,
+            SimFloat::ONE,
+        ));
+
+    let cmd = game.commander_team0.unwrap();
+    game.selection.select_single(cmd);
+
+    // Place first solar.
+    game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+    game.handle_place(100.0, 100.0);
+
+    // Place second solar far enough away (collision_radius ~32, so 100 apart is safe).
+    game.handle_build_command(PlacementType(building::BUILDING_SOLAR_ID));
+    game.handle_place(200.0, 200.0);
+
+    let site_count = game
+        .world
+        .query::<&pierce_sim::construction::BuildSite>()
+        .iter(&game.world)
+        .count();
+    assert_eq!(site_count, 2, "non-overlapping buildings should both exist");
+}
+
+#[test]
 fn ui_factory_queue_and_produce() {
     use pierce_sim::factory::{UnitBlueprint, UnitRegistry};
 
@@ -5521,9 +5595,9 @@ fn robustness_units_survive_collision_push() {
 
 mod fuzz_tests {
     use super::*;
-    use proptest::prelude::*;
     use pierce_sim::sim_runner::{sim_tick, world_checksum};
     use pierce_sim::{SimId, SimVec3};
+    use proptest::prelude::*;
 
     /// Generate a random Command (only position-based commands to avoid entity references).
     fn arb_command() -> impl Strategy<Value = pierce_sim::Command> {

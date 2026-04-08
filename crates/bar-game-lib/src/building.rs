@@ -18,7 +18,7 @@ use pierce_sim::commands::CommandQueue;
 use pierce_sim::construction::{BuildSite, BuildTarget, Builder};
 use pierce_sim::economy::{EconomyState, ResourceProducer};
 use pierce_sim::factory::BuildQueue;
-use pierce_sim::pathfinding::{mark_building_footprint, TerrainGrid};
+use pierce_sim::pathfinding::{footprint_cells, mark_building_footprint, TerrainGrid};
 use pierce_sim::unit_defs::UnitDefRegistry;
 use pierce_sim::{
     Allegiance, CollisionRadius, Dead, Heading, Health, MoveState, MovementParams, Position,
@@ -98,6 +98,28 @@ pub fn place_building(
     if !can_afford {
         tracing::info!("Cannot afford building type {}", unit_type_id);
         return None;
+    }
+
+    // Check if the footprint location is free (no overlapping buildings or
+    // impassable terrain).  Only validate cells that fall within the terrain
+    // grid — positions outside the grid are unconstrained.
+    {
+        let building_pos = SimVec2::new(SimFloat::from_f32(x), SimFloat::from_f32(z));
+        let grid = world.resource::<TerrainGrid>();
+        let cells = footprint_cells(grid, building_pos, collision_r);
+        for &(cx, cy) in &cells {
+            if !grid.is_passable(cx, cy) {
+                tracing::info!(
+                    "Cannot place building type {} at ({:.0}, {:.0}): cell ({}, {}) blocked",
+                    unit_type_id,
+                    x,
+                    z,
+                    cx,
+                    cy,
+                );
+                return None;
+            }
+        }
     }
 
     // Spawn the build site entity.
@@ -408,6 +430,13 @@ mod tests {
     fn setup_world_with_economy() -> World {
         let mut world = World::new();
         sim_runner::init_sim_world(&mut world);
+        // Override the default 64x64 grid with a larger one so test
+        // coordinates (up to ~200) are within bounds.
+        world.insert_resource(pierce_sim::pathfinding::TerrainGrid::new(
+            256,
+            256,
+            SimFloat::ONE,
+        ));
         init_economy(&mut world, &[0, 1]);
         // Give team 0 plenty of resources for tests
         {
@@ -502,6 +531,71 @@ mod tests {
 
         let result = place_building(&mut world, None, BUILDING_SOLAR_ID, 100.0, 100.0, 0);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_place_building_blocked_by_existing_building() {
+        let mut world = setup_world_with_economy();
+
+        // Place first building — should succeed.
+        let first = place_building(&mut world, None, BUILDING_SOLAR_ID, 100.0, 100.0, 0);
+        assert!(first.is_some(), "first building should succeed");
+
+        // Place second building at the same spot — should fail (footprint overlap).
+        let second = place_building(&mut world, None, BUILDING_SOLAR_ID, 100.0, 100.0, 0);
+        assert!(second.is_none(), "overlapping building should be rejected");
+    }
+
+    #[test]
+    fn test_place_building_blocked_by_partial_overlap() {
+        let mut world = setup_world_with_economy();
+
+        // Place first building at (100, 100) with collision_radius=32.
+        let first = place_building(&mut world, None, BUILDING_SOLAR_ID, 100.0, 100.0, 0);
+        assert!(first.is_some());
+
+        // Place second building slightly offset — still overlapping the footprint.
+        let second = place_building(&mut world, None, BUILDING_SOLAR_ID, 110.0, 110.0, 0);
+        assert!(
+            second.is_none(),
+            "partially overlapping building should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_place_building_adjacent_succeeds() {
+        let mut world = setup_world_with_economy();
+
+        // Place first building at (100, 100) with collision_radius=32.
+        // Footprint covers roughly (68..132, 68..132).
+        let first = place_building(&mut world, None, BUILDING_SOLAR_ID, 100.0, 100.0, 0);
+        assert!(first.is_some());
+
+        // Place second building far enough away that footprints don't overlap.
+        let second = place_building(&mut world, None, BUILDING_SOLAR_ID, 200.0, 200.0, 0);
+        assert!(second.is_some(), "non-overlapping building should succeed");
+    }
+
+    #[test]
+    fn test_place_building_blocked_by_impassable_terrain() {
+        let mut world = setup_world_with_economy();
+
+        // Manually mark a region as impassable (cliff).
+        {
+            let mut grid = world.resource_mut::<TerrainGrid>();
+            for y in 95..=105 {
+                for x in 95..=105 {
+                    grid.set(x, y, SimFloat::ZERO);
+                }
+            }
+        }
+
+        // Try to place building on the cliff — should fail.
+        let result = place_building(&mut world, None, BUILDING_SOLAR_ID, 100.0, 100.0, 0);
+        assert!(
+            result.is_none(),
+            "building on impassable terrain should be rejected"
+        );
     }
 
     #[test]
