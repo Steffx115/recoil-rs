@@ -42,41 +42,26 @@ Use `--message-format=short` on cargo build/clippy during iterative fix loops.
 - Error handling: `anyhow` for application code, `thiserror` for library errors.
 - Tests alongside code in `#[cfg(test)]` modules, not separate files.
 
+## Code Navigation
+
+- **Always use LSP when possible.** Prefer `documentSymbol`, `goToDefinition`, `findReferences`, `hover` over grep/read for understanding code structure. LSP gives accurate, type-aware results.
+
 ## Crate Boundaries
 
 | Crate | Depends on | Purpose |
 |-------|-----------|---------|
 | `pierce-math` | serde | SimFloat, SimVec2/3. No other deps. |
+| `pierce-model` | anyhow, bytemuck | ModelVertex, PieceTree, PieceTransform. No wgpu. |
+| `pierce-cob` | pierce-model | COB animation parser, VM, CobAnimationDriver |
+| `pierce-s3o` | pierce-model | S3O model loader (flat + hierarchical) |
 | `pierce-sim` | pierce-math, bevy_ecs | ECS, game systems, spatial grid, pathfinding |
 | `pierce-net` | pierce-sim, tokio | Lockstep protocol, replay |
-| `pierce-render` | pierce-sim, wgpu, winit | Rendering pipeline (read-only sim access) |
+| `pierce-render` | pierce-sim, pierce-model, pierce-cob, pierce-s3o, wgpu | Rendering pipeline |
 | `pierce-ui` | pierce-render, pierce-sim, egui | UI framework |
 | `pierce-audio` | pierce-sim, kira | Spatial audio (reads positions from sim) |
 | `bar-game` | all crates | Game binary: unit defs, factions, game logic |
 
-## Library Choices (RR-64)
-
-| Area | Choice | Rationale |
-|------|--------|-----------|
-| ECS | `bevy_ecs` (standalone) | Best parallel scheduling, large ecosystem |
-| Windowing | `winit` | Standard, all wgpu examples use it |
-| Rendering | `wgpu` | Vulkan/Metal/DX12 abstraction |
-| UI | `egui` + `egui-wgpu` | Easy wgpu integration, immediate mode |
-| Audio | `kira` | Spatial audio, good game-audio design |
-| Networking | `tokio` + custom UDP | Maximum control over lockstep protocol |
-| Serialization | `serde` + `bincode` | Fast binary for network/replay |
-| Async | `tokio` | Standard async runtime |
-| Data formats | `ron` | Rusty Object Notation for unit defs / configs |
-| Error handling | `anyhow` / `thiserror` | Application vs library error split |
-| Testing | `proptest`, `criterion`, `cargo-nextest` | Property-based, benchmarking, fast runner |
-
 ## Agent Workflow (RR-61)
-
-### Agent Roles
-
-- **Agent A — Sim/Core**: `pierce-math`, `pierce-sim`. Math types, ECS components, simulation systems, pathfinding, combat.
-- **Agent B — Infrastructure**: `pierce-net`, `pierce-audio`. Networking, lockstep sync, replay, sound. Also CI/CD and build system.
-- **Agent C — Presentation**: `pierce-render`, `pierce-ui`. wgpu pipeline, terrain, models, UI framework, input handling.
 
 ### Workflow Per Story
 
@@ -99,15 +84,9 @@ Use `mcp__mcp-atlassian__jira_get_transitions` to discover available transition 
 
 ### Parallel Execution Rules
 
-- Agents A, B, C can run simultaneously on **different crates**.
+- Agents can run simultaneously on **different crates**.
 - Two agents NEVER work on the **same crate** at the same time.
-- Shared types (in `pierce-math`) must be merged before dependent agents start.
-
-### Review Cadence
-
-- Review agent output every 2-4 hours during active sprints.
-- End of each day: run full `cargo test --workspace`, check for integration issues.
-- End of sprint: playtest the build, file bugs for next sprint.
+- Shared types (in `pierce-math`, `pierce-model`) must be merged before dependent agents start.
 
 ## Testing Strategy (RR-67)
 
@@ -116,17 +95,3 @@ Use `mcp__mcp-atlassian__jira_get_transitions` to discover available transition 
 1. **Unit tests** (`cargo test`): Every system, component, algorithm. Run on every push.
 2. **Determinism tests** (CI-blocking): Run two headless sims, compare checksums. The most critical test.
 3. **Integration tests**: Full sim scenarios run headless, assert end state.
-4. **Snapshot/replay tests**: Record replay, store as fixture, re-run and compare checksums.
-5. **Visual regression** (Sprint 4+): Headless wgpu render to texture, compare screenshots.
-6. **Performance benchmarks** (`criterion`): Hot-path benchmarks, alert on >10% regression.
-7. **Network integration**: Spawn headless clients in-process, assert sync.
-8. **Fuzz testing** (nightly CI): Random commands/packets, assert no panics.
-
-### CI Pipeline
-
-**On every push:** fmt check, clippy, test, bench.
-**Nightly:** fuzz tests, cross-platform determinism, stress tests (2000 units, 30k frames).
-
-### Manual Testing (per sprint)
-
-Unit movement feel, combat readability, UI usability, pathfinding edge cases, visual quality.
