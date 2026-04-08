@@ -547,8 +547,9 @@ impl CobVm {
                     self.threads[thread_idx].ip += 1;
                 }
                 opcodes::MOVE_PIECE_WITH_SPEED => {
-                    let speed = self.threads[thread_idx].stack.pop().unwrap_or(0);
+                    // Spring: pop destination first (top), speed second
                     let target = self.threads[thread_idx].stack.pop().unwrap_or(0);
+                    let speed = self.threads[thread_idx].stack.pop().unwrap_or(0);
                     let axis = self.threads[thread_idx].stack.pop().unwrap_or(0) as usize;
                     let piece = self.threads[thread_idx].stack.pop().unwrap_or(0) as usize;
                     if let Some(p) = self.pieces.get_mut(piece) {
@@ -561,6 +562,7 @@ impl CobVm {
                     self.threads[thread_idx].ip += 1;
                 }
                 opcodes::TURN_PIECE_WITH_SPEED => {
+                    // Spring: pop destination first, speed second
                     let speed = self.threads[thread_idx].stack.pop().unwrap_or(0);
                     let target = self.threads[thread_idx].stack.pop().unwrap_or(0);
                     let axis = self.threads[thread_idx].stack.pop().unwrap_or(0) as usize;
