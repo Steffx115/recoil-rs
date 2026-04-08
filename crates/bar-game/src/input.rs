@@ -19,7 +19,10 @@ use crate::icons::IconAtlas;
 // Instance extraction from GameState
 // ---------------------------------------------------------------------------
 
-pub fn unit_instances(game: &mut GameState) -> Vec<UnitInstance> {
+pub fn unit_instances(
+    game: &mut GameState,
+    anim_mesh_ids: &std::collections::BTreeMap<u64, u32>,
+) -> Vec<UnitInstance> {
     let sel = game.selected();
     game.world
         .query_filtered::<(
@@ -52,12 +55,16 @@ pub fn unit_instances(game: &mut GameState) -> Vec<UnitInstance> {
                 c[1] = (c[1] + 0.3).min(1.0);
                 c[2] = (c[2] + 0.3).min(1.0);
             }
+            let mesh_id = anim_mesh_ids
+                .get(&entity.to_bits())
+                .copied()
+                .unwrap_or(ut.id);
             UnitInstance {
                 position: [pos.pos.x.to_f32(), pos.pos.y.to_f32(), pos.pos.z.to_f32()],
                 heading: -heading.angle.to_f32(),
                 team_color: c,
                 alpha: 1.0,
-                mesh_id: ut.id,
+                mesh_id,
                 _pad: [0; 3],
             }
         })

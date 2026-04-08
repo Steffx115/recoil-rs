@@ -3,6 +3,7 @@
 //! Thin shell: window, renderer, input dispatch, egui overlay.
 //! All game logic lives in `bar-game-lib`.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
@@ -14,11 +15,16 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{ModifiersState, PhysicalKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 
+use bevy_ecs::entity::Entity;
+
+use pierce_cob::CobAnimationDriver;
+use pierce_model::{PieceTree, PieceTransform, flatten_with_transforms};
 use pierce_render::particles::ParticleSystem;
 use pierce_render::unit_renderer::UnitInstance;
 use pierce_render::Renderer;
+use pierce_s3o::load_s3o_tree;
 use pierce_sim::unit_defs::UnitDefRegistry;
-use pierce_sim::Position;
+use pierce_sim::{Dead, FireEventQueue, MoveState, Position, UnitType};
 
 use bar_game_lib::GameState;
 
@@ -53,6 +59,8 @@ struct App {
     game: GameState,
     camera_ctrl: CameraController,
     particle_system: ParticleSystem,
+    animation_driver: CobAnimationDriver,
+    piece_trees: BTreeMap<u32, PieceTree>,
     last_frame: Instant,
     cursor_pos: [f32; 2],
     window_size: [f32; 2],
@@ -78,6 +86,8 @@ impl App {
             game,
             camera_ctrl: CameraController::new(cx, cz, 400.0),
             particle_system: ParticleSystem::new(4096),
+            animation_driver: CobAnimationDriver::new(),
+            piece_trees: BTreeMap::new(),
             last_frame: Instant::now(),
             cursor_pos: [0.0; 2],
             window_size: [1280.0, 720.0],
@@ -104,24 +114,29 @@ impl App {
         )
     }
 
-    fn load_models(renderer: &mut Renderer, registry: &UnitDefRegistry) {
+    fn load_models(
+        renderer: &mut Renderer,
+        animation_driver: &mut CobAnimationDriver,
+        piece_trees: &mut BTreeMap<u32, PieceTree>,
+        registry: &UnitDefRegistry,
+    ) {
         let bar_models_dir = Path::new("../Beyond-All-Reason-Sandbox/objects3d/Units");
         if !bar_models_dir.exists() {
             return;
         }
-        let model_entries: Vec<(u32, String)> = registry
+        let model_entries: Vec<(u32, String, String)> = registry
             .defs
             .values()
             .filter_map(|def| {
                 def.model_path
                     .as_ref()
-                    .map(|p| (def.unit_type_id, p.clone()))
+                    .map(|p| (def.unit_type_id, p.clone(), def.name.clone()))
             })
             .collect();
 
         let scale = 0.2;
         let mut loaded = 0;
-        for (type_id, model_path) in &model_entries {
+        for (type_id, model_path, _unit_name) in &model_entries {
             let filename = model_path.strip_prefix("Units/").unwrap_or(model_path);
             let s3o_path = bar_models_dir.join(filename);
             if !s3o_path.exists() {
@@ -142,7 +157,7 @@ impl App {
             }
         }
         // Set the first loaded model as the placeholder (mesh_id=0)
-        if let Some((_, ref first_path)) = model_entries.first() {
+        if let Some((_, ref first_path, _)) = model_entries.first() {
             let filename = first_path.strip_prefix("Units/").unwrap_or(first_path);
             let s3o_path = bar_models_dir.join(filename);
             if let Ok((mut verts, indices)) = pierce_render::load_s3o_file(&s3o_path) {
@@ -163,6 +178,39 @@ impl App {
             loaded,
             model_entries.len()
         );
+
+        // Load COB animation scripts and piece trees.
+        let cob_dir = Path::new("../Beyond-All-Reason-Sandbox/scripts/Units");
+        if !cob_dir.exists() {
+            tracing::info!("COB scripts directory not found, skipping animation loading");
+            return;
+        }
+        let mut cob_loaded = 0;
+        for (type_id, model_path, unit_name) in &model_entries {
+            let cob_path = cob_dir.join(format!("{}.cob", unit_name.to_lowercase()));
+            if !cob_path.exists() {
+                continue;
+            }
+            match std::fs::read(&cob_path) {
+                Ok(cob_data) => {
+                    if let Err(e) = animation_driver.load_script(*type_id, &cob_data) {
+                        tracing::warn!("Failed to parse COB {}: {}", cob_path.display(), e);
+                        continue;
+                    }
+                    cob_loaded += 1;
+                    // Load the piece tree for this animated unit type.
+                    let filename = model_path.strip_prefix("Units/").unwrap_or(model_path);
+                    let s3o_path = bar_models_dir.join(filename);
+                    if let Ok(tree) = load_s3o_tree(&std::fs::read(&s3o_path).unwrap_or_default()) {
+                        piece_trees.insert(*type_id, tree);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to read COB {}: {}", cob_path.display(), e);
+                }
+            }
+        }
+        tracing::info!("Loaded {} COB animation scripts", cob_loaded);
     }
 }
 
@@ -180,7 +228,7 @@ impl ApplicationHandler for App {
             pollster::block_on(Renderer::new(Arc::clone(&window))).expect("renderer");
 
         let registry = self.game.world.resource::<UnitDefRegistry>();
-        Self::load_models(&mut renderer, registry);
+        Self::load_models(&mut renderer, &mut self.animation_driver, &mut self.piece_trees, registry);
 
         // egui
         let egui_ctx = egui::Context::default();
@@ -312,8 +360,14 @@ impl ApplicationHandler for App {
                 }
                 self.particle_system.update(dt);
 
+                // Sync animation driver with game state.
+                self.sync_animations();
+
+                // Generate animated meshes and register with renderer.
+                let anim_mesh_ids = self.update_animated_meshes();
+
                 // Gather render data
-                let mut instances = unit_instances(&mut self.game);
+                let mut instances = unit_instances(&mut self.game, &anim_mesh_ids);
                 instances.extend(building_instances(&mut self.game));
                 if let Some(ref pt) = self.game.placement_mode {
                     if let Some((gx, gz)) = self.screen_to_ground() {
@@ -440,6 +494,87 @@ impl App {
 
         process_ui_actions(&mut self.game, ui_actions);
         window.request_redraw();
+    }
+
+    /// Synchronise the animation driver with the current game state.
+    fn sync_animations(&mut self) {
+        use bevy_ecs::query::Without;
+
+        let units: Vec<(Entity, u32, bool)> = self
+            .game
+            .world
+            .query_filtered::<(Entity, &UnitType, &MoveState), Without<Dead>>()
+            .iter(&self.game.world)
+            .map(|(e, ut, ms)| {
+                let moving = matches!(ms, MoveState::MovingTo(_));
+                (e, ut.id, moving)
+            })
+            .collect();
+
+        for (entity, type_id, moving) in &units {
+            let bits = entity.to_bits();
+            if !self.animation_driver.has_unit(bits) {
+                self.animation_driver.spawn_unit(bits, *type_id);
+            }
+            self.animation_driver.set_moving(bits, *moving);
+        }
+
+        // Forward fire events.
+        let fire_events: Vec<u64> = self
+            .game
+            .world
+            .get_resource::<FireEventQueue>()
+            .map(|q| q.events.iter().map(|e| e.shooter.to_bits()).collect())
+            .unwrap_or_default();
+        for bits in fire_events {
+            self.animation_driver.fire(bits);
+        }
+
+        self.animation_driver.tick();
+    }
+
+    /// Generate animated meshes and register with the renderer.
+    fn update_animated_meshes(&mut self) -> BTreeMap<u64, u32> {
+        const ANIMATED_MESH_BASE: u32 = 1_000_000;
+        let scale = 0.2;
+        let mut mesh_ids = BTreeMap::new();
+
+        let renderer = match self.renderer.as_mut() {
+            Some(r) => r,
+            None => return mesh_ids,
+        };
+
+        let units: Vec<(u64, u32)> = self
+            .game
+            .world
+            .query_filtered::<(Entity, &UnitType), bevy_ecs::query::Without<Dead>>()
+            .iter(&self.game.world)
+            .filter(|(e, _)| self.animation_driver.has_unit(e.to_bits()))
+            .map(|(e, ut)| (e.to_bits(), ut.id))
+            .collect();
+
+        for (bits, type_id) in units {
+            let tree = match self.piece_trees.get(&type_id) {
+                Some(t) => t,
+                None => continue,
+            };
+            if let Some((mut verts, indices)) = self.animation_driver.generate_animated_mesh(bits, tree) {
+                for v in &mut verts {
+                    let (x, z) = (v.position[0], v.position[2]);
+                    v.position[0] = z * scale;
+                    v.position[1] *= scale;
+                    v.position[2] = -x * scale;
+                    let (nx, nz) = (v.normal[0], v.normal[2]);
+                    v.normal[0] = nz;
+                    v.normal[2] = -nx;
+                }
+                let mesh_id = ANIMATED_MESH_BASE + (bits as u32);
+                renderer.register_unit_mesh(mesh_id, &verts, &indices);
+                mesh_ids.insert(bits, mesh_id);
+            }
+        }
+
+        mesh_ids
     }
 }
 

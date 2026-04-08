@@ -3,8 +3,10 @@
 //! Provides parsing of Spring COB (compiled BOS) files and a stack-based
 //! virtual machine for executing animation scripts.
 
+pub mod driver;
 pub mod loader;
 pub mod vm;
 
+pub use driver::CobAnimationDriver;
 pub use loader::{parse_cob, CobError, CobFunction, CobScript};
 pub use vm::{CobThread, CobVm, PieceAnimState, WaitCondition};
