@@ -18,7 +18,8 @@ use pierce_sim::commands::CommandQueue;
 use pierce_sim::construction::{BuildSite, BuildTarget, Builder};
 use pierce_sim::economy::{EconomyState, ResourceProducer};
 use pierce_sim::factory::BuildQueue;
-use pierce_sim::pathfinding::{footprint_cells, mark_building_footprint, TerrainGrid};
+use pierce_sim::footprint::{footprint_cells, mark_building_footprint};
+use pierce_sim::pathfinding::TerrainGrid;
 use pierce_sim::unit_defs::UnitDefRegistry;
 use pierce_sim::{
     Allegiance, CollisionRadius, Dead, Heading, Health, MoveState, MovementParams, Position,

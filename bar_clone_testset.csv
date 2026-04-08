@@ -1,0 +1,126 @@
+Test Name,Description,Key aspect tested
+Builder Constructs Solar,One builder places and completes a basic energy structure on flat ground.,"Basic construction flow, resource consumption, build completion"
+Builder Cancels Solar Refund,"Start construction, cancel before completion, verify refund behavior.","Cancel logic, refund rules, partial-progress rollback"
+Two Builders Assist One Factory,Two constructors assist the same factory building a unit.,"Assisted build speed, multi-builder synchronization"
+Unit Moves Across Flat Map,A single mobile unit moves from point A to B with no obstacles.,"Baseline movement, waypoint execution"
+Ten Units Path Through Choke,A small group crosses a narrow passage without deadlocking.,"Group pathfinding, local avoidance, congestion handling"
+Large Unit Blocked by Narrow Path,A large unit attempts to traverse a passage too small for its footprint.,"Footprint validation, path rejection"
+Amphibious Unit Enters Water,An amphibious unit moves from land into water and continues correctly.,"Movement mode transition, terrain classification"
+Tank Fires on Stationary Tank,A basic tank engages an idle enemy in direct line of sight.,"Basic weapon firing, hit resolution, damage application"
+Tank Fires on Moving Tank,A tank engages a moving target over open terrain.,"Target tracking, projectile leading, moving-target accuracy"
+Artillery Hits Behind Ridge,An artillery unit fires at a target separated by terrain height.,"Ballistics, terrain interaction, indirect fire"
+Splash Weapon Hits Clustered Units,An AOE unit attacks tightly packed enemies.,"Splash radius, falloff, multi-target damage"
+Radar Detects Enemy Outside LOS,A radar installation reveals an enemy outside visual range.,"Radar intel, LOS vs radar distinction"
+Jammer Hides Unit from Radar,A jammer obscures friendly units from enemy radar coverage.,"Radar jamming, intel counterplay"
+Extractor Income Over 1000 Ticks,A resource extractor generates income over a fixed duration.,"Per-tick economy correctness, long-run consistency"
+Energy Stall Reduces Build Speed,Construction continues under insufficient energy and slows appropriately.,"Stall behavior, economy/build coupling"
+Reclaim Wreck Grants Expected Metal,A constructor reclaims a wreck and receives resources.,"Reclaim logic, reclaim yield correctness"
+Replay Determinism Hash Match,The same command stream is replayed twice and produces identical hashes.,"Determinism, replay correctness"
+Save/Load State Preservation,"Save at a fixed tick, reload, then continue and compare outcome.","Serialization, sim continuity"
+500 Units Idle Performance Baseline,Spawn 500 units doing nothing and record baseline performance.,"Idle overhead, memory/perf baseline"
+500 Units Battle Performance Baseline,Spawn 500 units in active combat and record performance metrics.,"Combat scaling, sim stress baseline"
+Fixed Opener Determinism,"Same map, same build order, same seed, repeated multiple times.",Full sim determinism
+Checkpoint Hash Validation,Verify expected state hashes at several fixed ticks.,Mid-run state consistency
+Network Command Stream Sync,Two simulated clients process identical command streams.,Multiplayer lockstep consistency
+Pause and Resume Integrity,Pause/unpause during a scripted match and compare results.,Time control stability
+Game Speed Change Stability,Run speed changes during replay and verify same final state.,Tick scheduling independence
+Queue Command Determinism,Use queued move/build/attack commands in repeated runs.,Command queue reproducibility
+RNG Combat Repeatability,Run scenarios with RNG-enabled effects using same seed.,Seeded randomness stability
+Save Mid-Projectile Flight,"Save while projectiles are airborne, reload, continue.",Serialization of transient combat state
+Save Mid-Construction,"Save with multiple partially built structures, reload, continue.",Partial build persistence
+Repeated Replay Corpus Test,Run a bundle of saved replays against golden hashes.,Regression detection across many cases
+Straight-Line Move,Unit moves over unobstructed terrain.,Core movement
+Tight Chokepoint Flow,Several units pass through a narrow route.,Crowd movement
+Impassable Footprint Check,Large unit fails to route through undersized area.,Footprint/path validation
+Friendly Traffic Jam Recovery,Units blocked by friendlies recover once path clears.,Dynamic repathing
+Opposing Flows Crossing,Two groups move through each other’s routes.,Collision avoidance
+Slope Limit Enforcement,Ground units attempt to traverse steep terrain.,Slope restriction
+Cliff Edge Navigation,Unit moves near cliff and terrain boundary edges.,Terrain edge robustness
+Amphibious Transition,Unit transitions between land and water.,Terrain-mode switching
+Hover Over Shallow/Deep Water,Hover unit crosses mixed terrain/water zones.,Hover movement rules
+Transport Load/Unload Pathing,Units load into transport and unload into contested terrain.,"Transport logic, placement validity"
+Direct Fire Duel,Two direct-fire units fight until one dies.,Basic combat correctness
+Moving Target Engagement,Shooter attacks a moving unit at range.,Tracking and hit prediction
+Minimum Range Enforcement,Unit with minimum range is attacked up close.,Weapon constraints
+Turret Rotation Limit,Slow turret tries to track a circling target.,Turret turn-rate handling
+Firing Arc Limit,Weapon only fires when target enters valid arc.,Arc restriction
+Reload Timing Exactness,Measure shot cadence over repeated volleys.,Cooldown/reload accuracy
+Projectile Ground Collision,Projectile impacts terrain before reaching target.,Terrain collision
+Projectile Unit Collision,Projectile hits an intercepting unit.,Collision resolution
+Splash Damage Edge Case,Units placed at exact edge of splash radius.,Radius precision
+Overkill and Retarget,Multiple units fire into a low-HP target and reassign fire.,"Overkill handling, retarget logic"
+Constant Extractor Income,Verify steady income from an extractor.,Resource generation
+Storage Overflow Clamp,Resources exceed storage cap.,Cap behavior
+Energy Stall Build Slowdown,Building continues under insufficient power.,Economy pressure response
+Metal Stall Unit Production,Factory production under metal starvation.,Production gating
+Allied Resource Sharing,Two allies share surpluses/deficits.,Team economy transfer
+Single Builder Completion,One builder completes one structure.,Basic construction
+Multi-Assist Construction,Multiple builders assist same project.,Build assistance
+Build Queue Order,Constructor executes several queued build orders.,Queue correctness
+Blocked Placement Rejection,Try placing building in invalid/occupied area.,Placement validation
+Interrupted Build Persistence,Builder leaves and returns to unfinished structure.,Progress persistence
+LOS Reveal,Enemy enters direct sight radius.,LOS update
+Radar Detection,Enemy appears on radar but not in LOS.,Radar visibility
+Jammer Counter-Intel,Radar contact disappears under jammer coverage.,Jammer effect
+Sonar Detection,Underwater unit detected only via sonar.,Sonar logic
+Cloak Reveal Distance,Cloaked unit becomes visible at close range.,Cloak break conditions
+Early Eco Opener,"Commander builds mexes, power, and first factory.",Early economy flow
+Raid Defense,Light raiders attack early expansion.,"Defense response, map control"
+Porc Break,Artillery and assault units attack defensive line.,Static defense breaking
+Air Harassment,Bomber hits backline economy while AA responds.,Air-ground interaction
+Naval Expansion,Water-heavy map with naval eco and unit production.,Naval systems integration
+Reclaim Swing,Post-battle reclaim changes economic lead.,Reclaim impact on momentum
+Constructor Harassment,Harassing builders during expansion.,"Worker vulnerability, eco pressure"
+Radar-Spotted Artillery,Artillery uses spotter/radar support to attack unseen targets.,Intel-assisted fire
+Commander Push,Commander assaults defended front line.,High-value unit combat role
+Mixed Army Engagement,Combined arms battle over mixed terrain.,Whole-army interaction
+Tank vs Tank Duel,Equal-cost direct duel between line units.,Baseline combat efficiency
+Raider vs Extractor Line,Fast raiders attack undefended economy.,Raid value
+Riot vs Swarm,Anti-swarm unit faces many cheap attackers.,Counter-role validation
+Skirmisher vs Riot,Range-based unit fights its soft/hard counter.,Role matchup balance
+Assault vs Turret,Assault unit pushes static defense.,Breakpoint vs defense
+Bomber vs AA,Bomber strike into anti-air coverage.,Air punishment thresholds
+Fighter vs Bomber,Air superiority unit intercepts bomber.,Air control balance
+Artillery vs Porc,Artillery attacks static fortifications over time.,Siege value
+Destroyer vs Submarine,Naval anti-surface vs submerged threat.,Naval matchup coverage
+Equal-Metal Army Clash,Different unit compositions at same metal value fight.,Cost efficiency
+100 Units Idle,Small low-stress idle baseline.,Engine overhead
+500 Units Idle,Medium-scale idle benchmark.,Scalability
+1000 Units Moving,Large group pathing benchmark.,Pathfinding cost
+2000 Units Fighting,Large battle with many weapons active.,Combat scaling
+Projectile Spam Scene,Extreme high-projectile firefight.,Projectile subsystem stress
+Wreck Field Reclaim Stress,Large field of reclaimable wrecks with many constructors.,Feature/reclaim scaling
+LOS/Radar Stress,Many units generating frequent intel updates.,Vision system cost
+Large Map Feature Load,Large map with heavy decor/features.,Map/feature memory and traversal
+Build Beam Effects Stress,Many concurrent construction beams/effects.,Visual-sim effect overhead
+Save/Load Large Battle,Serialize and load a very large active battle.,Large-state persistence performance
+Multi-Front Expansion Pressure,Two players expand on opposite flanks while raiding each other’s outer mexes.,Multi-front economy and attention pressure
+Comeback from Reclaim Field,One side loses the fight but wins map control via reclaim and rebuild.,"Snowball resistance, reclaim comeback potential"
+Tactical Retreat Under Fire,A damaged army retreats through choke points while rear units cover.,"Retreat logic, pathing under combat pressure"
+Flanking Over Mixed Terrain,Fast units use alternate terrain route to bypass main army.,Terrain-based tactical depth
+Air Superiority Transition,Early bombers dominate until fighters and AA enter the field.,Tech transition and air counterplay
+Frontline Repair and Reengage,"Damaged heavy units withdraw, get repaired, and return to battle.","Repair loops, sustain warfare"
+Assist-Focused Factory Boom,Multiple constructors turbo-assist production during economic spike.,Assist scaling and factory throughput
+Intel War Scenario,"Radar, jammer, scouting, and artillery interact over hidden fronts.",Information warfare depth
+Cloak Ambush,Cloaked units stage an ambush on passing forces.,Stealth timing and detection balance
+Amphibious Shore Assault,Army lands from sea onto defended coastline.,Land-sea transition combat
+Airborne Transport Drop,Transports deliver units behind enemy lines into active defenses.,"Transport tactics, unload safety"
+Commander Snipe Attempt,Long-range or air units attempt to eliminate commander quickly.,High-value target balance
+Eco Greed Punish,One player over-booms economy and is punished by early aggression.,Greed vs safety balance
+Attrition Trench Battle,Defensive lines grind each other down over long duration.,Sustained warfare and efficiency
+Sudden Tech Spike,One player techs fast into high-tier unit and tests timing window.,Tech timing and payoff
+Artillery Counterbattery War,Both sides use artillery and spotters to suppress each other.,Siege/counter-siege depth
+Naval Containment,One side dominates water and attempts coastal denial.,Naval map control
+Island Expansion Logistics,Expansion relies on transports or amphibious units between islands.,Logistics and map-specialized play
+Base Trade Scenario,Both sides bypass frontlines and attack each other’s bases.,Strategic race conditions
+Anti-Snowball Scenario,"Losing side gets map reclaim, hidden expansion, and raiding opportunities.","Match resilience, anti-snowball design"
+Choke Fortress Break,Heavily fortified narrow passage must be breached with combined arms.,Defensive layering vs siege
+Mobile Warfare Open Map,"Open terrain encourages raids, flanks, and fast composition play.",Mobility-driven balance
+Vision Denial Assault,Attack launched under jammer and scout denial.,Vision suppression tactics
+Critical Power Grid Collapse,"Sniping energy production cripples shields, buildpower, or weapons.",Infrastructure vulnerability
+Teamgame Resource Specialization,"In a 2v2 or 3v3, one player booms while another frontline-fights.",Team economy roles
+Long Match Exhaustion Test,"Full-length scenario with late-game armies, wrecks, and map depletion.",Late-game stability and pacing
+Superweapon Preparation Race,Both sides race to build game-ending tech while contesting map control.,Endgame pressure and strategic timing
+Chain-Reaction Front Collapse,One defensive breach causes cascading losses across connected fronts.,Positional fragility and momentum
+Escort the Siege Train,Slow artillery/assault group must be protected while advancing.,Formation protection and support synergy
+Harass While Macroing,One side performs constant small raids while expanding and teching.,Multitasking pressure and strategic ceiling

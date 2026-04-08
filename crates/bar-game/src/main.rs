@@ -373,7 +373,8 @@ impl ApplicationHandler for App {
                     if let Some((gx, gz)) = self.screen_to_ground() {
                         // Check if placement is valid.
                         let can_place = {
-                            use pierce_sim::pathfinding::{can_place_building, TerrainGrid};
+                            use pierce_sim::footprint::can_place_building;
+                            use pierce_sim::pathfinding::TerrainGrid;
                             use pierce_sim::SimFloat;
                             let grid = self.game.world.resource::<TerrainGrid>();
                             let pos = pierce_sim::SimVec2::new(

@@ -17,7 +17,8 @@ use crate::factory::{factory_system, UnitRegistry};
 use crate::fog::{fog_system, FogOfWar};
 use crate::lifecycle::{cleanup_dead, init_lifecycle};
 use crate::movement::movement_system;
-use crate::pathfinding::{footprint_cleanup_system, TerrainGrid};
+use crate::footprint::footprint_cleanup_system;
+use crate::pathfinding::TerrainGrid;
 use crate::projectile::{projectile_movement_system, spawn_projectile_system, ImpactEventQueue};
 use crate::spatial::SpatialGrid;
 use crate::targeting::{reload_system, targeting_system, FireEventQueue, WeaponRegistry};
@@ -767,7 +768,7 @@ mod tests {
 
     use crate::commands::Command;
     use crate::components::Dead;
-    use crate::pathfinding::mark_building_footprint;
+    use crate::footprint::mark_building_footprint;
 
     // ---- Test: unit paths around a building in full sim tick ----
 

@@ -588,7 +588,8 @@ mod tests {
     // ==================================================================
 
     use crate::components::Position;
-    use crate::pathfinding::{mark_building_footprint, TerrainGrid};
+    use crate::footprint::mark_building_footprint;
+    use crate::pathfinding::TerrainGrid;
 
     /// Spawn an entity with position, command queue, and move state.
     fn spawn_with_pos_and_queue(world: &mut World, pos: SimVec3, state: MoveState) -> Entity {
