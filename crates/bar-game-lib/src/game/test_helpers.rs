@@ -191,6 +191,26 @@ pub(crate) fn fund_team(game: &mut GameState, team: u8) {
     }
 }
 
+/// Assert that the terrain grid is large enough to contain a building placed
+/// at `(x, z)` with the given `radius`.  Catches tests silently bypassing
+/// footprint validation because coordinates fall outside the grid.
+pub(crate) fn assert_grid_covers(game: &GameState, x: f32, z: f32, radius: f32) {
+    let grid = game
+        .world
+        .resource::<pierce_sim::pathfinding::TerrainGrid>();
+    let max_x = (x + radius).ceil() as usize;
+    let max_z = (z + radius).ceil() as usize;
+    assert!(
+        max_x < grid.width() && max_z < grid.height(),
+        "Terrain grid {}x{} too small for placement at ({x}, {z}) with radius {radius} \
+         (needs at least {}x{}). Enlarge the grid in the test setup.",
+        grid.width(),
+        grid.height(),
+        max_x + 1,
+        max_z + 1,
+    );
+}
+
 /// Snapshot all alive entity positions sorted by SimId (deterministic order).
 pub(crate) fn snapshot_positions(game: &mut GameState) -> Vec<(u64, SimVec3)> {
     use pierce_sim::SimId;

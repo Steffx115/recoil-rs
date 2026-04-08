@@ -477,9 +477,25 @@ mod tests {
         world
     }
 
+    /// Assert the terrain grid covers a building at `(x, z)` with `radius`.
+    fn assert_world_grid_covers(world: &World, x: f32, z: f32, radius: f32) {
+        let grid = world.resource::<TerrainGrid>();
+        let max_x = (x + radius).ceil() as usize;
+        let max_z = (z + radius).ceil() as usize;
+        assert!(
+            max_x < grid.width() && max_z < grid.height(),
+            "Terrain grid {}x{} too small for ({x}, {z}) r={radius} (needs {}x{})",
+            grid.width(),
+            grid.height(),
+            max_x + 1,
+            max_z + 1,
+        );
+    }
+
     #[test]
     fn test_place_building_solar() {
         let mut world = setup_world_with_economy();
+        assert_world_grid_covers(&world, 100.0, 100.0, 32.0);
         let result = place_building(&mut world, None, BUILDING_SOLAR_ID, 100.0, 100.0, 0);
         assert!(result.is_some());
         let entity = result.unwrap();
@@ -536,6 +552,7 @@ mod tests {
     #[test]
     fn test_place_building_blocked_by_existing_building() {
         let mut world = setup_world_with_economy();
+        assert_world_grid_covers(&world, 100.0, 100.0, 32.0);
 
         // Place first building — should succeed.
         let first = place_building(&mut world, None, BUILDING_SOLAR_ID, 100.0, 100.0, 0);
@@ -549,6 +566,7 @@ mod tests {
     #[test]
     fn test_place_building_blocked_by_partial_overlap() {
         let mut world = setup_world_with_economy();
+        assert_world_grid_covers(&world, 110.0, 110.0, 32.0);
 
         // Place first building at (100, 100) with collision_radius=32.
         let first = place_building(&mut world, None, BUILDING_SOLAR_ID, 100.0, 100.0, 0);
@@ -565,6 +583,7 @@ mod tests {
     #[test]
     fn test_place_building_adjacent_succeeds() {
         let mut world = setup_world_with_economy();
+        assert_world_grid_covers(&world, 200.0, 200.0, 32.0);
 
         // Place first building at (100, 100) with collision_radius=32.
         // Footprint covers roughly (68..132, 68..132).
@@ -579,6 +598,7 @@ mod tests {
     #[test]
     fn test_place_building_blocked_by_impassable_terrain() {
         let mut world = setup_world_with_economy();
+        assert_world_grid_covers(&world, 100.0, 100.0, 32.0);
 
         // Manually mark a region as impassable (cliff).
         {

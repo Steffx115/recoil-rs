@@ -1765,6 +1765,8 @@ fn ui_cannot_place_building_on_existing_building() {
             SimFloat::ONE,
         ));
 
+    assert_grid_covers(&game, 100.0, 100.0, 32.0);
+
     let cmd = game.commander_team0.unwrap();
     game.selection.select_single(cmd);
 
@@ -1806,6 +1808,9 @@ fn ui_can_place_buildings_side_by_side() {
             512,
             SimFloat::ONE,
         ));
+
+    assert_grid_covers(&game, 100.0, 100.0, 32.0);
+    assert_grid_covers(&game, 200.0, 200.0, 32.0);
 
     let cmd = game.commander_team0.unwrap();
     game.selection.select_single(cmd);
