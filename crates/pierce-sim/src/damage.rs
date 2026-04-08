@@ -57,6 +57,8 @@ pub fn damage_system(world: &mut World) {
         return;
     }
 
+    tracing::debug!("damage_system: {} impacts this frame", impacts.len());
+
     // -- 2. Build per-target damage events -----------------------------------
     let mut damage_events: Vec<DamageEvent> = Vec::new();
 

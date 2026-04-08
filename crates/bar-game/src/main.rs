@@ -371,10 +371,30 @@ impl ApplicationHandler for App {
                 instances.extend(building_instances(&mut self.game));
                 if let Some(ref pt) = self.game.placement_mode {
                     if let Some((gx, gz)) = self.screen_to_ground() {
+                        // Check if placement is valid.
+                        let can_place = {
+                            use pierce_sim::pathfinding::{can_place_building, TerrainGrid};
+                            use pierce_sim::SimFloat;
+                            let grid = self.game.world.resource::<TerrainGrid>();
+                            let pos = pierce_sim::SimVec2::new(
+                                SimFloat::from_f32(gx),
+                                SimFloat::from_f32(gz),
+                            );
+                            let radius = self.game.world.resource::<pierce_sim::unit_defs::UnitDefRegistry>()
+                                .get(pt.0)
+                                .map(|d| SimFloat::from_f64(d.collision_radius))
+                                .unwrap_or(SimFloat::from_int(2));
+                            can_place_building(grid, pos, radius)
+                        };
+                        let color = if can_place {
+                            [0.3, 0.9, 0.3] // green = valid
+                        } else {
+                            [0.9, 0.3, 0.3] // red = invalid
+                        };
                         instances.push(UnitInstance {
                             position: [gx, 0.0, gz],
                             heading: 0.0,
-                            team_color: [0.3, 0.9, 0.3],
+                            team_color: color,
                             alpha: 0.5,
                             mesh_id: pt.0,
                             _pad: [0; 3],

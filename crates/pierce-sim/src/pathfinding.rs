@@ -128,6 +128,17 @@ pub fn mark_building_footprint(
     }
 }
 
+/// Check if a building can be placed without overlapping existing buildings
+/// or impassable terrain.
+pub fn can_place_building(
+    grid: &TerrainGrid,
+    pos: SimVec2,
+    collision_radius: SimFloat,
+) -> bool {
+    let cells = footprint_cells(grid, pos, collision_radius);
+    cells.iter().all(|&(x, y)| grid.is_passable(x, y))
+}
+
 /// Restore terrain grid cells from a building footprint (when building is
 /// destroyed or reclaimed).
 pub fn unmark_building_footprint(grid: &mut TerrainGrid, footprint: &BuildingFootprint) {
