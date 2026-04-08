@@ -14,5 +14,9 @@
       "Bash(RUST_LOG=warn target/debug/bar-game.exe)",
       "Bash(target/debug/bar-game.exe)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "mcp-atlassian"
+  ],
+  "enableAllProjectMcpServers": true
 }
