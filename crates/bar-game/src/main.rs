@@ -296,11 +296,12 @@ impl ApplicationHandler for App {
         {
             let device = renderer.gpu.device.clone();
             let queue = renderer.gpu.queue.clone();
-            let manager = pierce_compute::GpuComputeManager::new(device, queue);
+            let fog = pierce_compute::GpuComputeManager::new(device.clone(), queue.clone());
+            let targeting = pierce_compute::GpuTargetingCompute::new(device.clone(), queue.clone());
             self.game.world.insert_resource(
                 pierce_sim::compute::ComputeBackends {
-                    fog: Box::new(manager),
-                    targeting: Box::new(pierce_compute::CpuTargetCompute),
+                    fog: Box::new(fog),
+                    targeting: Box::new(targeting),
                 },
             );
             // Batch math backend (GPU distance_sq, CPU fallback for rest).

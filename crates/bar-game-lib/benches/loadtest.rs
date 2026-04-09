@@ -122,10 +122,11 @@ fn main() {
     #[cfg(feature = "gpu-compute")]
     {
         let (device, queue) = pierce_compute::create_headless_device();
-        let manager = pierce_compute::GpuComputeManager::new(device, queue);
+        let fog = pierce_compute::GpuComputeManager::new(device.clone(), queue.clone());
+        let targeting = pierce_compute::GpuTargetingCompute::new(device.clone(), queue.clone());
         game.world.insert_resource(pierce_sim::compute::ComputeBackends {
-            fog: Box::new(manager),
-            targeting: Box::new(pierce_compute::CpuTargetCompute),
+            fog: Box::new(fog),
+            targeting: Box::new(targeting),
         });
 
         // Batch math backend (GPU for distance_sq, CPU for rest).
