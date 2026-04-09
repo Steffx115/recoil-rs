@@ -275,8 +275,7 @@ fn test_combat_determinism() {
             range: SimFloat::from_int(30),
             reload_time: 5,
             projectile_speed: SimFloat::from_int(3),
-            area_of_effect: SimFloat::ZERO,
-            is_paralyzer: false,
+            ..Default::default()
         };
 
         let mut world = init_combat_world(vec![weapon_def]);
@@ -382,9 +381,7 @@ fn test_rapid_spawn_despawn() {
             damage_type: DamageType::Normal,
             range: SimFloat::from_int(20),
             reload_time: 3,
-            projectile_speed: SimFloat::ZERO, // beam = instant
-            area_of_effect: SimFloat::ZERO,
-            is_paralyzer: false,
+            ..Default::default()
         };
 
         let mut world = init_combat_world(vec![weapon_def]);
@@ -496,8 +493,7 @@ fn test_full_combat_stress_10000_frames() {
                 range: SimFloat::from_int(25),
                 reload_time: 4,
                 projectile_speed: SimFloat::from_int(4),
-                area_of_effect: SimFloat::ZERO,
-                is_paralyzer: false,
+                ..Default::default()
             },
             WeaponDef {
                 damage: SimFloat::from_int(20),
@@ -506,7 +502,7 @@ fn test_full_combat_stress_10000_frames() {
                 reload_time: 10,
                 projectile_speed: SimFloat::from_int(2),
                 area_of_effect: SimFloat::from_int(5),
-                is_paralyzer: false,
+                ..Default::default()
             },
         ];
 

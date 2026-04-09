@@ -123,10 +123,16 @@ impl WeaponDefData {
             damage: SimFloat::from_f64(self.damage),
             damage_type,
             range: SimFloat::from_f64(self.range),
+            min_range: SimFloat::ZERO,
             reload_time: self.reload_time,
             projectile_speed: SimFloat::from_f64(self.projectile_speed),
             area_of_effect: SimFloat::from_f64(self.area_of_effect),
             is_paralyzer: damage_type == DamageType::Paralyzer,
+            indirect_fire: false,
+            category: crate::combat_data::WeaponCategory::General,
+            turret_turn_rate: SimFloat::ZERO,
+            firing_arc: SimFloat::ZERO,
+            aim_tolerance: SimFloat::ZERO,
         }
     }
 }

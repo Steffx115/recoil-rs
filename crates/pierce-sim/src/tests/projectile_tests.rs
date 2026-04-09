@@ -20,9 +20,7 @@ fn beam_weapon_def() -> WeaponDef {
         damage_type: DamageType::Laser,
         range: sf(100),
         reload_time: 10,
-        projectile_speed: SimFloat::ZERO,
-        area_of_effect: SimFloat::ZERO,
-        is_paralyzer: false,
+        ..Default::default()
     }
 }
 
@@ -34,7 +32,7 @@ fn projectile_weapon_def(speed: i32) -> WeaponDef {
         reload_time: 10,
         projectile_speed: sf(speed),
         area_of_effect: sf(5),
-        is_paralyzer: false,
+        ..Default::default()
     }
 }
 

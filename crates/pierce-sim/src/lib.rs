@@ -30,11 +30,13 @@ pub use animation::{AnimationState, PieceAnimTransform};
 
 pub use commands::{command_system, Command, CommandHandler, CommandQueue, CommandResult};
 pub use components::{
-    Allegiance, BuildProgress, BuildingFootprint, Cloaked, CollisionRadius, Dead, Heading, Health,
-    MoveState, MovementParams, Position, SightRange, SimId, Target, Transport, UnitType, Velocity,
+    Allegiance, AttackMove, BuildProgress, BuildingFootprint, Cloaked, CollisionRadius, Dead,
+    FireMode, Heading, Health, LastAttacker, ManualTarget, MoveState, MovementParams, Position,
+    SightRange, SimId, Target, Transport, TurretFacings, TurretState, UnitType, Velocity,
 };
 pub use fog::{fog_system, is_entity_visible, CellVisibility, FogOfWar};
 pub use pathfinding::{AStarPathfinder, FlowFieldPathfinder, HybridPathfinder, Pathfinder};
 pub use selection::{screen_to_ground_raw, SelectionState};
 pub use spatial::SpatialGrid;
-pub use targeting::{FireEvent, FireEventQueue, WeaponRegistry};
+pub use map::HeightmapData;
+pub use targeting::{turret_system, FireEvent, FireEventQueue, PendingDamage, WeaponRegistry};

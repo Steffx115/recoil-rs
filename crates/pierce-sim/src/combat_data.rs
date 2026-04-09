@@ -57,12 +57,27 @@ impl DamageType {
 // WeaponDef — data definition, NOT an ECS component
 // ---------------------------------------------------------------------------
 
+/// Category of weapon for target priority purposes.
+#[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WeaponCategory {
+    /// General-purpose weapon.
+    #[default]
+    General,
+    /// Anti-air weapon: prefers air targets.
+    AntiAir,
+    /// Anti-armor weapon: prefers heavy targets.
+    AntiArmor,
+}
+
 /// Static definition of a weapon type loaded from game data files.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WeaponDef {
     pub damage: SimFloat,
     pub damage_type: DamageType,
     pub range: SimFloat,
+    /// Minimum range: weapon cannot fire at targets closer than this.
+    #[serde(default)]
+    pub min_range: SimFloat,
     /// Reload time in simulation frames.
     pub reload_time: u32,
     /// Projectile speed.  `ZERO` means instant hit (beam / hitscan).
@@ -71,6 +86,42 @@ pub struct WeaponDef {
     pub area_of_effect: SimFloat,
     /// If `true`, damage is applied as stun rather than health loss.
     pub is_paralyzer: bool,
+    /// If `true`, weapon can fire over terrain obstacles (artillery).
+    #[serde(default)]
+    pub indirect_fire: bool,
+    /// Weapon category for target priority.
+    #[serde(default)]
+    pub category: WeaponCategory,
+    /// Turret turn rate in radians per tick. `ZERO` means instant aim.
+    #[serde(default)]
+    pub turret_turn_rate: SimFloat,
+    /// Firing arc half-angle in radians. `ZERO` means full 360-degree arc.
+    #[serde(default)]
+    pub firing_arc: SimFloat,
+    /// Angular tolerance for firing: weapon fires when turret is within
+    /// this angle of the target. Defaults to ~3 degrees if zero.
+    #[serde(default)]
+    pub aim_tolerance: SimFloat,
+}
+
+impl Default for WeaponDef {
+    fn default() -> Self {
+        Self {
+            damage: SimFloat::ZERO,
+            damage_type: DamageType::Normal,
+            range: SimFloat::ZERO,
+            min_range: SimFloat::ZERO,
+            reload_time: 1,
+            projectile_speed: SimFloat::ZERO,
+            area_of_effect: SimFloat::ZERO,
+            is_paralyzer: false,
+            indirect_fire: false,
+            category: WeaponCategory::General,
+            turret_turn_rate: SimFloat::ZERO,
+            firing_arc: SimFloat::ZERO,
+            aim_tolerance: SimFloat::ZERO,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
