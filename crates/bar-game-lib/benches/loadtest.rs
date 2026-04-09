@@ -138,13 +138,10 @@ fn main() {
         eprintln!("GPU compute + batch math backends enabled");
     }
 
-    // CPU batch math fallback when gpu-compute is disabled.
+    // CPU batch math when gpu-compute is disabled (no compute-backends feature).
     #[cfg(not(feature = "gpu-compute"))]
     {
-        game.world.insert_resource(pierce_sim::compute::BatchMathBackend {
-            ops: Box::new(pierce_compute::CpuBatchMathLibm),
-        });
-        eprintln!("CPU batch math backend enabled");
+        eprintln!("Running without compute backends (inline CPU path)");
     }
 
     let weapon_id = register_weapon(&mut game.world);

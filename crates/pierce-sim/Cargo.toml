@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "ECS-based simulation for the Pierce RTS engine"
 
+[features]
+compute-backends = []
+
 [dependencies]
 pierce-math = { path = "../pierce-math" }
 bevy_ecs = { workspace = true }

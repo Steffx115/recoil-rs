@@ -12,6 +12,7 @@ use bevy_ecs::world::World;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{Allegiance, Position, SightRange};
+#[cfg(feature = "compute-backends")]
 use crate::compute::{ComputeBackends, FogGridParams, FogUnitInput};
 use crate::{SimFloat, SimVec3};
 
@@ -170,19 +171,22 @@ impl FogOfWar {
 /// If `ComputeBackends` resource is present, dispatches to it.
 /// Otherwise runs the inline CPU implementation.
 pub fn fog_system(world: &mut World, cell_size: SimFloat) {
-    fog_system_with_flag(world, cell_size, false);
+    fog_system_dispatched(world, cell_size);
 }
 
-/// Fog system with pre-cached backend flag (avoids per-tick TypeId lookup).
-pub fn fog_system_with_flag(world: &mut World, cell_size: SimFloat, has_backend: bool) {
-    if has_backend {
+/// Dispatched fog system. When `compute-backends` feature is enabled AND
+/// the `ComputeBackends` resource exists, uses the backend. Otherwise inline.
+pub fn fog_system_dispatched(world: &mut World, cell_size: SimFloat) {
+    #[cfg(feature = "compute-backends")]
+    if world.contains_resource::<ComputeBackends>() {
         fog_system_with_backend(world, cell_size);
-    } else {
-        fog_system_inline(world, cell_size);
+        return;
     }
+    fog_system_inline(world, cell_size);
 }
 
 /// Fog via compute backend (CPU or GPU).
+#[cfg(feature = "compute-backends")]
 fn fog_system_with_backend(world: &mut World, cell_size: SimFloat) {
     let fog = match world.remove_resource::<FogOfWar>() {
         Some(f) => f,
