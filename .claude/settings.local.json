@@ -12,11 +12,12 @@
       "Bash(RUST_LOG=info target/debug/bar-game.exe)",
       "Bash(kill %1)",
       "Bash(RUST_LOG=warn target/debug/bar-game.exe)",
-      "Bash(target/debug/bar-game.exe)"
+      "Bash(target/debug/bar-game.exe)",
+      "Read(//c/Users/Stefan/.claude/**)"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "mcp-atlassian"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

@@ -12,7 +12,9 @@
         "--jira-token",
         "env:JIRA_API_TOKEN"
       ],
-      "env": {}
+      "env": {
+        "JIRA_API_TOKEN": "${JIRA_API_TOKEN}"
+      }
     }
   }
 }
