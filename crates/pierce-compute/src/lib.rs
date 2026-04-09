@@ -11,6 +11,8 @@ pub mod cpu_targeting;
 #[cfg(feature = "gpu")]
 pub mod buffers;
 #[cfg(feature = "gpu")]
+pub mod gpu_batch;
+#[cfg(feature = "gpu")]
 pub mod gpu_context;
 #[cfg(feature = "gpu")]
 pub mod gpu_fog;
@@ -31,3 +33,5 @@ pub use gpu_fog::GpuFogCompute;
 pub use gpu_targeting::GpuTargetingCompute;
 #[cfg(feature = "gpu")]
 pub use gpu_manager::GpuComputeManager;
+#[cfg(feature = "gpu")]
+pub use gpu_batch::GpuBatchMath;
