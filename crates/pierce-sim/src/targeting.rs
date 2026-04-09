@@ -147,7 +147,17 @@ pub fn targeting_system(world: &mut World) {
         return;
     }
 
-    let grid = world.resource::<SpatialGrid>().clone();
+    // Use Arc snapshot from SimFrameData if available.
+    let grid: std::sync::Arc<SpatialGrid> =
+        if let Some(frame) = world.get_resource::<crate::frame_data::SimFrameData>() {
+            if let Some(ref snap) = frame.grid_snapshot {
+                snap.clone()
+            } else {
+                std::sync::Arc::new(world.resource::<SpatialGrid>().clone())
+            }
+        } else {
+            std::sync::Arc::new(world.resource::<SpatialGrid>().clone())
+        };
     let registry = world.resource::<WeaponRegistry>().clone();
     let heightmap = world.get_resource::<HeightmapData>().cloned();
     let fog = world.get_resource::<FogOfWar>().cloned();
