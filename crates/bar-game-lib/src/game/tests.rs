@@ -265,7 +265,7 @@ fn test_combat_units_take_damage() {
             radius: SimFloat::from_int(8),
         },
         pierce_sim::Heading {
-            angle: SimFloat::ZERO,
+            angle: pierce_math::Angle::ZERO,
         },
         pierce_sim::Velocity { vel: SimVec3::ZERO },
         pierce_sim::combat_data::ArmorClass::Light,
@@ -302,7 +302,7 @@ fn test_combat_units_take_damage() {
             radius: SimFloat::from_int(8),
         },
         pierce_sim::Heading {
-            angle: SimFloat::ZERO,
+            angle: pierce_math::Angle::ZERO,
         },
         pierce_sim::Velocity { vel: SimVec3::ZERO },
         pierce_sim::combat_data::ArmorClass::Light,
@@ -4071,7 +4071,7 @@ fn collision_zero_radius_no_push() {
             radius: SimFloat::ZERO,
         },
         pierce_sim::Heading {
-            angle: SimFloat::ZERO,
+            angle: pierce_math::Angle::ZERO,
         },
         pierce_sim::Velocity { vel: SimVec3::ZERO },
         pierce_sim::MovementParams {
@@ -4103,7 +4103,7 @@ fn collision_zero_radius_no_push() {
             radius: SimFloat::ZERO,
         },
         pierce_sim::Heading {
-            angle: SimFloat::ZERO,
+            angle: pierce_math::Angle::ZERO,
         },
         pierce_sim::Velocity { vel: SimVec3::ZERO },
         pierce_sim::MovementParams {
@@ -5912,7 +5912,7 @@ fn fog_targeting_unit_does_not_target_hidden_enemy() {
             turn_rate: SimFloat::ONE,
         },
         pierce_sim::CollisionRadius { radius: SimFloat::from_int(8) },
-        pierce_sim::Heading { angle: SimFloat::ZERO },
+        pierce_sim::Heading { angle: pierce_math::Angle::ZERO },
         pierce_sim::Velocity { vel: SimVec3::ZERO },
         pierce_sim::combat_data::ArmorClass::Light,
         pierce_sim::Target { entity: None },
@@ -5942,7 +5942,7 @@ fn fog_targeting_unit_does_not_target_hidden_enemy() {
             turn_rate: SimFloat::ONE,
         },
         pierce_sim::CollisionRadius { radius: SimFloat::from_int(8) },
-        pierce_sim::Heading { angle: SimFloat::ZERO },
+        pierce_sim::Heading { angle: pierce_math::Angle::ZERO },
         pierce_sim::Velocity { vel: SimVec3::ZERO },
         pierce_sim::combat_data::ArmorClass::Light,
         pierce_sim::Target { entity: None },

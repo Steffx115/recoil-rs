@@ -7,6 +7,7 @@ description = "Deterministic fixed-point math types for the Pierce RTS engine"
 
 [dependencies]
 serde = { workspace = true }
+libm = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

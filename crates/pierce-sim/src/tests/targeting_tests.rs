@@ -1137,7 +1137,7 @@ fn firing_arc_restricts_targeting() {
                 entity: Some(enemy_behind),
             },
             Heading {
-                angle: SimFloat::PI, // Facing opposite direction.
+                angle: pierce_math::Angle::HALF, // Facing opposite direction.
             },
             SimId { id: 1 },
         ))

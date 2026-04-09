@@ -401,7 +401,7 @@ pub fn equip_factory_spawned_units(world: &mut World, weapon_def_ids: &BTreeMap<
                 radius: collision_r,
             },
             Heading {
-                angle: SimFloat::ZERO,
+                angle: pierce_math::Angle::ZERO,
             },
             Velocity { vel: SimVec3::ZERO },
             armor_class,

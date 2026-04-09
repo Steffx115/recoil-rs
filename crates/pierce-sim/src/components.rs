@@ -76,10 +76,10 @@ pub struct Velocity {
     pub vel: SimVec3,
 }
 
-/// Facing direction expressed as an angle in radians.
+/// Facing direction as a u32 full-circle angle.
 #[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Heading {
-    pub angle: SimFloat,
+    pub angle: pierce_math::Angle,
 }
 
 // ---------------------------------------------------------------------------

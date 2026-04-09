@@ -31,9 +31,9 @@ fn velocity_roundtrip() {
 #[test]
 fn heading_roundtrip() {
     let c = roundtrip(Heading {
-        angle: SimFloat::HALF,
+        angle: pierce_math::Angle::HALF,
     });
-    assert_eq!(c.angle, SimFloat::HALF);
+    assert_eq!(c.angle, pierce_math::Angle::HALF);
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn spawn_all_components_on_one_entity() {
             Position { pos: SimVec3::ZERO },
             Velocity { vel: SimVec3::ZERO },
             Heading {
-                angle: SimFloat::ZERO,
+                angle: pierce_math::Angle::ZERO,
             },
             Health {
                 current: SimFloat::from_int(100),

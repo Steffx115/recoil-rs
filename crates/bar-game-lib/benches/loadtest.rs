@@ -66,7 +66,7 @@ fn spawn_unit(world: &mut World, x: i32, z: i32, team: u8, weapon_id: u32) {
             radius: SimFloat::from_int(8),
         },
         Heading {
-            angle: SimFloat::ZERO,
+            angle: pierce_math::Angle::ZERO,
         },
         Velocity { vel: SimVec3::ZERO },
         ArmorClass::Light,

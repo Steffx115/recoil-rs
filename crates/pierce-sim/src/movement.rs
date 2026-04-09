@@ -9,6 +9,8 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::prelude::*;
 use rayon::prelude::*;
 
+use pierce_math::Angle;
+
 use crate::components::{Heading, MoveState, MovementParams, Position, Velocity};
 use crate::SimFloat;
 use crate::SimVec3;
@@ -16,24 +18,13 @@ use crate::SimVec3;
 /// Distance (squared) at which a unit is considered to have arrived.
 const ARRIVAL_THRESHOLD_SQ: SimFloat = SimFloat::ONE;
 
-/// Normalize an angle into the range (-PI, PI].
-#[inline]
-fn wrap_angle(mut angle: SimFloat) -> SimFloat {
-    while angle > SimFloat::PI {
-        angle -= SimFloat::TAU;
-    }
-    while angle <= -SimFloat::PI {
-        angle += SimFloat::TAU;
-    }
-    angle
-}
 
 /// Per-entity movement input snapshot.
 struct MoveInput {
     entity: Entity,
     pos: SimVec3,
     vel: SimVec3,
-    heading: SimFloat,
+    heading: Angle,
     params: MovementParams,
     state: MoveState,
 }
@@ -43,17 +34,11 @@ struct MoveOutput {
     entity: Entity,
     pos: SimVec3,
     vel: SimVec3,
-    heading: SimFloat,
+    heading: Angle,
     state: MoveState,
 }
 
-/// Compute movement without trig in the common case.
-///
-/// Instead of: atan2(delta) → clamp angle → sin/cos(angle) → direction
-/// We do:      normalize(delta) → rotate current dir toward desired → direction
-///
-/// The only remaining trig: atan2 to store the heading (needed by other
-/// systems like targeting). This could be batched or deferred.
+/// Compute movement using Angle for heading. No atan2 in the common case.
 fn compute_movement(input: &MoveInput) -> MoveOutput {
     match input.state {
         MoveState::Idle => MoveOutput {
@@ -84,85 +69,42 @@ fn compute_movement(input: &MoveInput) -> MoveOutput {
                 };
             }
 
-            // Desired direction (normalized delta in XZ plane).
-            let desired_x = delta.x;
-            let desired_z = delta.z;
-            let desired_len_sq = desired_x * desired_x + desired_z * desired_z;
+            // Desired heading via Angle::atan2 (uses hardware atan2 via libm).
+            let desired = Angle::atan2(delta.z, delta.x);
 
-            // Current facing direction from heading (these two sin/cos calls remain,
-            // but we can optimize them away once we store direction instead of heading).
-            let cur_dir_x = input.heading.cos();
-            let cur_dir_z = input.heading.sin();
+            // Turn rate as Angle. Convert SimFloat radians → Angle.
+            let turn_rate_angle = Angle::from_radians(input.params.turn_rate);
 
-            // Compute angle between current and desired direction using cross and dot products.
-            // cross = cur_x * des_z - cur_z * des_x (sign = rotation direction)
-            // dot = cur_x * des_x + cur_z * des_z (cosine of angle)
-            //
-            // To avoid sqrt for normalization of desired, we use the unnormalized
-            // cross/dot and compare against turn_rate scaled by desired_len.
-            // But for correct angle comparison we need the actual angle.
-            //
-            // Fast path: if turn rate is large enough to cover any angle difference,
-            // skip the angle computation entirely and just use the desired direction.
-            // This is common for units that are already roughly facing their target.
+            // Signed difference: how far to turn.
+            let diff = input.heading.signed_diff(desired);
+            let abs_diff = diff.unsigned_abs();
 
-            let (new_dir_x, new_dir_z, new_heading) = if desired_len_sq > SimFloat::ZERO {
-                // Normalize desired direction.
-                let desired_len = desired_len_sq.sqrt();
-                let norm_x = desired_x / desired_len;
-                let norm_z = desired_z / desired_len;
-
-                // Dot product: cos(angle_between).
-                let dot = cur_dir_x * norm_x + cur_dir_z * norm_z;
-
-                // If dot > cos(turn_rate), the angle is within turn_rate — snap to desired.
-                // cos(turn_rate) for small angles ≈ 1 - turn_rate²/2.
-                // For large turn rates (> PI/4), just use cos.
-                let cos_turn = if input.params.turn_rate >= SimFloat::PI / SimFloat::from_int(4) {
-                    input.params.turn_rate.cos()
-                } else {
-                    // Approximation: 1 - t²/2 (avoids cos for small turn rates).
-                    let t = input.params.turn_rate;
-                    SimFloat::ONE - (t * t) / SimFloat::TWO
-                };
-
-                if dot >= cos_turn {
-                    // Within turn rate — face target directly.
-                    let heading = SimFloat::atan2(norm_z, norm_x);
-                    (norm_x, norm_z, heading)
-                } else {
-                    // Need to rotate. Use cross product for rotation direction.
-                    let cross = cur_dir_x * norm_z - cur_dir_z * norm_x;
-                    let turn = if cross >= SimFloat::ZERO {
-                        input.params.turn_rate
-                    } else {
-                        -input.params.turn_rate
-                    };
-                    let new_heading = wrap_angle(input.heading + turn);
-                    // Derive direction from new heading (two trig calls).
-                    (new_heading.cos(), new_heading.sin(), new_heading)
-                }
+            let new_heading = if abs_diff <= turn_rate_angle.0 {
+                // Within turn rate — snap to desired.
+                desired
+            } else if diff > 0 {
+                input.heading + turn_rate_angle
             } else {
-                (cur_dir_x, cur_dir_z, input.heading)
+                input.heading - turn_rate_angle
             };
 
-            // Accelerate along new direction.
-            // Avoid sqrt for speed: use length_squared and compare against max_speed_sq.
-            // Only compute actual speed when needed (not at max speed).
+            // Direction from heading via LUT sin/cos (fast table lookup).
+            let (dir_z, dir_x) = new_heading.sincos();
+
+            // Speed: avoid sqrt when at max speed.
             let cur_speed_sq = input.vel.length_squared();
             let max_speed_sq = input.params.max_speed * input.params.max_speed;
             let new_speed = if cur_speed_sq >= max_speed_sq {
                 input.params.max_speed
             } else {
-                // Only sqrt when accelerating (not at max speed).
                 let cur_speed = cur_speed_sq.sqrt();
                 (cur_speed + input.params.acceleration).min(input.params.max_speed)
             };
 
             let new_vel = SimVec3::new(
-                new_dir_x * new_speed,
+                dir_x * new_speed,
                 SimFloat::ZERO,
-                new_dir_z * new_speed,
+                dir_z * new_speed,
             );
             let new_pos = input.pos + new_vel;
 

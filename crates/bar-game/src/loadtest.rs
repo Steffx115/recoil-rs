@@ -156,7 +156,7 @@ fn spawn_loadtest_unit(
             radius: SimFloat::from_int(8),
         },
         Heading {
-            angle: SimFloat::ZERO,
+            angle: pierce_math::Angle::ZERO,
         },
         Velocity { vel: SimVec3::ZERO },
         ArmorClass::Light,

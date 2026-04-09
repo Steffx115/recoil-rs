@@ -300,7 +300,7 @@ pub(crate) fn spawn_armed_unit(
             radius: SimFloat::from_int(8),
         },
         pierce_sim::Heading {
-            angle: SimFloat::ZERO,
+            angle: pierce_math::Angle::ZERO,
         },
         pierce_sim::Velocity { vel: SimVec3::ZERO },
         ArmorClass::Light,

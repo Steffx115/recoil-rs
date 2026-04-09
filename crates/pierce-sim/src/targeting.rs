@@ -745,7 +745,7 @@ pub fn reload_system(world: &mut World) {
         weapon_count: usize,
         pos_x: SimFloat,
         pos_z: SimFloat,
-        heading: SimFloat,
+        heading: pierce_math::Angle,
         /// Pre-collected turret facings (cloned to avoid borrow conflicts).
         turret_facings: Option<Vec<SimFloat>>,
     }
@@ -762,7 +762,7 @@ pub fn reload_system(world: &mut World) {
                 weapon_count: weapon_set.weapons.len(),
                 pos_x: pos.pos.x,
                 pos_z: pos.pos.z,
-                heading: heading.map_or(SimFloat::ZERO, |h| h.angle),
+                heading: heading.map_or(pierce_math::Angle::ZERO, |h| h.angle),
                 turret_facings: turret_facings.map(|tf| tf.facings.iter().map(|f| f.facing).collect()),
             });
         }
@@ -813,7 +813,7 @@ pub fn reload_system(world: &mut World) {
                         if def.firing_arc > SimFloat::ZERO {
                             let angle_to =
                                 angle_to_target(info.pos_x, info.pos_z, tx, tz);
-                            let diff = normalize_angle(angle_to - info.heading);
+                            let diff = normalize_angle(angle_to - info.heading.to_radians());
                             if diff.abs() > def.firing_arc {
                                 continue;
                             }

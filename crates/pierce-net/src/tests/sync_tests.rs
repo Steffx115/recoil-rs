@@ -132,7 +132,7 @@ fn spawn_unit(world: &mut World, id: u64, x: i32, z: i32) {
         },
         Velocity { vel: SimVec3::ZERO },
         Heading {
-            angle: SimFloat::ZERO,
+            angle: pierce_sim::Heading { angle: Default::default() }.angle,
         },
         Health {
             current: SimFloat::from_int(100),
@@ -193,7 +193,7 @@ fn different_health_produces_different_health_hash() {
         },
         Velocity { vel: SimVec3::ZERO },
         Heading {
-            angle: SimFloat::ZERO,
+            angle: pierce_sim::Heading { angle: Default::default() }.angle,
         },
         Health {
             current: SimFloat::from_int(50),
@@ -228,7 +228,7 @@ fn different_move_state_produces_different_hash() {
         },
         Velocity { vel: SimVec3::ZERO },
         Heading {
-            angle: SimFloat::ZERO,
+            angle: pierce_sim::Heading { angle: Default::default() }.angle,
         },
         Health {
             current: SimFloat::from_int(100),

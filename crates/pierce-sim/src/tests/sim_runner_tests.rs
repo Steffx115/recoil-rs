@@ -45,7 +45,7 @@ fn spawn_full_unit(world: &mut World, x: SimFloat, z: SimFloat, team: u8) -> Ent
     world.entity_mut(entity).insert((
         Velocity { vel: SimVec3::ZERO },
         Heading {
-            angle: SimFloat::ZERO,
+            angle: pierce_math::Angle::ZERO,
         },
         MoveState::Idle,
         MovementParams {
@@ -84,7 +84,7 @@ fn spawn_armed_unit(
     world.entity_mut(entity).insert((
         Velocity { vel: SimVec3::ZERO },
         Heading {
-            angle: SimFloat::ZERO,
+            angle: pierce_math::Angle::ZERO,
         },
         MoveState::Idle,
         MovementParams {
