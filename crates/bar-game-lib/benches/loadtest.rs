@@ -118,6 +118,20 @@ fn main() {
     );
     fund_teams(&mut game.world);
 
+    // Wire GPU compute backends when feature is enabled.
+    #[cfg(feature = "gpu-compute")]
+    {
+        let (device, queue) = pierce_compute::create_headless_device();
+        let fog_compute = pierce_compute::GpuFogCompute::new(device.clone(), queue.clone());
+        let targeting_compute = pierce_compute::CpuTargetCompute; // GPU targeting TODO
+        game.world.insert_resource(pierce_sim::compute::ComputeBackends {
+            fog: Box::new(fog_compute),
+            targeting: Box::new(targeting_compute),
+        });
+        game.refresh_sim_caps();
+        eprintln!("GPU compute backends enabled");
+    }
+
     let weapon_id = register_weapon(&mut game.world);
 
     // Spawn team 0 on the left, team 1 on the right, marching toward each other

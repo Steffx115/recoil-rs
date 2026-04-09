@@ -7,8 +7,10 @@ description = "BAR game logic library — headless-capable, no rendering deps"
 
 [features]
 stress-tests = []
+gpu-compute = ["dep:pierce-compute"]
 
 [dependencies]
+pierce-compute = { path = "../pierce-compute", optional = true }
 pierce-math = { path = "../pierce-math" }
 pierce-sim = { path = "../pierce-sim" }
 anyhow = { workspace = true }
