@@ -91,7 +91,15 @@ impl App {
             .unwrap_or(2000);
 
         let map_path = if is_loadtest { LOADTEST_MAP_PATH } else { MAP_MANIFEST_PATH };
-        let game = GameState::new(Path::new(BAR_UNITS_PATH), Path::new(map_path));
+        let game = if is_loadtest {
+            GameState::with_options(
+                Path::new(BAR_UNITS_PATH),
+                Path::new(map_path),
+                bar_game_lib::InitOptions { fog_of_war: false },
+            )
+        } else {
+            GameState::new(Path::new(BAR_UNITS_PATH), Path::new(map_path))
+        };
         let (cx, cz) = game
             .commander_team0
             .and_then(|e| game.world.get::<Position>(e))
