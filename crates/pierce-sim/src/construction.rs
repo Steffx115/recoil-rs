@@ -294,15 +294,16 @@ pub fn repair_system(world: &mut World) {
             continue;
         }
 
-        // Repair amount this tick.
-        let repair_amount = build_power;
+        // Repair amount this tick (truncate fractional build power to whole HP).
+        let repair_amount = (build_power.raw() >> 32) as i32;
         let new_health = (current + repair_amount).min(max);
         let actual_repair = new_health - current;
 
         // Resource cost: proportional to repair fraction of max health.
         // Cost per HP = a reasonable fraction; we use 1 metal + 1 energy per HP.
-        let metal_cost = actual_repair;
-        let energy_cost = actual_repair;
+        let actual_repair_sf = SimFloat::from_int(actual_repair);
+        let metal_cost = actual_repair_sf;
+        let energy_cost = actual_repair_sf;
 
         // Deduct resources.
         {

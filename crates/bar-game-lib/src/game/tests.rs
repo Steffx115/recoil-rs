@@ -110,8 +110,8 @@ fn test_solar_produces_energy() {
             ),
         },
         Health {
-            current: SimFloat::from_int(500),
-            max: SimFloat::from_int(500),
+            current: 500,
+            max: 500,
         },
         pierce_sim::Allegiance { team: 0 },
         pierce_sim::UnitType {
@@ -175,8 +175,8 @@ fn test_mex_produces_metal() {
             ),
         },
         Health {
-            current: SimFloat::from_int(500),
-            max: SimFloat::from_int(500),
+            current: 500,
+            max: 500,
         },
         pierce_sim::Allegiance { team: 0 },
         pierce_sim::UnitType {
@@ -252,8 +252,8 @@ fn test_combat_units_take_damage() {
         pierce_sim::UnitType { id: 1 },
         pierce_sim::Allegiance { team: 0 },
         Health {
-            current: SimFloat::from_int(500),
-            max: SimFloat::from_int(500),
+            current: 500,
+            max: 500,
         },
     );
     game.world.entity_mut(unit_a).insert((
@@ -289,8 +289,8 @@ fn test_combat_units_take_damage() {
         pierce_sim::UnitType { id: 1 },
         pierce_sim::Allegiance { team: 1 },
         Health {
-            current: SimFloat::from_int(500),
-            max: SimFloat::from_int(500),
+            current: 500,
+            max: 500,
         },
     );
     game.world.entity_mut(unit_b).insert((
@@ -429,8 +429,8 @@ fn test_equip_factory_spawned_units() {
             },
             pierce_sim::Allegiance { team: 0 },
             Health {
-                current: SimFloat::from_int(200),
-                max: SimFloat::from_int(200),
+                current: 200,
+                max: 200,
             },
         ))
         .id();
@@ -606,8 +606,8 @@ fn test_reclaim_wreckage() {
                 reclaim_progress: SimFloat::ZERO,
             },
             Health {
-                current: SimFloat::from_int(100),
-                max: SimFloat::from_int(100),
+                current: 100,
+                max: 100,
             },
             pierce_sim::Allegiance { team: 0 },
         ))
@@ -881,8 +881,8 @@ fn test_projectiles_spawn_and_impact() {
     // Should have seen projectiles, and at least one unit took damage
     let hp_a = game.world.get::<Health>(unit_a).map(|h| h.current);
     let hp_b = game.world.get::<Health>(unit_b).map(|h| h.current);
-    let damage_dealt = hp_a.is_none_or(|h| h < SimFloat::from_int(5000))
-        || hp_b.is_none_or(|h| h < SimFloat::from_int(5000));
+    let damage_dealt = hp_a.is_none_or(|h| h < 5000)
+        || hp_b.is_none_or(|h| h < 5000);
 
     assert!(
         saw_projectile || damage_dealt,
@@ -1028,7 +1028,7 @@ fn test_factory_full_production_pipeline() {
             metal_cost: SimFloat::from_int(10),
             energy_cost: SimFloat::from_int(10),
             build_time: 5, // very fast
-            max_health: SimFloat::from_int(100),
+            max_health: 100,
         });
     }
 
@@ -1059,8 +1059,8 @@ fn test_factory_full_production_pipeline() {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
         ))
         .id();
@@ -1334,8 +1334,8 @@ fn test_handle_factory_queue() {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
         ))
         .id();
@@ -1378,8 +1378,8 @@ fn test_multi_building_economy_balance() {
                 ),
             },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
             pierce_sim::Allegiance { team: 0 },
             pierce_sim::UnitType {
@@ -1400,8 +1400,8 @@ fn test_multi_building_economy_balance() {
                 ),
             },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
             pierce_sim::Allegiance { team: 0 },
             pierce_sim::UnitType {
@@ -1847,7 +1847,7 @@ fn ui_factory_queue_and_produce() {
             metal_cost: SimFloat::from_int(10),
             energy_cost: SimFloat::from_int(10),
             build_time: 3,
-            max_health: SimFloat::from_int(100),
+            max_health: 100,
         });
     }
 
@@ -1878,8 +1878,8 @@ fn ui_factory_queue_and_produce() {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
         ))
         .id();
@@ -2293,7 +2293,7 @@ fn action_factory_spawned_unit_has_movestate() {
             metal_cost: SimFloat::from_int(5),
             energy_cost: SimFloat::from_int(5),
             build_time: 3,
-            max_health: SimFloat::from_int(100),
+            max_health: 100,
         });
     }
     // Also register a UnitDef so equip doesn't skip it.
@@ -2355,8 +2355,8 @@ fn action_factory_spawned_unit_has_movestate() {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
         ))
         .id();
@@ -2401,7 +2401,7 @@ fn action_select_and_move_spawned_unit() {
             metal_cost: SimFloat::from_int(5),
             energy_cost: SimFloat::from_int(5),
             build_time: 3,
-            max_health: SimFloat::from_int(100),
+            max_health: 100,
         });
     }
     {
@@ -2463,8 +2463,8 @@ fn action_select_and_move_spawned_unit() {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
         ))
         .id();
@@ -2561,8 +2561,8 @@ fn action_area_reclaim() {
             reclaim_progress: SimFloat::ZERO,
         },
         Health {
-            current: SimFloat::from_int(50),
-            max: SimFloat::from_int(50),
+            current: 50,
+            max: 50,
         },
         pierce_sim::Allegiance { team: 0 },
     ));
@@ -2606,7 +2606,7 @@ fn action_win_by_killing_commander() {
     let cmd1 = game.commander_team1.unwrap();
     // Kill enemy commander
     if let Some(mut hp) = game.world.get_mut::<Health>(cmd1) {
-        hp.current = SimFloat::ZERO;
+        hp.current = 0;
     }
 
     for _ in 0..10 {
@@ -2634,7 +2634,7 @@ fn action_game_over_freezes_sim() {
     // Kill enemy commander
     let cmd1 = game.commander_team1.unwrap();
     if let Some(mut hp) = game.world.get_mut::<Health>(cmd1) {
-        hp.current = SimFloat::ZERO;
+        hp.current = 0;
     }
     for _ in 0..10 {
         game.tick();
@@ -2837,7 +2837,7 @@ fn action_factory_repeat_mode() {
             metal_cost: SimFloat::from_int(5),
             energy_cost: SimFloat::from_int(5),
             build_time: 3,
-            max_health: SimFloat::from_int(100),
+            max_health: 100,
         });
     }
 
@@ -2862,8 +2862,8 @@ fn action_factory_repeat_mode() {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
         ))
         .id();
@@ -2903,8 +2903,8 @@ fn action_area_repair() {
                 ),
             },
             Health {
-                current: SimFloat::from_int(50),
-                max: SimFloat::from_int(200),
+                current: 50,
+                max: 200,
             },
             pierce_sim::Allegiance { team: 0 },
             pierce_sim::UnitType { id: 1 },
@@ -2950,7 +2950,7 @@ fn action_game_reset_after_game_over() {
 
     // Trigger game over
     let cmd1 = game.commander_team1.unwrap();
-    game.world.get_mut::<Health>(cmd1).unwrap().current = SimFloat::ZERO;
+    game.world.get_mut::<Health>(cmd1).unwrap().current = 0;
     for _ in 0..10 {
         game.tick();
         game.frame_count += 1;
@@ -3042,7 +3042,7 @@ fn action_resource_depletion_stalls_factory() {
             metal_cost: SimFloat::from_int(1000),
             energy_cost: SimFloat::from_int(1000),
             build_time: 10,
-            max_health: SimFloat::from_int(100),
+            max_health: 100,
         });
     }
 
@@ -3061,8 +3061,8 @@ fn action_resource_depletion_stalls_factory() {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
         ))
         .id();
@@ -3195,7 +3195,7 @@ fn action_multiple_factories_produce_simultaneously() {
             metal_cost: SimFloat::from_int(5),
             energy_cost: SimFloat::from_int(5),
             build_time: 5,
-            max_health: SimFloat::from_int(100),
+            max_health: 100,
         });
     }
     {
@@ -3258,8 +3258,8 @@ fn action_multiple_factories_produce_simultaneously() {
                     id: building::BUILDING_FACTORY_ID,
                 },
                 Health {
-                    current: SimFloat::from_int(500),
-                    max: SimFloat::from_int(500),
+                    current: 500,
+                    max: 500,
                 },
             ))
             .id();
@@ -3629,8 +3629,8 @@ fn mixed_area_commands_during_combat() {
                 reclaim_progress: SimFloat::ZERO,
             },
             Health {
-                current: SimFloat::from_int(30),
-                max: SimFloat::from_int(30),
+                current: 30,
+                max: 30,
             },
             pierce_sim::Allegiance { team: 0 },
         ));
@@ -3844,7 +3844,7 @@ fn negative_no_actions_after_game_over() {
 
     // Trigger game over
     let cmd1 = game.commander_team1.unwrap();
-    game.world.get_mut::<Health>(cmd1).unwrap().current = SimFloat::ZERO;
+    game.world.get_mut::<Health>(cmd1).unwrap().current = 0;
     for _ in 0..10 {
         game.tick();
         game.frame_count += 1;
@@ -3989,8 +3989,8 @@ fn collision_zero_radius_no_push() {
         pierce_sim::UnitType { id: 1 },
         pierce_sim::Allegiance { team: 0 },
         Health {
-            current: SimFloat::from_int(100),
-            max: SimFloat::from_int(100),
+            current: 100,
+            max: 100,
         },
     );
     game.world.entity_mut(u1).insert((
@@ -4021,8 +4021,8 @@ fn collision_zero_radius_no_push() {
         pierce_sim::UnitType { id: 1 },
         pierce_sim::Allegiance { team: 0 },
         Health {
-            current: SimFloat::from_int(100),
-            max: SimFloat::from_int(100),
+            current: 100,
+            max: 100,
         },
     );
     game.world.entity_mut(u2).insert((
@@ -4315,8 +4315,8 @@ fn verified_queue_unit_no_immediate_spawn() {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
         ))
         .id();
@@ -4448,7 +4448,7 @@ fn sim_factory_produces_one_unit_nothing_else() {
             metal_cost: SimFloat::from_int(5),
             energy_cost: SimFloat::from_int(5),
             build_time: 5,
-            max_health: SimFloat::from_int(100),
+            max_health: 100,
         });
     }
     {
@@ -4509,8 +4509,8 @@ fn sim_factory_produces_one_unit_nothing_else() {
                 id: building::BUILDING_FACTORY_ID,
             },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
         ))
         .id();
@@ -4638,8 +4638,8 @@ fn sim_building_complete_only_adds_producer() {
     game.world.spawn((
         Position { pos: solar_pos },
         Health {
-            current: SimFloat::from_int(500),
-            max: SimFloat::from_int(500),
+            current: 500,
+            max: 500,
         },
         pierce_sim::Allegiance { team: 0 },
         pierce_sim::UnitType {
@@ -4708,7 +4708,7 @@ fn sim_combat_only_affects_combatants() {
     let cmd1_hp_now = game
         .commander_team1
         .and_then(|e| game.world.get::<Health>(e))
-        .map(|h| h.current.to_f32());
+        .map(|h| h.current as f32);
     assert_eq!(
         cmd1_hp_before, cmd1_hp_now,
         "combat: cmd1 HP should be unchanged"
@@ -4718,11 +4718,11 @@ fn sim_combat_only_affects_combatants() {
     let att_hp = game
         .world
         .get::<Health>(attacker)
-        .map(|h| h.current.to_f32());
+        .map(|h| h.current as f32);
     let def_hp = game
         .world
         .get::<Health>(defender)
-        .map(|h| h.current.to_f32());
+        .map(|h| h.current as f32);
     let damage_dealt = att_hp.is_none_or(|h| h < 500.0) || def_hp.is_none_or(|h| h < 500.0);
     assert!(
         damage_dealt,
@@ -5036,7 +5036,7 @@ fn determinism_factory_production_during_combat() {
                 metal_cost: SimFloat::from_int(10),
                 energy_cost: SimFloat::from_int(10),
                 build_time: 10,
-                max_health: SimFloat::from_int(200),
+                max_health: 200,
             });
         }
 
@@ -5066,8 +5066,8 @@ fn determinism_factory_production_during_combat() {
                     id: building::BUILDING_FACTORY_ID,
                 },
                 Health {
-                    current: SimFloat::from_int(500),
-                    max: SimFloat::from_int(500),
+                    current: 500,
+                    max: 500,
                 },
             ))
             .id();
@@ -5172,8 +5172,8 @@ fn multi_team_economy_isolation() {
                 ),
             },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
             pierce_sim::Allegiance { team: 0 },
             pierce_sim::UnitType {

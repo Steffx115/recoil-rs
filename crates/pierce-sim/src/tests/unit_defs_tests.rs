@@ -137,7 +137,7 @@ fn to_unit_blueprint() {
     assert_eq!(bp.metal_cost, SimFloat::from_f64(60.0));
     assert_eq!(bp.energy_cost, SimFloat::from_f64(800.0));
     assert_eq!(bp.build_time, 120);
-    assert_eq!(bp.max_health, SimFloat::from_f64(200.0));
+    assert_eq!(bp.max_health, 200);
 }
 
 // -- Weapon conversion -----------------------------------------------------

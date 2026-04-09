@@ -135,8 +135,8 @@ fn spawn_unit(world: &mut World, id: u64, x: i32, z: i32) {
             angle: SimFloat::ZERO,
         },
         Health {
-            current: SimFloat::from_int(100),
-            max: SimFloat::from_int(100),
+            current: 100,
+            max: 100,
         },
         MoveState::Idle,
     ));
@@ -196,8 +196,8 @@ fn different_health_produces_different_health_hash() {
             angle: SimFloat::ZERO,
         },
         Health {
-            current: SimFloat::from_int(50),
-            max: SimFloat::from_int(100),
+            current: 50,
+            max: 100,
         },
         MoveState::Idle,
     ));
@@ -231,8 +231,8 @@ fn different_move_state_produces_different_hash() {
             angle: SimFloat::ZERO,
         },
         Health {
-            current: SimFloat::from_int(100),
-            max: SimFloat::from_int(100),
+            current: 100,
+            max: 100,
         },
         MoveState::MovingTo(SimVec3::new(
             SimFloat::from_int(50),

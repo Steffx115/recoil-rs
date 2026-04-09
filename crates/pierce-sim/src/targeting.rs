@@ -113,7 +113,7 @@ pub fn targeting_system(world: &mut World) {
             CandidateInfo {
                 team: allegiance.team,
                 is_dead: dead.is_some(),
-                health_positive: health.is_some_and(|h| h.current > SimFloat::ZERO),
+                health_positive: health.is_some_and(|h| h.current > 0),
                 pos_xz: SimVec2::new(pos.pos.x, pos.pos.z),
                 sim_id: sim_id.map_or(u64::MAX, |s| s.id),
             },

@@ -76,8 +76,8 @@ fn targets_closest_enemy() {
             pos3(12, 0, 10),
             Allegiance { team: 2 },
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
             SimId { id: 2 },
         ))
@@ -90,8 +90,8 @@ fn targets_closest_enemy() {
             pos3(30, 0, 10),
             Allegiance { team: 2 },
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
             SimId { id: 3 },
         ))
@@ -127,8 +127,8 @@ fn ignores_allies() {
             pos3(11, 0, 10),
             Allegiance { team: 1 },
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
             SimId { id: 2 },
         ))
@@ -141,8 +141,8 @@ fn ignores_allies() {
             pos3(20, 0, 10),
             Allegiance { team: 2 },
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
             SimId { id: 3 },
         ))
@@ -178,8 +178,8 @@ fn no_target_when_no_enemies_in_range() {
             pos3(90, 0, 90),
             Allegiance { team: 2 },
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
             SimId { id: 2 },
         ))
@@ -202,8 +202,8 @@ fn weapons_reload_and_fire() {
             pos3(12, 0, 10),
             Allegiance { team: 2 },
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
             SimId { id: 2 },
         ))
@@ -273,8 +273,8 @@ fn determinism_same_distance_sorted_by_sim_id() {
             pos3(15, 0, 10),
             Allegiance { team: 2 },
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
             SimId { id: 100 },
         ))
@@ -286,8 +286,8 @@ fn determinism_same_distance_sorted_by_sim_id() {
             pos3(10, 0, 15),
             Allegiance { team: 2 },
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
             SimId { id: 50 },
         ))
@@ -329,8 +329,8 @@ fn ignores_dead_entities() {
             pos3(11, 0, 10),
             Allegiance { team: 2 },
             Health {
-                current: sf(0),
-                max: sf(100),
+                current: 0,
+                max: 100,
             },
             Dead,
             SimId { id: 2 },
@@ -344,8 +344,8 @@ fn ignores_dead_entities() {
             pos3(20, 0, 10),
             Allegiance { team: 2 },
             Health {
-                current: sf(50),
-                max: sf(100),
+                current: 50,
+                max: 100,
             },
             SimId { id: 3 },
         ))

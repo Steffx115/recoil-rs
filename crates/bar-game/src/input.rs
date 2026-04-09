@@ -46,7 +46,7 @@ pub fn unit_instances(
                 c[1] *= 0.5;
                 c[2] *= 0.5;
             }
-            let f = (hp.current.to_f32() / hp.max.to_f32().max(1.0)).clamp(0.2, 1.0);
+            let f = (hp.current as f32 / (hp.max as f32).max(1.0)).clamp(0.2, 1.0);
             c[0] *= f;
             c[1] *= f;
             c[2] *= f;
@@ -94,7 +94,7 @@ pub fn building_instances(game: &mut GameState) -> Vec<UnitInstance> {
                 c[1] *= 0.5;
                 c[2] *= 0.5;
             }
-            let f = (hp.current.to_f32() / hp.max.to_f32().max(1.0)).clamp(0.2, 1.0);
+            let f = (hp.current as f32 / (hp.max as f32).max(1.0)).clamp(0.2, 1.0);
             c[0] *= f;
             c[1] *= f;
             c[2] *= f;
@@ -316,7 +316,7 @@ pub fn gather_ui_data(
     if let Some(sel) = game.selected() {
         if game.world.get_entity(sel).is_ok() {
             if let Some(hp) = game.world.get::<Health>(sel) {
-                selected_hp = Some((hp.current.to_f32(), hp.max.to_f32()));
+                selected_hp = Some((hp.current as f32, hp.max as f32));
             }
             if let Some(ut) = game.world.get::<UnitType>(sel) {
                 let registry = game.world.resource::<UnitDefRegistry>();
@@ -387,7 +387,7 @@ pub fn gather_ui_data(
         .query_filtered::<(Entity, &Position, &Health, &Allegiance, Option<&BuildSite>), Without<Dead>>()
         .iter(&game.world)
     {
-        let frac = if hp.max > SimFloat::ZERO { hp.current.to_f32() / hp.max.to_f32() } else { 1.0 };
+        let frac = if hp.max > 0 { hp.current as f32 / hp.max as f32 } else { 1.0 };
         let is_sel = selected_set.contains(&entity);
         // Only show if damaged, selected, or under construction.
         if frac >= 1.0 && !is_sel && bs.is_none() { continue; }

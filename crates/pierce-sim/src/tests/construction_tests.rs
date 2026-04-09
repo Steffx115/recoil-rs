@@ -16,8 +16,8 @@ fn builder_completes_build_site() {
     let nanoframe = world
         .spawn((
             Health {
-                current: SimFloat::ZERO,
-                max: SimFloat::from_int(100),
+                current: 0,
+                max: 100,
             },
             BuildSite {
                 metal_cost: SimFloat::from_int(100),
@@ -67,8 +67,8 @@ fn builder_stops_and_clears_target_after_construction() {
     let nanoframe = world
         .spawn((
             Health {
-                current: SimFloat::ZERO,
-                max: SimFloat::from_int(100),
+                current: 0,
+                max: 100,
             },
             BuildSite {
                 metal_cost: SimFloat::from_int(100),
@@ -124,8 +124,8 @@ fn multiple_builders_speed_up_construction() {
     let nanoframe = world
         .spawn((
             Health {
-                current: SimFloat::ZERO,
-                max: SimFloat::from_int(100),
+                current: 0,
+                max: 100,
             },
             BuildSite {
                 metal_cost: SimFloat::from_int(100),
@@ -223,8 +223,8 @@ fn stalled_economy_slows_construction() {
     let nanoframe = world
         .spawn((
             Health {
-                current: SimFloat::ZERO,
-                max: SimFloat::from_int(100),
+                current: 0,
+                max: 100,
             },
             BuildSite {
                 metal_cost: SimFloat::from_int(100),
@@ -264,8 +264,8 @@ fn repair_restores_health() {
     let unit = world
         .spawn((
             Health {
-                current: SimFloat::from_int(50),
-                max: SimFloat::from_int(100),
+                current: 50,
+                max: 100,
             },
             Allegiance { team: 1 },
         ))
@@ -285,7 +285,7 @@ fn repair_restores_health() {
     let health = world.get::<Health>(unit).unwrap();
     assert_eq!(
         health.current,
-        SimFloat::from_int(70),
+        70,
         "Repair should restore 20 HP"
     );
 
@@ -295,7 +295,7 @@ fn repair_restores_health() {
     let health = world.get::<Health>(unit).unwrap();
     assert_eq!(
         health.current,
-        SimFloat::from_int(100),
+        100,
         "Repair should not exceed max health"
     );
 }

@@ -67,11 +67,11 @@ impl Snapshot {
         let cmd0_hp = game
             .commander_team0
             .and_then(|e| game.world.get::<Health>(e))
-            .map(|h| h.current.to_f32());
+            .map(|h| h.current as f32);
         let cmd1_hp = game
             .commander_team1
             .and_then(|e| game.world.get::<Health>(e))
-            .map(|h| h.current.to_f32());
+            .map(|h| h.current as f32);
         let (metal_t0, energy_t0) = {
             let eco = game.world.resource::<EconomyState>();
             eco.teams
@@ -155,7 +155,7 @@ impl Snapshot {
         let now = game
             .commander_team0
             .and_then(|e| game.world.get::<Health>(e))
-            .map(|h| h.current.to_f32());
+            .map(|h| h.current as f32);
         assert_eq!(self.cmd0_hp, now, "Cmd0 HP changed: {}", msg);
     }
 }
@@ -276,8 +276,8 @@ pub(crate) fn spawn_armed_unit(
         pierce_sim::UnitType { id: 1 },
         pierce_sim::Allegiance { team },
         Health {
-            current: SimFloat::from_int(hp),
-            max: SimFloat::from_int(hp),
+            current: hp,
+            max: hp,
         },
     );
     game.world.entity_mut(entity).insert((
@@ -341,7 +341,7 @@ pub(crate) fn all_health(game: &mut GameState) -> Vec<(u64, f32, f32)> {
         .world
         .query_filtered::<(&pierce_sim::SimId, &Health), Without<Dead>>()
         .iter(&game.world)
-        .map(|(sid, h)| (sid.id, h.current.to_f32(), h.max.to_f32()))
+        .map(|(sid, h)| (sid.id, h.current as f32, h.max as f32))
         .collect();
     out.sort_by_key(|(id, _, _)| *id);
     out

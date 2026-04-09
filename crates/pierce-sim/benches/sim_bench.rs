@@ -43,8 +43,8 @@ fn spawn_full_unit(world: &mut World, x: SimFloat, z: SimFloat, team: u8) -> Ent
         UnitType { id: 1 },
         Allegiance { team },
         Health {
-            current: SimFloat::from_int(100),
-            max: SimFloat::from_int(100),
+            current: 100,
+            max: 100,
         },
     );
     world.entity_mut(entity).insert((

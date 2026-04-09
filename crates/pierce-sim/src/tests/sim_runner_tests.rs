@@ -38,8 +38,8 @@ fn spawn_full_unit(world: &mut World, x: SimFloat, z: SimFloat, team: u8) -> Ent
         UnitType { id: 1 },
         Allegiance { team },
         Health {
-            current: SimFloat::from_int(100),
-            max: SimFloat::from_int(100),
+            current: 100,
+            max: 100,
         },
     );
     world.entity_mut(entity).insert((
@@ -77,8 +77,8 @@ fn spawn_armed_unit(
         UnitType { id: 1 },
         Allegiance { team },
         Health {
-            current: SimFloat::from_int(hp),
-            max: SimFloat::from_int(hp),
+            current: hp,
+            max: hp,
         },
     );
     world.entity_mut(entity).insert((
@@ -405,7 +405,7 @@ fn test_rapid_spawn_despawn() {
             // Kill 25 of them (set health to zero, damage_system marks dead).
             for &e in &batch[..25] {
                 if let Some(mut h) = world.get_mut::<Health>(e) {
-                    h.current = SimFloat::ZERO;
+                    h.current = 0;
                 }
             }
 
@@ -656,8 +656,8 @@ fn test_building_death_restores_terrain() {
                 ),
             },
             Health {
-                current: SimFloat::from_int(100),
-                max: SimFloat::from_int(100),
+                current: 100,
+                max: 100,
             },
             fp,
         ))

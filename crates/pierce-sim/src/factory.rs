@@ -30,7 +30,7 @@ pub struct UnitBlueprint {
     pub energy_cost: SimFloat,
     /// Frames to complete at full build power (no stall).
     pub build_time: u32,
-    pub max_health: SimFloat,
+    pub max_health: i32,
 }
 
 // ---------------------------------------------------------------------------

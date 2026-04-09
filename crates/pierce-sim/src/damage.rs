@@ -135,7 +135,7 @@ pub fn damage_system(world: &mut World) {
         } else {
             // Subtract from health.
             if let Some(mut health) = world.get_mut::<Health>(event.target) {
-                health.current -= event.amount;
+                health.current -= (event.amount.raw() >> 32) as i32;
             }
         }
     }
@@ -146,7 +146,7 @@ pub fn damage_system(world: &mut World) {
         query
             .iter(world)
             .filter(|(entity, health, _)| {
-                health.current <= SimFloat::ZERO && world.get::<Dead>(*entity).is_none()
+                health.current <= 0 && world.get::<Dead>(*entity).is_none()
             })
             .map(|(entity, _, pos)| (entity, pos.clone()))
             .collect()
@@ -160,7 +160,7 @@ pub fn damage_system(world: &mut World) {
         // unit cost (a real game would look up the unit def's metal cost).
         let base_value = world
             .get::<Health>(*entity)
-            .map(|h| h.max * SimFloat::HALF)
+            .map(|h| SimFloat::from_int(h.max) * SimFloat::HALF)
             .unwrap_or(SimFloat::ZERO);
 
         // Spawn wreckage entity at the same position.

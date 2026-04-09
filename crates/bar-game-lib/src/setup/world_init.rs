@@ -84,7 +84,7 @@ pub fn init_world(
             } else {
                 60
             },
-            max_health: SimFloat::from_f64(def.max_health),
+            max_health: def.max_health as i32,
         });
     }
     world.insert_resource(unit_registry);
@@ -152,7 +152,7 @@ pub fn spawn_commander(
     let (hp, max_speed, accel, turn_rate, collision_r, sight_r, armor_class, unit_type_id) =
         if let Some(def) = found_def {
             (
-                SimFloat::from_f64(def.max_health),
+                def.max_health as i32,
                 SimFloat::from_f64(def.max_speed),
                 SimFloat::from_f64(def.acceleration),
                 SimFloat::from_f64(def.turn_rate),
@@ -164,7 +164,7 @@ pub fn spawn_commander(
         } else {
             // Fallback commander stats
             (
-                SimFloat::from_int(3000),
+                3000i32,
                 SimFloat::from_ratio(3, 2),
                 SimFloat::ONE,
                 SimFloat::PI / SimFloat::from_int(30),
