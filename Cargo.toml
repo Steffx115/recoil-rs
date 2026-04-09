@@ -85,10 +85,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [profile.release]
 codegen-units = 8
 
-# Profiling: release + PDB debug symbols for WPR/WPA
+# Profiling: debug symbols only for local crates, not deps
 [profile.profiling]
 inherits = "release"
 debug = "line-tables-only"
+
+[profile.profiling.package."*"]
+debug = false
 
 [profile.bench]
 inherits = "release"
