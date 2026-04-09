@@ -5,6 +5,7 @@
 //! defined in `pierce-sim::compute`.
 
 pub mod cpu_batch;
+pub mod cpu_batch_libm;
 pub mod cpu_fog;
 pub mod cpu_targeting;
 
@@ -22,6 +23,7 @@ pub mod gpu_targeting;
 pub mod gpu_manager;
 
 pub use cpu_batch::CpuBatchMath;
+pub use cpu_batch_libm::CpuBatchMathLibm;
 pub use cpu_fog::CpuFogCompute;
 pub use cpu_targeting::CpuTargetCompute;
 

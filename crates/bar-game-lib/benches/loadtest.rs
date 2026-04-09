@@ -142,7 +142,7 @@ fn main() {
     #[cfg(not(feature = "gpu-compute"))]
     {
         game.world.insert_resource(pierce_sim::compute::BatchMathBackend {
-            ops: Box::new(pierce_compute::CpuBatchMath),
+            ops: Box::new(pierce_compute::CpuBatchMathLibm),
         });
         eprintln!("CPU batch math backend enabled");
     }

@@ -64,6 +64,9 @@ bytemuck = { version = "1", features = ["derive"] }
 # Parallelism
 rayon = "1"
 
+# Deterministic cross-platform math (pure Rust, no system libm)
+libm = "0.2"
+
 # Async block_on
 pollster = "0.4"
 
