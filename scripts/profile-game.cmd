@@ -3,12 +3,7 @@
 :: Usage: profile-game.cmd [--loadtest] [--max-units N]
 ::
 :: Requires: WPR (Windows Performance Toolkit), run as Administrator
-:: Output: profile-game.etl (open with WPA - Windows Performance Analyzer)
-::
-:: Examples:
-::   profile-game.cmd                                Normal game
-::   profile-game.cmd --loadtest                     Loadtest mode
-::   profile-game.cmd --loadtest --max-units 5000    5000 units
+:: Output: profile-game.etl (open with WPA)
 
 setlocal enabledelayedexpansion
 set GAME_ARGS=
@@ -22,7 +17,7 @@ goto parse_args
 
 cd /d "%~dp0.."
 
-:: Set symbol path so WPA finds PDBs
+:: Set symbol path for WPA
 set _NT_SYMBOL_PATH=%CD%\target\profiling;%CD%\target\profiling\deps;%_NT_SYMBOL_PATH%
 
 echo Building game (profiling profile)...
@@ -45,27 +40,26 @@ echo Launching game... Close the window to stop profiling.
 if defined GAME_ARGS (
     echo Game args:%GAME_ARGS%
 )
-:: Run in separate process to avoid COM threading conflict with WPR
-start /wait "" target\profiling\bar-game.exe%GAME_ARGS%
+
+:: Write temporary stop script
+echo @echo off > "%TEMP%\wpr_stop.cmd"
+echo wpr -stop "%CD%\profile-game.etl" >> "%TEMP%\wpr_stop.cmd"
+
+:: Run game
+target\profiling\bar-game.exe%GAME_ARGS%
 
 echo.
-echo Stopping WPR trace...
-wpr -stop profile-game.etl
-if %ERRORLEVEL% equ 0 (
+echo Stopping WPR trace (separate process)...
+cmd /c "%TEMP%\wpr_stop.cmd"
+
+if exist profile-game.etl (
     echo.
     echo Trace saved to profile-game.etl
     echo Opening in WPA...
     start "" profile-game.etl
 ) else (
     echo.
-    echo WPR stop failed. Trying xperf fallback...
-    xperf -stop
-    xperf -d profile-game.etl
-    if %ERRORLEVEL% equ 0 (
-        echo Trace saved via xperf fallback.
-        start "" profile-game.etl
-    ) else (
-        echo Failed to save trace. Run: wpr -cancel
-    )
+    echo Trace save failed. Try manually:
+    echo   wpr -stop profile-game.etl
 )
 endlocal
