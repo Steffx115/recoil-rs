@@ -28,10 +28,31 @@ use super::GameConfig;
 ///
 /// Consumes the loaded `UnitDefRegistry` and `MapData` and populates the
 /// ECS world with all resources and starting entities.
+/// Options for world initialization.
+pub struct InitOptions {
+    /// Enable fog of war. Default: `true`.
+    pub fog_of_war: bool,
+}
+
+impl Default for InitOptions {
+    fn default() -> Self {
+        Self { fog_of_war: true }
+    }
+}
+
 pub fn init_world(
     world: &mut World,
     unit_def_registry: UnitDefRegistry,
     map_data: &MapData,
+) -> GameConfig {
+    init_world_with_options(world, unit_def_registry, map_data, InitOptions::default())
+}
+
+pub fn init_world_with_options(
+    world: &mut World,
+    unit_def_registry: UnitDefRegistry,
+    map_data: &MapData,
+    options: InitOptions,
 ) -> GameConfig {
     // Register weapon defs
     let mut weapon_def_ids: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
@@ -68,10 +89,12 @@ pub fn init_world(
         world.insert_resource(pierce_sim::map::MetalSpots { spots });
     }
 
-    // Fog of War — grid covers at least 1024x1024 world units (with cell_size=1
-    // used in sim_tick's fog_system call). Matches the spatial grid extent.
-    let fog = FogOfWar::new(1024, 1024, &[0, 1]);
-    world.insert_resource(fog);
+    // Fog of War — only insert if enabled. sim_tick skips fog when the
+    // resource is absent, so omitting it disables fog entirely.
+    if options.fog_of_war {
+        let fog = FogOfWar::new(1024, 1024, &[0, 1]);
+        world.insert_resource(fog);
+    }
 
     // Build UnitRegistry for factory_system from loaded UnitDefs
     let mut unit_registry = UnitRegistry::default();

@@ -37,6 +37,7 @@ fn register_weapon(world: &mut World) -> u32 {
         projectile_speed: SimFloat::from_int(10),
         area_of_effect: SimFloat::ZERO,
         is_paralyzer: false,
+        ..Default::default()
     });
     id
 }

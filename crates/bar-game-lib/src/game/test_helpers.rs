@@ -167,6 +167,17 @@ pub(crate) fn make_test_game() -> GameState {
     GameState::new(bar_units, map_manifest)
 }
 
+/// Helper: create a GameState with fog of war disabled.
+pub(crate) fn make_test_game_no_fog() -> GameState {
+    let bar_units = Path::new("nonexistent/units");
+    let map_manifest = Path::new("assets/maps/small_duel/manifest.ron");
+    GameState::with_options(
+        bar_units,
+        map_manifest,
+        crate::setup::InitOptions { fog_of_war: false },
+    )
+}
+
 /// Give both teams abundant resources.
 pub(crate) fn fund_both_teams(game: &mut GameState) {
     let mut economy = game.world.resource_mut::<EconomyState>();

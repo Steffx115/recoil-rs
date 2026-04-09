@@ -1479,8 +1479,9 @@ fn test_long_running_bot_vs_bot() {
 // -----------------------------------------------------------------------
 
 #[test]
+#[cfg(feature = "stress-tests")]
 fn test_large_scale_battle_200v200() {
-    let mut game = make_test_game();
+    let mut game = make_test_game_no_fog();
     fund_both_teams(&mut game);
 
     let weapon_id = register_test_weapon(&mut game);

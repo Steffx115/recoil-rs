@@ -14,7 +14,7 @@ use pierce_sim::sim_runner;
 
 // Re-export public items so callers see the same API as before.
 pub use unit_loader::load_unit_defs;
-pub use world_init::spawn_commander;
+pub use world_init::{spawn_commander, InitOptions};
 
 /// Configuration produced by game setup, containing IDs needed later.
 pub struct GameConfig {
@@ -36,10 +36,19 @@ pub fn setup_game(
     bar_units_path: &Path,
     map_manifest_path: &Path,
 ) -> GameConfig {
+    setup_game_with_options(world, bar_units_path, map_manifest_path, InitOptions::default())
+}
+
+pub fn setup_game_with_options(
+    world: &mut World,
+    bar_units_path: &Path,
+    map_manifest_path: &Path,
+    options: InitOptions,
+) -> GameConfig {
     sim_runner::init_sim_world(world);
 
     let unit_def_registry = unit_loader::load_unit_defs(bar_units_path);
     let map_data = map_loader::load_map(map_manifest_path);
 
-    world_init::init_world(world, unit_def_registry, &map_data)
+    world_init::init_world_with_options(world, unit_def_registry, &map_data, options)
 }

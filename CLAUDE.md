@@ -17,10 +17,11 @@
 ## Build & Test
 
 ```bash
-cargo test --release --workspace -- --test-threads=4  # run all tests (release, capped threads)
-cargo clippy --workspace --all-targets                # lint (CI uses -D warnings via RUSTFLAGS)
-cargo fmt --all --check                               # format check
-cargo build --release -p bar-game                     # full release build
+cargo test --release --workspace -- --test-threads=4                          # run all tests
+cargo test --release -p bar-game-lib --features stress-tests -- --test-threads=4  # include stress tests
+cargo clippy --workspace --all-targets                                        # lint
+cargo fmt --all --check                                                       # format check
+cargo build --release -p bar-game                                             # full release build
 ```
 
 - **Always run tests in release mode** (`--release`). Debug tests are 5-10x slower.

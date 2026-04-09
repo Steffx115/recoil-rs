@@ -64,8 +64,13 @@ pub struct GameState {
 impl GameState {
     /// Create a new game state, performing full game setup.
     pub fn new(bar_units_path: &Path, map_manifest_path: &Path) -> Self {
+        Self::with_options(bar_units_path, map_manifest_path, setup::InitOptions::default())
+    }
+
+    /// Create a new game state with custom options (e.g. fog disabled).
+    pub fn with_options(bar_units_path: &Path, map_manifest_path: &Path, options: setup::InitOptions) -> Self {
         let mut world = World::new();
-        let config = setup::setup_game(&mut world, bar_units_path, map_manifest_path);
+        let config = setup::setup_game_with_options(&mut world, bar_units_path, map_manifest_path, options);
 
         let ai_state = AiState::new(42, 1, 0, config.commander_team1, config.commander_team0);
 

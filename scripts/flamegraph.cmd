@@ -23,7 +23,7 @@ echo Load test: %UNITS% units/team, %FRAMES% frames
 echo Output: %OUTPUT%
 
 cd /d "%~dp0.."
-cargo flamegraph --bench loadtest -p bar-game-lib -o "%OUTPUT%" -- %UNITS% %FRAMES%
+cargo flamegraph --profile profiling --bench loadtest -p bar-game-lib -o "%OUTPUT%" -- %UNITS% %FRAMES%
 
 if %ERRORLEVEL% equ 0 (
     echo.
