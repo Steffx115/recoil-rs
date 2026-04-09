@@ -260,6 +260,7 @@ impl Command {
 ///
 /// Falls back to the original `target` when pathfinding is unavailable or
 /// finds no detour.
+#[cfg(not(feature = "flowfield-pathing"))]
 fn compute_pathfinding_waypoints(world: &mut World, entity: Entity, target: SimVec3) -> SimVec3 {
     let unit_pos = match world.get::<Position>(entity) {
         Some(p) => p.pos,
