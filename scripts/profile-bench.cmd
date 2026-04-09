@@ -35,7 +35,9 @@ if %ERRORLEVEL% neq 0 (
 echo.
 echo Running loadtest: %UNITS% units/team, %FRAMES% frames...
 for %%f in (target\profiling\deps\loadtest-*.exe) do set "BENCH_EXE=%%f"
-"%BENCH_EXE%" %UNITS% %FRAMES%
+
+:: Run in a separate process to avoid COM threading conflict with WPR
+start /wait "" "%BENCH_EXE%" %UNITS% %FRAMES%
 
 echo.
 echo Stopping WPR trace...
@@ -47,6 +49,15 @@ if %ERRORLEVEL% equ 0 (
     echo Opening in WPA...
     start "" profile-bench.etl
 ) else (
-    echo Failed to save trace.
+    echo.
+    echo WPR stop failed. Trying xperf fallback...
+    xperf -stop
+    xperf -d profile-bench.etl
+    if %ERRORLEVEL% equ 0 (
+        echo Trace saved via xperf fallback.
+        start "" profile-bench.etl
+    ) else (
+        echo Failed to save trace. Run: wpr -cancel
+    )
 )
 endlocal

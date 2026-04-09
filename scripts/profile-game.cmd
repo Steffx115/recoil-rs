@@ -45,7 +45,8 @@ echo Launching game... Close the window to stop profiling.
 if defined GAME_ARGS (
     echo Game args:%GAME_ARGS%
 )
-target\profiling\bar-game.exe%GAME_ARGS%
+:: Run in separate process to avoid COM threading conflict with WPR
+start /wait "" target\profiling\bar-game.exe%GAME_ARGS%
 
 echo.
 echo Stopping WPR trace...
@@ -56,6 +57,15 @@ if %ERRORLEVEL% equ 0 (
     echo Opening in WPA...
     start "" profile-game.etl
 ) else (
-    echo Failed to save trace.
+    echo.
+    echo WPR stop failed. Trying xperf fallback...
+    xperf -stop
+    xperf -d profile-game.etl
+    if %ERRORLEVEL% equ 0 (
+        echo Trace saved via xperf fallback.
+        start "" profile-game.etl
+    ) else (
+        echo Failed to save trace. Run: wpr -cancel
+    )
 )
 endlocal
