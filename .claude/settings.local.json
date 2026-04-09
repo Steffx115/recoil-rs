@@ -13,7 +13,10 @@
       "Bash(kill %1)",
       "Bash(RUST_LOG=warn target/debug/bar-game.exe)",
       "Bash(target/debug/bar-game.exe)",
-      "Read(//c/Users/Stefan/.claude/**)"
+      "Read(//c/Users/Stefan/.claude/**)",
+      "Bash(export JIRA_API_TOKEN=\"ATATT3xFfGF0jJuMwm3o0TD61s3K93goxMSEoQZf3hV0ICooF7KCoEwsCfM-2r2um71r9dLwokPPjhh6-hKLy13lNWnimwrV-mbbPBuCNap1Q-3cRU11PIilWCp6GcA3nzShJA3EVk-fRCIA-eHRNgCUAbhkrUBlrO8eU3WCwaEd7_zAqsn_jgg=BCD21AFF\")",
+      "Bash(bash C:/Users/Stefan/source/repos/bar/recoil-rust/scripts/jira.sh issues RR 5)",
+      "Bash(jira.sh:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -185,13 +185,22 @@ pub fn fog_system(world: &mut World, cell_size: SimFloat) {
 ///
 /// Converts the position to a fog grid cell using `grid_cell_size` and
 /// then queries the fog resource.
+///
+/// Positions outside the fog grid (negative or beyond grid extents) are
+/// treated as **visible** -- the fog grid only restricts visibility for
+/// cells it actually covers.
 pub fn is_entity_visible(fog: &FogOfWar, team: u8, pos: SimVec3, grid_cell_size: SimFloat) -> bool {
     let cell_x = floor_to_i32(pos.x / grid_cell_size);
     let cell_y = floor_to_i32(pos.z / grid_cell_size);
     if cell_x < 0 || cell_y < 0 {
-        return false;
+        return true;
     }
-    fog.is_visible(team, cell_x as u32, cell_y as u32)
+    let cx = cell_x as u32;
+    let cy = cell_y as u32;
+    if cx >= fog.width() || cy >= fog.height() {
+        return true;
+    }
+    fog.is_visible(team, cx, cy)
 }
 
 // ---------------------------------------------------------------------------

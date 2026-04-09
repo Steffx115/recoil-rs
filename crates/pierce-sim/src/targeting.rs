@@ -9,8 +9,9 @@ use bevy_ecs::world::World;
 
 use crate::combat_data::{WeaponDef, WeaponSet};
 use crate::components::{Allegiance, Dead, Health, Position, SimId, Target};
+use crate::fog::{is_entity_visible, FogOfWar};
 use crate::spatial::SpatialGrid;
-use crate::{SimFloat, SimVec2};
+use crate::{SimFloat, SimVec2, SimVec3};
 
 // ---------------------------------------------------------------------------
 // Resources
@@ -51,6 +52,7 @@ pub fn targeting_system(world: &mut World) {
     // Collect query data so we can mutate Target afterwards.
     let grid = world.resource::<SpatialGrid>().clone();
     let registry = world.resource::<WeaponRegistry>().clone();
+    let fog = world.get_resource::<FogOfWar>().cloned();
 
     // Gather shooter info.
     struct ShooterInfo {
@@ -93,6 +95,7 @@ pub fn targeting_system(world: &mut World) {
         is_dead: bool,
         health_positive: bool,
         pos_xz: SimVec2,
+        pos_3d: SimVec3,
         sim_id: u64,
     }
 
@@ -115,6 +118,7 @@ pub fn targeting_system(world: &mut World) {
                 is_dead: dead.is_some(),
                 health_positive: health.is_some_and(|h| h.current > SimFloat::ZERO),
                 pos_xz: SimVec2::new(pos.pos.x, pos.pos.z),
+                pos_3d: pos.pos,
                 sim_id: sim_id.map_or(u64::MAX, |s| s.id),
             },
         );
@@ -151,6 +155,13 @@ pub fn targeting_system(world: &mut World) {
             // Must be alive (Health.current > 0).
             if !info.health_positive {
                 continue;
+            }
+
+            // Must be visible in fog of war (if fog exists).
+            if let Some(ref fog) = fog {
+                if !is_entity_visible(fog, shooter.team, info.pos_3d, SimFloat::ONE) {
+                    continue;
+                }
             }
 
             let dist_sq = shooter.pos_xz.distance_squared(info.pos_xz);
