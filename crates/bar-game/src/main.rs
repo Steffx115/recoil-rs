@@ -292,12 +292,11 @@ impl ApplicationHandler for App {
         {
             let device = renderer.gpu.device.clone();
             let queue = renderer.gpu.queue.clone();
-            let fog_compute = pierce_compute::GpuFogCompute::new(device.clone(), queue.clone());
-            let targeting_compute = pierce_compute::GpuTargetingCompute::new(device, queue);
+            let manager = pierce_compute::GpuComputeManager::new(device, queue);
             self.game.world.insert_resource(
                 pierce_sim::compute::ComputeBackends {
-                    fog: Box::new(fog_compute),
-                    targeting: Box::new(targeting_compute),
+                    fog: Box::new(manager),
+                    targeting: Box::new(pierce_compute::CpuTargetCompute),
                 },
             );
             // Refresh sim capabilities since we added ComputeBackends.

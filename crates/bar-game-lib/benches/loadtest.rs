@@ -122,11 +122,10 @@ fn main() {
     #[cfg(feature = "gpu-compute")]
     {
         let (device, queue) = pierce_compute::create_headless_device();
-        let fog_compute = pierce_compute::GpuFogCompute::new(device.clone(), queue.clone());
-        let targeting_compute = pierce_compute::GpuTargetingCompute::new(device.clone(), queue.clone());
+        let manager = pierce_compute::GpuComputeManager::new(device, queue);
         game.world.insert_resource(pierce_sim::compute::ComputeBackends {
-            fog: Box::new(fog_compute),
-            targeting: Box::new(targeting_compute),
+            fog: Box::new(manager),
+            targeting: Box::new(pierce_compute::CpuTargetCompute),
         });
         game.refresh_sim_caps();
         eprintln!("GPU compute backends enabled");
