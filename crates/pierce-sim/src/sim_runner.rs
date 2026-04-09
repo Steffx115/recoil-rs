@@ -25,26 +25,32 @@ use crate::spatial::SpatialGrid;
 use crate::targeting::{reload_system, targeting_system, FireEventQueue, WeaponRegistry};
 use crate::{SimFloat, SimVec2};
 
-/// Run one frame of the simulation in the correct system order.
-///
-///  1. Rebuild [`SpatialGrid`] from all [`Position`] components.
-///  2. [`command_system`]
-///  3. [`economy_system`]
-///  4. [`shield_regen_system`]
-///  5. [`fog_system`] (if [`FogOfWar`] resource exists) -- before targeting
-///  6. [`movement_system`]
-///  7. [`collision_system`]
-///  8. [`targeting_system`] (respects fog visibility)
-///  9. [`reload_system`]
-/// 10. [`spawn_projectile_system`]
-/// 11. [`shield_absorb_system`] (intercepts projectiles before movement)
-/// 12. [`projectile_movement_system`]
-/// 13. [`damage_system`]
-/// 14. [`stun_system`]
-/// 15. [`factory_system`] (if [`UnitRegistry`] resource exists)
-/// 16. [`footprint_cleanup_system`] (restore terrain for dead buildings)
-/// 17. [`cleanup_dead`]
-pub fn sim_tick(world: &mut World) {
+/// Cached resource presence flags to avoid per-tick TypeId lookups.
+#[derive(Clone, Copy)]
+pub struct SimCapabilities {
+    pub has_economy: bool,
+    pub has_fog: bool,
+    pub has_weapons: bool,
+    pub has_impacts: bool,
+    pub has_factory: bool,
+}
+
+impl SimCapabilities {
+    /// Probe the world once and cache which optional resources exist.
+    pub fn detect(world: &World) -> Self {
+        Self {
+            has_economy: world.contains_resource::<EconomyState>(),
+            has_fog: world.contains_resource::<FogOfWar>(),
+            has_weapons: world.contains_resource::<WeaponRegistry>(),
+            has_impacts: world.contains_resource::<ImpactEventQueue>(),
+            has_factory: world.contains_resource::<UnitRegistry>(),
+        }
+    }
+}
+
+/// Run one frame of the simulation. Use [`SimCapabilities::detect`] once
+/// after world setup and pass the result each tick.
+pub fn sim_tick_with(world: &mut World, caps: &SimCapabilities) {
     // 1. Rebuild spatial grid (exclude Dead entities)
     {
         let entities: Vec<(Entity, SimVec2)> = world
@@ -64,7 +70,7 @@ pub fn sim_tick(world: &mut World) {
     command_system(world);
 
     // 3. Economy
-    if world.contains_resource::<EconomyState>() {
+    if caps.has_economy {
         economy_system(world);
     }
 
@@ -72,7 +78,7 @@ pub fn sim_tick(world: &mut World) {
     shield_regen_system(world);
 
     // 5. Fog of war (before targeting so visibility is up-to-date)
-    if world.contains_resource::<FogOfWar>() {
+    if caps.has_fog {
         let cell_size = SimFloat::ONE;
         fog_system(world, cell_size);
     }
@@ -84,17 +90,17 @@ pub fn sim_tick(world: &mut World) {
     collision_system(world);
 
     // 8. Targeting (respects fog visibility)
-    if world.contains_resource::<WeaponRegistry>() {
+    if caps.has_weapons {
         targeting_system(world);
     }
 
     // 9. Reload (weapon cooldowns -> fire events)
-    if world.contains_resource::<WeaponRegistry>() {
+    if caps.has_weapons {
         reload_system(world);
     }
 
     // 10. Spawn projectiles from fire events
-    if world.contains_resource::<WeaponRegistry>() {
+    if caps.has_weapons {
         spawn_projectile_system(world);
     }
 
@@ -102,12 +108,12 @@ pub fn sim_tick(world: &mut World) {
     shield_absorb_system(world);
 
     // 12. Projectile movement and impact detection
-    if world.contains_resource::<ImpactEventQueue>() {
+    if caps.has_impacts {
         projectile_movement_system(world);
     }
 
     // 13. Damage application
-    if world.contains_resource::<ImpactEventQueue>() {
+    if caps.has_impacts {
         damage_system(world);
     }
 
@@ -115,7 +121,7 @@ pub fn sim_tick(world: &mut World) {
     stun_system(world);
 
     // 15. Factory production (only if registry exists)
-    if world.contains_resource::<UnitRegistry>() {
+    if caps.has_factory {
         factory_system(world);
     }
 
@@ -126,11 +132,14 @@ pub fn sim_tick(world: &mut World) {
     cleanup_dead(world);
 }
 
+/// Convenience: detect capabilities and run one tick.
+/// Prefer [`sim_tick_with`] in hot loops to avoid per-tick detection.
+pub fn sim_tick(world: &mut World) {
+    let caps = SimCapabilities::detect(world);
+    sim_tick_with(world, &caps);
+}
+
 /// Compute a deterministic hash of all sim-relevant state.
-///
-/// Queries all entities with [`SimId`], sorted by `SimId.id`, and hashes
-/// their core components: SimId, Position, Velocity, Heading, Health,
-/// MoveState, Stunned.
 pub fn world_checksum(world: &mut World) -> u64 {
     let mut entries: Vec<(u64, Entity)> = world
         .query::<(Entity, &SimId)>()
@@ -169,10 +178,6 @@ pub fn world_checksum(world: &mut World) -> u64 {
 }
 
 /// Initialize a world for simulation with all system resources.
-///
-/// Inserts lifecycle resources, a [`SpatialGrid`], a [`TerrainGrid`],
-/// and combat resources ([`WeaponRegistry`], [`DamageTable`],
-/// [`FireEventQueue`], [`ImpactEventQueue`], [`EconomyState`]).
 pub fn init_sim_world(world: &mut World) {
     init_lifecycle(world);
     world.insert_resource(SpatialGrid::new(SimFloat::from_int(16), 64, 64));
