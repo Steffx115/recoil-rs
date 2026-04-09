@@ -85,10 +85,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [profile.release]
 codegen-units = 8
 
-# Profiling: debug symbols only for hot-path crates, not all deps
+# Profiling: minimal debug symbols everywhere (PDB required by WPR),
+# full line-tables for hot-path crates
 [profile.profiling]
 inherits = "release"
-debug = false
+debug = 1
 
 [profile.profiling.package.pierce-sim]
 debug = "line-tables-only"
