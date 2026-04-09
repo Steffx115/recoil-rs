@@ -209,10 +209,10 @@ fn fog_system_with_backend(world: &mut World, cell_size: SimFloat) {
     };
     let prev = fog.grids_as_u8();
 
-    // Take the backend out to avoid borrow conflicts.
-    let mut backends = world.remove_resource::<ComputeBackends>().unwrap();
-    let result = backends.fog.compute_fog(&params, &units, &prev);
-    world.insert_resource(backends);
+    // Use resource_scope to avoid remove/re-insert overhead.
+    let result = world.resource_scope(|_world, mut backends: bevy_ecs::prelude::Mut<ComputeBackends>| {
+        backends.fog.compute_fog(&params, &units, &prev)
+    });
 
     // Apply results.
     let mut fog = fog;

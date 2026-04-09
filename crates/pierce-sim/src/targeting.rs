@@ -617,17 +617,17 @@ fn targeting_system_with_backend(world: &mut World) {
         (None, 0, 0, 0)
     };
 
-    // Dispatch to backend.
-    let mut backends = world.remove_resource::<ComputeBackends>().unwrap();
-    let results = backends.targeting.compute_targets(
-        &shooters,
-        &candidates,
-        fog_grids.as_ref(),
-        fog_width,
-        fog_height,
-        fog_cell_raw,
-    );
-    world.insert_resource(backends);
+    // Dispatch to backend via resource_scope (avoids remove/re-insert).
+    let results = world.resource_scope(|_world, mut backends: bevy_ecs::prelude::Mut<crate::compute::ComputeBackends>| {
+        backends.targeting.compute_targets(
+            &shooters,
+            &candidates,
+            fog_grids.as_ref(),
+            fog_width,
+            fog_height,
+            fog_cell_raw,
+        )
+    });
 
     // Apply results: map candidate indices back to entities.
     for (i, &target_idx) in results.iter().enumerate() {
