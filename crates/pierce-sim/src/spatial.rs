@@ -81,6 +81,7 @@ impl SpatialGrid {
         radius: SimFloat,
         mut f: impl FnMut(Entity, SimVec2),
     ) {
+        let radius_sq = radius * radius;
         let min = SimVec2::new(center.x - radius, center.y - radius);
         let max = SimVec2::new(center.x + radius, center.y + radius);
         let (min_cx, min_cz) = self.cell_coords(min);
@@ -114,8 +115,6 @@ impl SpatialGrid {
                     }
 
                     // For borderline cases, do the precise SimFloat check.
-                    // This path is hit rarely (only for entities near the radius boundary).
-                    let radius_sq = radius * radius;
                     if pos.distance_squared(center) <= radius_sq {
                         f(entity, pos);
                     }
