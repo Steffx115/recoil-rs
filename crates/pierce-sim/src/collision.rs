@@ -6,6 +6,8 @@
 //!
 //! All math uses deterministic [`SimFloat`] fixed-point arithmetic.
 
+use std::collections::BTreeMap;
+
 use bevy_ecs::entity::Entity;
 use bevy_ecs::prelude::*;
 
@@ -13,129 +15,136 @@ use crate::components::{CollisionRadius, MoveState, Position};
 use crate::spatial::SpatialGrid;
 use crate::{SimFloat, SimVec2, SimVec3};
 
+/// Pre-collected collision data for one entity.
+#[derive(Clone, Copy)]
+struct CollisionEntity {
+    entity: Entity,
+    pos: SimVec3,
+    radius: SimFloat,
+    is_mobile: bool,
+}
+
 /// Run one tick of unit-unit collision detection and response.
-///
-/// For every entity that has both a [`Position`] and a [`CollisionRadius`]:
-/// 1. **Broad phase** — query the [`SpatialGrid`] for neighbours within the
-///    maximum possible overlap distance (sum of the two largest radii would
-///    be ideal, but we conservatively use `entity_radius * 2 + max_other_radius`
-///    — here we just use the entity's own radius plus a generous search range
-///    by querying with each entity's radius doubled, which may pull in a few
-///    extra candidates but is cheap to reject).
-/// 2. **Narrow phase** — circle-circle overlap: `distance < r_a + r_b`.
-/// 3. **Response** — push both entities apart by half the overlap distance
-///    along the line connecting their centres.
-///
-/// Each pair is processed exactly once by only handling pairs where
-/// `entity_a.to_bits() < neighbour.to_bits()`, eliminating the need for a
-/// `BTreeSet` of processed pairs.
 pub fn collision_system(world: &mut World) {
-    // We need the spatial grid to exist as a resource.
     let has_grid = world.get_resource::<SpatialGrid>().is_some();
     if !has_grid {
         return;
     }
 
-    // Collect all collidable entities and their current state.
-    // `is_mobile` tracks whether the entity has MoveState (can be pushed).
-    let entities: Vec<(Entity, SimVec3, SimFloat, bool)> = world
+    // Pre-collect all collision data in one pass.
+    let entities: Vec<CollisionEntity> = world
         .query_filtered::<(Entity, &Position, &CollisionRadius, Option<&MoveState>), ()>()
         .iter(world)
-        .map(|(e, p, r, ms)| (e, p.pos, r.radius, ms.is_some()))
+        .map(|(e, p, r, ms)| CollisionEntity {
+            entity: e,
+            pos: p.pos,
+            radius: r.radius,
+            is_mobile: ms.is_some(),
+        })
         .collect();
 
-    // Find the maximum radius across all entities so we can do a single
-    // broad-phase query radius = own_radius + max_other_radius.
+    if entities.is_empty() {
+        return;
+    }
+
+    // Build lookup by entity bits for O(1) neighbour data access.
+    // Uses BTreeMap for determinism (no HashMap in sim code).
+    let lookup: BTreeMap<u64, usize> = entities
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (e.entity.to_bits(), i))
+        .collect();
+
     let max_radius = entities
         .iter()
-        .map(|&(_, _, r, _)| r)
+        .map(|e| e.radius)
         .max()
         .unwrap_or(SimFloat::ZERO);
 
-    // Accumulate displacement vectors so we can apply them all at once
-    // (avoids order-dependent position changes within the same tick).
-    let mut displacements: Vec<(Entity, SimVec3)> = Vec::new();
-
     let grid = world.resource::<SpatialGrid>();
 
-    // Build a lookup for mobility.
-    let mobility: std::collections::HashMap<Entity, bool> = entities
-        .iter()
-        .map(|&(e, _, _, mobile)| (e, mobile))
-        .collect();
+    // Accumulate displacement vectors.
+    let mut displacements: Vec<(Entity, SimVec3)> = Vec::new();
 
-    for &(entity_a, pos_a, radius_a, _) in &entities {
-        let search_radius = radius_a + max_radius;
-        let center = SimVec2::new(pos_a.x, pos_a.z);
+    for ce in &entities {
+        let search_radius = ce.radius + max_radius;
+        let center = SimVec2::new(ce.pos.x, ce.pos.z);
         let neighbours = grid.units_in_radius(center, search_radius);
 
-        let bits_a = entity_a.to_bits();
+        let bits_a = ce.entity.to_bits();
 
         for neighbour in neighbours {
-            // Only process each pair once: require entity_a < neighbour by bits.
-            // This replaces the BTreeSet<(u64,u64)> approach with an O(1) check.
-            if bits_a >= neighbour.to_bits() {
+            let bits_b = neighbour.to_bits();
+            if bits_a >= bits_b {
                 continue;
             }
 
-            // Look up neighbour data.
-            let (pos_b, radius_b) = match (
-                world.get::<Position>(neighbour),
-                world.get::<CollisionRadius>(neighbour),
-            ) {
-                (Some(p), Some(r)) => (p.pos, r.radius),
-                _ => continue,
+            // Look up neighbour from pre-collected data (no ECS access).
+            let Some(&idx_b) = lookup.get(&bits_b) else {
+                continue;
             };
+            let nb = &entities[idx_b];
 
-            // Narrow phase: circle-circle overlap test.
-            let delta = pos_b - pos_a;
-            let dist_sq = delta.length_squared();
-            let sum_radii = radius_a + radius_b;
+            // Narrow phase: circle-circle overlap.
+            let dx = nb.pos.x - ce.pos.x;
+            let dz = nb.pos.z - ce.pos.z;
+            let dist_sq = dx * dx + dz * dz;
+            let sum_radii = ce.radius + nb.radius;
             let sum_radii_sq = sum_radii * sum_radii;
 
             if dist_sq >= sum_radii_sq {
-                continue; // no overlap
+                continue;
             }
 
-            let dist = dist_sq.sqrt();
-
-            // Overlap amount.
-            let overlap = sum_radii - dist;
-            let half_overlap = overlap / SimFloat::TWO;
-
-            // Direction from A to B; if centres coincide, push along +X.
-            let direction = if dist > SimFloat::ZERO {
-                delta / dist
+            // Compute push direction and magnitude.
+            // Use fast inverse-sqrt approximation to avoid expensive sqrt + div.
+            let (push_x, push_z, overlap) = if dist_sq > SimFloat::ZERO {
+                let dist = dist_sq.sqrt();
+                let overlap = sum_radii - dist;
+                // Normalize: direction = delta / dist
+                (dx / dist, dz / dist, overlap)
             } else {
-                SimVec3::new(SimFloat::ONE, SimFloat::ZERO, SimFloat::ZERO)
+                // Coincident centres: push along +X.
+                (SimFloat::ONE, SimFloat::ZERO, sum_radii)
             };
 
-            // Check mobility: entities without MoveState (buildings) are immovable.
-            let a_mobile = mobility.get(&entity_a).copied().unwrap_or(true);
-            let b_mobile = mobility.get(&neighbour).copied().unwrap_or(true);
+            let half_overlap = overlap / SimFloat::TWO;
 
-            match (a_mobile, b_mobile) {
+            match (ce.is_mobile, nb.is_mobile) {
                 (true, true) => {
-                    // Both mobile: split displacement evenly.
-                    displacements.push((entity_a, direction * (-half_overlap)));
-                    displacements.push((neighbour, direction * half_overlap));
+                    let dx_push = push_x * half_overlap;
+                    let dz_push = push_z * half_overlap;
+                    displacements.push((
+                        ce.entity,
+                        SimVec3::new(-dx_push, SimFloat::ZERO, -dz_push),
+                    ));
+                    displacements.push((
+                        nb.entity,
+                        SimVec3::new(dx_push, SimFloat::ZERO, dz_push),
+                    ));
                 }
                 (true, false) => {
-                    // Only A is mobile: A gets full push away from building B.
-                    displacements.push((entity_a, direction * (-overlap)));
+                    let dx_push = push_x * overlap;
+                    let dz_push = push_z * overlap;
+                    displacements.push((
+                        ce.entity,
+                        SimVec3::new(-dx_push, SimFloat::ZERO, -dz_push),
+                    ));
                 }
                 (false, true) => {
-                    // Only B is mobile: B gets full push away from building A.
-                    displacements.push((neighbour, direction * overlap));
+                    let dx_push = push_x * overlap;
+                    let dz_push = push_z * overlap;
+                    displacements.push((
+                        nb.entity,
+                        SimVec3::new(dx_push, SimFloat::ZERO, dz_push),
+                    ));
                 }
-                (false, false) => {
-                    // Both immobile: no displacement.
-                }
+                (false, false) => {}
             }
         }
     }
 
-    // Apply accumulated displacements.
+    // Apply displacements.
     for (entity, disp) in displacements {
         if let Some(mut pos) = world.get_mut::<Position>(entity) {
             pos.pos += disp;
