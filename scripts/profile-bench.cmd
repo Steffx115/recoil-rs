@@ -7,6 +7,7 @@
 :: Output: profile-bench.etl (open with WPA - Windows Performance Analyzer)
 
 setlocal
+set "WPR=C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\wpr.exe"
 set UNITS=%~1
 set FRAMES=%~2
 if "%UNITS%"=="" set UNITS=500
@@ -26,7 +27,7 @@ if %ERRORLEVEL% neq 0 (
 
 echo.
 echo Starting WPR trace (CPU sampling + context switches)...
-wpr -start CPU -start DiskIO
+"%WPR%" -start CPU -start DiskIO
 if %ERRORLEVEL% neq 0 (
     echo WPR failed. Run as Administrator.
     exit /b 1
@@ -38,14 +39,14 @@ set "BENCH_EXE="
 for %%f in (target\profiling\deps\loadtest-*.exe) do set "BENCH_EXE=%%f"
 if not defined BENCH_EXE (
     echo No loadtest binary found.
-    wpr -cancel
+    "%WPR%" -cancel
     exit /b 1
 )
 "%BENCH_EXE%" %UNITS% %FRAMES%
 
 echo.
 echo Stopping WPR trace...
-wpr -stop profile-bench.etl
+"%WPR%" -stop profile-bench.etl
 if %ERRORLEVEL% equ 0 (
     echo.
     echo Trace saved to profile-bench.etl
@@ -53,5 +54,6 @@ if %ERRORLEVEL% equ 0 (
     start "" profile-bench.etl
 ) else (
     echo Failed to save trace.
+    "%WPR%" -cancel
 )
 endlocal

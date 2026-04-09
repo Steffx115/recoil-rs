@@ -11,6 +11,7 @@
 ::   profile-game.cmd --loadtest --max-units 5000    5000 units
 
 setlocal enabledelayedexpansion
+set "WPR=C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\wpr.exe"
 set GAME_ARGS=
 
 :parse_args
@@ -34,7 +35,7 @@ if %ERRORLEVEL% neq 0 (
 
 echo.
 echo Starting WPR trace (CPU + GPU + DiskIO)...
-wpr -start CPU -start GPU -start DiskIO
+"%WPR%" -start CPU -start GPU -start DiskIO
 if %ERRORLEVEL% neq 0 (
     echo WPR failed. Run as Administrator.
     exit /b 1
@@ -49,7 +50,7 @@ target\profiling\bar-game.exe%GAME_ARGS%
 
 echo.
 echo Stopping WPR trace...
-wpr -stop profile-game.etl
+"%WPR%" -stop profile-game.etl
 if %ERRORLEVEL% equ 0 (
     echo.
     echo Trace saved to profile-game.etl
