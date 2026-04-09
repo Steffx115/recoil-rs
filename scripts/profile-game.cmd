@@ -17,7 +17,6 @@ goto parse_args
 
 cd /d "%~dp0.."
 
-:: Set symbol path for WPA
 set _NT_SYMBOL_PATH=%CD%\target\profiling;%CD%\target\profiling\deps;%_NT_SYMBOL_PATH%
 
 echo Building game (profiling profile)...
@@ -40,17 +39,11 @@ echo Launching game... Close the window to stop profiling.
 if defined GAME_ARGS (
     echo Game args:%GAME_ARGS%
 )
-
-:: Write temporary stop script
-echo @echo off > "%TEMP%\wpr_stop.cmd"
-echo wpr -stop "%CD%\profile-game.etl" >> "%TEMP%\wpr_stop.cmd"
-
-:: Run game
 target\profiling\bar-game.exe%GAME_ARGS%
 
 echo.
-echo Stopping WPR trace (separate process)...
-cmd /c "%TEMP%\wpr_stop.cmd"
+echo Stopping WPR trace via PowerShell...
+powershell -NoProfile -Command "wpr -stop '%CD%\profile-game.etl'"
 
 if exist profile-game.etl (
     echo.
@@ -59,7 +52,7 @@ if exist profile-game.etl (
     start "" profile-game.etl
 ) else (
     echo.
-    echo Trace save failed. Try manually:
-    echo   wpr -stop profile-game.etl
+    echo Trace save failed. Try manually in a new PowerShell:
+    echo   wpr -stop %CD%\profile-game.etl
 )
 endlocal

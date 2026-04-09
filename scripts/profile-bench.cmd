@@ -14,7 +14,6 @@ if "%FRAMES%"=="" set FRAMES=600
 
 cd /d "%~dp0.."
 
-:: Set symbol path for WPA
 set _NT_SYMBOL_PATH=%CD%\target\profiling\deps;%_NT_SYMBOL_PATH%
 
 echo Building loadtest bench (profiling profile)...
@@ -36,19 +35,11 @@ if %ERRORLEVEL% neq 0 (
 
 echo.
 echo Running loadtest: %UNITS% units/team, %FRAMES% frames...
-echo When the bench finishes, the trace will be saved automatically.
-echo.
-
-:: Write a temporary stop script that runs in a clean cmd process
-echo @echo off > "%TEMP%\wpr_stop.cmd"
-echo wpr -stop "%CD%\profile-bench.etl" >> "%TEMP%\wpr_stop.cmd"
-
-:: Run bench, then stop WPR in a fresh cmd
 "%BENCH_EXE%" %UNITS% %FRAMES%
 
 echo.
-echo Stopping WPR trace (separate process)...
-cmd /c "%TEMP%\wpr_stop.cmd"
+echo Stopping WPR trace via PowerShell...
+powershell -NoProfile -Command "wpr -stop '%CD%\profile-bench.etl'"
 
 if exist profile-bench.etl (
     echo.
@@ -57,7 +48,7 @@ if exist profile-bench.etl (
     start "" profile-bench.etl
 ) else (
     echo.
-    echo Trace save failed. Try manually:
-    echo   wpr -stop profile-bench.etl
+    echo Trace save failed. Try manually in a new PowerShell:
+    echo   wpr -stop %CD%\profile-bench.etl
 )
 endlocal
