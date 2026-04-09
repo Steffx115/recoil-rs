@@ -85,13 +85,25 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [profile.release]
 codegen-units = 8
 
-# Profiling: debug symbols only for local crates, not deps
+# Profiling: debug symbols only for hot-path crates, not all deps
 [profile.profiling]
 inherits = "release"
+debug = false
+
+[profile.profiling.package.pierce-sim]
 debug = "line-tables-only"
 
-[profile.profiling.package."*"]
-debug = false
+[profile.profiling.package.pierce-math]
+debug = "line-tables-only"
+
+[profile.profiling.package.pierce-compute]
+debug = "line-tables-only"
+
+[profile.profiling.package.bar-game-lib]
+debug = "line-tables-only"
+
+[profile.profiling.package.bar-game]
+debug = "line-tables-only"
 
 [profile.bench]
 inherits = "release"
