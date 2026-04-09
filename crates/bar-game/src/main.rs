@@ -255,6 +255,25 @@ impl ApplicationHandler for App {
         self.egui_state = Some(egui_state);
         self.egui_renderer = Some(egui_renderer);
         self.window = Some(window);
+
+        // Wire GPU compute backends for fog and targeting.
+        #[cfg(feature = "gpu-compute")]
+        {
+            let device = Arc::clone(&renderer.gpu.device);
+            let queue = Arc::clone(&renderer.gpu.queue);
+            let fog_compute = pierce_compute::GpuFogCompute::new(device.clone(), queue.clone());
+            // TODO: GpuTargetingCompute when implemented
+            let targeting_compute = pierce_compute::CpuTargetCompute;
+            self.game.world.insert_resource(
+                pierce_sim::compute::ComputeBackends {
+                    fog: Box::new(fog_compute),
+                    targeting: Box::new(targeting_compute),
+                },
+            );
+            // Refresh sim capabilities since we added ComputeBackends.
+            self.game.refresh_sim_caps();
+        }
+
         self.renderer = Some(renderer);
     }
 

@@ -181,6 +181,11 @@ impl GameState {
         }
     }
 
+    /// Re-detect sim capabilities (call after inserting/removing resources like ComputeBackends).
+    pub fn refresh_sim_caps(&mut self) {
+        self.sim_caps = pierce_sim::sim_runner::SimCapabilities::detect(&self.world);
+    }
+
     /// Run one simulation tick. Returns (impact_positions, death_positions) for rendering.
     pub fn tick(&mut self) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
         if self.game_over.is_some() || self.paused {

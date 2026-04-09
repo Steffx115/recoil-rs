@@ -40,14 +40,6 @@ impl Default for InitOptions {
     }
 }
 
-pub fn init_world(
-    world: &mut World,
-    unit_def_registry: UnitDefRegistry,
-    map_data: &MapData,
-) -> GameConfig {
-    init_world_with_options(world, unit_def_registry, map_data, InitOptions::default())
-}
-
 pub fn init_world_with_options(
     world: &mut World,
     unit_def_registry: UnitDefRegistry,

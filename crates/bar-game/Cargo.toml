@@ -5,8 +5,12 @@ edition.workspace = true
 license.workspace = true
 description = "BAR-inspired RTS game binary"
 
+[features]
+gpu-compute = ["dep:pierce-compute"]
+
 [dependencies]
 bar-game-lib = { path = "../bar-game-lib" }
+pierce-compute = { path = "../pierce-compute", optional = true }
 pierce-math = { path = "../pierce-math" }
 pierce-sim = { path = "../pierce-sim" }
 pierce-net = { path = "../pierce-net" }

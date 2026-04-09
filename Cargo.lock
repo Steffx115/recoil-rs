@@ -230,6 +230,7 @@ dependencies = [
  "image",
  "pierce-audio",
  "pierce-cob",
+ "pierce-compute",
  "pierce-math",
  "pierce-model",
  "pierce-net",
