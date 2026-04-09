@@ -23,6 +23,10 @@ pub struct Renderer {
 impl Renderer {
     /// Create a new renderer for the given window.
     pub async fn new(window: Arc<Window>) -> Result<Self> {
+        Self::with_map_size(window, 1024.0).await
+    }
+
+    pub async fn with_map_size(window: Arc<Window>, map_world_size: f32) -> Result<Self> {
         let gpu = GpuContext::new(window).await?;
 
         let camera = Camera {
@@ -32,7 +36,7 @@ impl Renderer {
 
         let shadow = ShadowResources::new(&gpu.device);
 
-        let terrain = TerrainResources::new(&gpu, &camera, shadow.bind_group_layout())
+        let terrain = TerrainResources::with_map_size(&gpu, &camera, shadow.bind_group_layout(), map_world_size)
             .context("failed to create terrain resources")?;
 
         let unit_renderer = UnitRenderer::new(

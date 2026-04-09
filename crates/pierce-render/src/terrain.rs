@@ -286,6 +286,15 @@ impl TerrainResources {
         camera: &Camera,
         shadow_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> Result<Self> {
+        Self::with_map_size(gpu, camera, shadow_bind_group_layout, 1024.0)
+    }
+
+    pub fn with_map_size(
+        gpu: &GpuContext,
+        camera: &Camera,
+        shadow_bind_group_layout: &wgpu::BindGroupLayout,
+        map_world_size: f32,
+    ) -> Result<Self> {
         let device = &gpu.device;
 
         // --- Shader module ---
@@ -295,7 +304,8 @@ impl TerrainResources {
         });
 
         // --- Mesh ---
-        let (vertices, indices) = generate_grid(128, 8.0); // 128*8=1024 world units (matches Small Duel map)
+        let grid_cells = (map_world_size / 8.0).ceil() as u32;
+        let (vertices, indices) = generate_grid(grid_cells, 8.0);
         let index_count = indices.len() as u32;
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

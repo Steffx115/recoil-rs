@@ -71,6 +71,7 @@ struct App {
     fps_counter: FpsCounter,
     icon_atlas: Option<IconAtlas>,
     loadtest: loadtest::LoadtestState,
+    map_world_size: f32,
 }
 
 const LOADTEST_MAP_PATH: &str = "assets/maps/loadtest/manifest.ron";
@@ -91,6 +92,8 @@ impl App {
             .unwrap_or(2000);
 
         let map_path = if is_loadtest { LOADTEST_MAP_PATH } else { MAP_MANIFEST_PATH };
+        // Compute map world size from manifest for renderer terrain.
+        let map_world_size = if is_loadtest { 2048.0 } else { 1024.0 };
         let game = if is_loadtest {
             GameState::with_options(
                 Path::new(BAR_UNITS_PATH),
@@ -122,6 +125,7 @@ impl App {
             egui_renderer: None,
             fps_counter: FpsCounter::new(),
             icon_atlas: None,
+            map_world_size,
             loadtest: if is_loadtest {
                 loadtest::LoadtestState::new(units_per_wave, max_units)
             } else {
@@ -256,7 +260,7 @@ impl ApplicationHandler for App {
             .with_inner_size(PhysicalSize::new(1280u32, 720u32));
         let window = Arc::new(event_loop.create_window(attrs).expect("window"));
         let mut renderer =
-            pollster::block_on(Renderer::new(Arc::clone(&window))).expect("renderer");
+            pollster::block_on(Renderer::with_map_size(Arc::clone(&window), self.map_world_size)).expect("renderer");
 
         let registry = self.game.world.resource::<UnitDefRegistry>();
         Self::load_models(&mut renderer, &mut self.animation_driver, &mut self.piece_trees, registry);
