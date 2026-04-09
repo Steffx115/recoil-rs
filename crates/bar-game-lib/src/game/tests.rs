@@ -1475,6 +1475,85 @@ fn test_long_running_bot_vs_bot() {
 }
 
 // -----------------------------------------------------------------------
+// Large-scale stress: 200 units per team in head-on battle
+// -----------------------------------------------------------------------
+
+#[test]
+fn test_large_scale_battle_200v200() {
+    let mut game = make_test_game();
+    fund_both_teams(&mut game);
+
+    let weapon_id = register_test_weapon(&mut game);
+
+    // Spawn 200 units per team in a grid formation
+    let cols = 15;
+    let spacing = 20;
+    for i in 0..200 {
+        let row = i as i32 / cols;
+        let col = i as i32 % cols;
+        // Team 0: left side
+        spawn_armed_unit(&mut game, 100 + col * spacing, 100 + row * spacing, 0, weapon_id, 500);
+        // Team 1: right side
+        spawn_armed_unit(&mut game, 500 + col * spacing, 100 + row * spacing, 1, weapon_id, 500);
+    }
+
+    // Issue move commands toward each other
+    {
+        use pierce_sim::commands::CommandQueue;
+        use pierce_sim::Command;
+
+        let units: Vec<(bevy_ecs::entity::Entity, u8)> = game
+            .world
+            .query::<(bevy_ecs::entity::Entity, &pierce_sim::Allegiance, &CommandQueue)>()
+            .iter(&game.world)
+            .map(|(e, a, _)| (e, a.team))
+            .collect();
+
+        for (entity, team) in units {
+            let target_x = if team == 0 { 450 } else { 150 };
+            if let Some(mut cq) = game.world.get_mut::<CommandQueue>(entity) {
+                cq.replace(Command::Move(pierce_math::SimVec3::new(
+                    pierce_math::SimFloat::from_int(target_x),
+                    pierce_math::SimFloat::ZERO,
+                    pierce_math::SimFloat::from_int(300),
+                )));
+            }
+        }
+    }
+
+    // Run 2000 frames — enough to close distance, engage, and inflict casualties
+    for _ in 0..2000 {
+        game.tick();
+        game.frame_count += 1;
+    }
+
+    // Count survivors per team
+    let mut t0_alive = 0usize;
+    let mut t1_alive = 0usize;
+    for allegiance in game
+        .world
+        .query_filtered::<&pierce_sim::Allegiance, Without<Dead>>()
+        .iter(&game.world)
+    {
+        match allegiance.team {
+            0 => t0_alive += 1,
+            1 => t1_alive += 1,
+            _ => {}
+        }
+    }
+
+    // At least some units should have died (combat happened)
+    let total_alive = t0_alive + t1_alive;
+    assert!(
+        total_alive < 400 + 2, // +2 for commanders
+        "Expected casualties in 200v200 battle, but {} units still alive",
+        total_alive
+    );
+    // Game should still be coherent
+    assert_eq!(game.frame_count, 2000);
+}
+
+// -----------------------------------------------------------------------
 // Tick returns impact and death positions
 // -----------------------------------------------------------------------
 
