@@ -93,6 +93,13 @@ pub fn sim_tick_with(world: &mut World, caps: &SimCapabilities) {
         // Store Arc snapshot for rayon-parallel systems (avoids full grid clone).
         frame.grid_snapshot = Some(std::sync::Arc::new(grid.clone()));
 
+        // Store weapon registry snapshot (only once — it doesn't change).
+        if frame.registry_snapshot.is_none() {
+            if let Some(reg) = world.get_resource::<crate::targeting::WeaponRegistry>() {
+                frame.registry_snapshot = Some(std::sync::Arc::new(reg.clone()));
+            }
+        }
+
         world.insert_resource(frame);
     }
 

@@ -10,6 +10,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Resource;
 
 use crate::spatial::SpatialGrid;
+use crate::targeting::WeaponRegistry;
 use crate::{SimFloat, SimVec2, SimVec3};
 
 /// Cached entity data for spatial grid, collision, and movement.
@@ -28,6 +29,9 @@ pub struct SimFrameData {
     /// Snapshot of the spatial grid after rebuild. Arc so rayon threads
     /// can share it without cloning the entire grid.
     pub grid_snapshot: Option<Arc<SpatialGrid>>,
+
+    /// Snapshot of weapon registry. Arc avoids 4× full clone per frame.
+    pub registry_snapshot: Option<Arc<WeaponRegistry>>,
 }
 
 /// Pre-collected collision data.
@@ -48,6 +52,7 @@ impl Default for SimFrameData {
             collision_entities: Vec::with_capacity(4096),
             displacements: Vec::with_capacity(4096),
             grid_snapshot: None,
+            registry_snapshot: None,
         }
     }
 }
@@ -59,5 +64,6 @@ impl SimFrameData {
         self.collision_entities.clear();
         self.displacements.clear();
         self.grid_snapshot = None;
+        // Registry snapshot persists — it doesn't change between frames.
     }
 }

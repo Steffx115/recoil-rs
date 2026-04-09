@@ -12,6 +12,8 @@ serde = { workspace = true }
 bincode = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
+wide = { workspace = true }
+bumpalo = { workspace = true }
 thiserror = { workspace = true }
 ron = { workspace = true }
 anyhow = { workspace = true }

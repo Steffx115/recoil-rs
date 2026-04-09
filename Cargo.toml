@@ -67,6 +67,12 @@ rayon = "1"
 # Deterministic cross-platform math (pure Rust, no system libm)
 libm = "0.2"
 
+# SIMD (portable across x86 AVX2 + ARM NEON)
+wide = "0.7"
+
+# Arena allocator (zero-cost per-frame reset)
+bumpalo = { version = "3", features = ["collections"] }
+
 # Async block_on
 pollster = "0.4"
 

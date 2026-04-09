@@ -15,6 +15,10 @@ use crate::components::{MoveState, Position};
 use crate::pathfinding::{find_path, TerrainGrid};
 use crate::{SimFloat, SimVec2, SimVec3};
 
+/// Maximum A* pathfinding computations per tick. Excess is deferred to next tick
+/// (units move in a straight line until their turn comes).
+const MAX_PATHFINDING_PER_TICK: usize = 100;
+
 // ---------------------------------------------------------------------------
 // Entity serde helper (single Entity as u64)
 // ---------------------------------------------------------------------------
@@ -135,9 +139,8 @@ impl CommandHandler for MoveHandler {
         let state = world.get::<MoveState>(entity).unwrap().clone();
         match state {
             MoveState::Idle => {
-                // Compute A* path if terrain grid is available.
-                let first_target = compute_pathfinding_waypoints(world, entity, self.target);
-                *world.get_mut::<MoveState>(entity).unwrap() = MoveState::MovingTo(first_target);
+                // Move in straight line (pathfinding applied by command_system if budget allows).
+                *world.get_mut::<MoveState>(entity).unwrap() = MoveState::MovingTo(self.target);
                 CommandResult::InProgress
             }
             MoveState::Arriving => CommandResult::Complete,
@@ -309,6 +312,8 @@ pub fn command_system(world: &mut World) {
         .iter(world)
         .collect();
 
+    let mut pathfinding_count = 0usize;
+
     for entity in entities {
         let Some(cmd) = world
             .get::<CommandQueue>(entity)
@@ -325,10 +330,25 @@ pub fn command_system(world: &mut World) {
             CommandResult::Complete => {
                 world.get_mut::<CommandQueue>(entity).unwrap().advance();
             }
-            CommandResult::InProgress | CommandResult::QueueCleared => {
-                // InProgress: keep command at front.
-                // QueueCleared: handler already emptied the queue.
+            CommandResult::InProgress => {
+                // If this is a Move command and the unit just started moving,
+                // try to compute A* pathfinding (within budget).
+                if matches!(cmd, Command::Move(_))
+                    && pathfinding_count < MAX_PATHFINDING_PER_TICK
+                {
+                    if let Some(ms) = world.get::<MoveState>(entity) {
+                        if let MoveState::MovingTo(target) = *ms {
+                            pathfinding_count += 1;
+                            let first = compute_pathfinding_waypoints(world, entity, target);
+                            if first != target {
+                                *world.get_mut::<MoveState>(entity).unwrap() =
+                                    MoveState::MovingTo(first);
+                            }
+                        }
+                    }
+                }
             }
+            CommandResult::QueueCleared => {}
         }
     }
 }
