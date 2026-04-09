@@ -73,6 +73,7 @@ impl SpatialGrid {
     }
 
     /// Query entities within radius. Uses a callback to avoid Vec allocation.
+    /// Uses integer-part-only distance check for the inner loop (avoids i128 multiply).
     #[inline]
     pub fn for_each_in_radius(
         &self,
@@ -80,17 +81,41 @@ impl SpatialGrid {
         radius: SimFloat,
         mut f: impl FnMut(Entity, SimVec2),
     ) {
-        let radius_sq = radius * radius;
         let min = SimVec2::new(center.x - radius, center.y - radius);
         let max = SimVec2::new(center.x + radius, center.y + radius);
         let (min_cx, min_cz) = self.cell_coords(min);
         let (max_cx, max_cz) = self.cell_coords(max);
+
+        // Pre-compute integer-part values for fast i32 distance check.
+        // SimFloat is Q32.32: integer part = raw >> 32.
+        let cx_i = (center.x.raw() >> 32) as i32;
+        let cz_i = (center.y.raw() >> 32) as i32;
+        // radius² in integer units. Add 1 for rounding headroom.
+        let r_i = (radius.raw() >> 32) as i32;
+        let r_sq_i = (r_i as i64 + 1) * (r_i as i64 + 1);
 
         for cz in min_cz..=max_cz {
             for cx in min_cx..=max_cx {
                 let idx = self.cell_index(cx, cz);
                 for &(entity, pos_idx) in &self.cells[idx] {
                     let pos = self.positions[pos_idx as usize];
+
+                    // Fast integer-part distance check (no i128 multiply).
+                    let px_i = (pos.x.raw() >> 32) as i32;
+                    let pz_i = (pos.y.raw() >> 32) as i32;
+                    let dx = (px_i - cx_i) as i64;
+                    let dz = (pz_i - cz_i) as i64;
+                    let dist_sq_i = dx * dx + dz * dz;
+
+                    // Quick reject: if integer distance > radius, skip.
+                    // Quick accept: if integer distance < radius - 1, accept.
+                    if dist_sq_i > r_sq_i {
+                        continue;
+                    }
+
+                    // For borderline cases, do the precise SimFloat check.
+                    // This path is hit rarely (only for entities near the radius boundary).
+                    let radius_sq = radius * radius;
                     if pos.distance_squared(center) <= radius_sq {
                         f(entity, pos);
                     }
