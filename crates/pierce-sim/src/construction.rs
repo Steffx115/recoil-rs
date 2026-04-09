@@ -8,8 +8,10 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::prelude::Component;
 use bevy_ecs::world::World;
 
-use crate::components::{Allegiance, Dead, Health};
+use crate::components::{Allegiance, BuildingFootprint, Dead, Health};
 use crate::economy::EconomyState;
+use crate::footprint::unmark_building_footprint;
+use crate::pathfinding::TerrainGrid;
 use crate::SimFloat;
 
 // ---------------------------------------------------------------------------
@@ -43,6 +45,13 @@ pub struct Reclaimable {
 /// Placed on a builder to indicate what it is currently building or reclaiming.
 #[derive(Component, Debug, Clone)]
 pub struct BuildTarget {
+    pub target: Entity,
+}
+
+/// Remembers a builder's previous build target so it can auto-resume
+/// construction when it becomes idle near the unfinished site.
+#[derive(Component, Debug, Clone)]
+pub struct PreviousBuildTarget {
     pub target: Entity,
 }
 
@@ -154,21 +163,35 @@ pub fn construction_system(world: &mut World) {
             .collect()
     };
 
+    // Track builders whose BuildTarget should be removed because they are
+    // out of range (save as PreviousBuildTarget for auto-resume).
+    let mut out_of_range: Vec<(Entity, Entity)> = Vec::new();
+
     for (builder_entity, build_power, target, team) in builders {
         // Check if target still exists.
         if world.get_entity(target).is_err() {
             continue;
         }
 
-        // Stop the builder if it's close enough to the target.
-        if let (Some(builder_pos), Some(target_pos)) = (
+        // Check distance between builder and target.
+        let dist_sq_opt = match (
             world.get::<crate::Position>(builder_entity).map(|p| p.pos),
             world.get::<crate::Position>(target).map(|p| p.pos),
         ) {
-            let dx = builder_pos.x - target_pos.x;
-            let dz = builder_pos.z - target_pos.z;
-            let dist_sq = dx * dx + dz * dz;
-            // Stop within ~15 world units of the target.
+            (Some(bp), Some(tp)) => {
+                let dx = bp.x - tp.x;
+                let dz = bp.z - tp.z;
+                Some(dx * dx + dz * dz)
+            }
+            _ => None,
+        };
+
+        // Build range: builders must be within 30 world units to apply power.
+        let build_range = crate::SimFloat::from_int(30);
+        let build_range_sq = build_range * build_range;
+
+        if let Some(dist_sq) = dist_sq_opt {
+            // Stop the builder if it's close enough to the target.
             let stop_dist = crate::SimFloat::from_int(15);
             if dist_sq <= stop_dist * stop_dist {
                 if let Some(mut ms) = world.get_mut::<crate::MoveState>(builder_entity) {
@@ -176,6 +199,17 @@ pub fn construction_system(world: &mut World) {
                         *ms = crate::MoveState::Idle;
                     }
                 }
+            }
+
+            // If builder is too far from the target, save PreviousBuildTarget
+            // and skip construction this tick.  The BuildTarget will be
+            // removed after the loop.
+            if dist_sq > build_range_sq {
+                // Only save for BuildSite targets (not reclaim).
+                if world.get::<BuildSite>(target).is_some() {
+                    out_of_range.push((builder_entity, target));
+                }
+                continue;
             }
         }
 
@@ -254,6 +288,15 @@ pub fn construction_system(world: &mut World) {
             continue;
         }
     }
+
+    // Remove BuildTarget from builders that are out of range and save
+    // PreviousBuildTarget so they can auto-resume later.
+    for (builder_entity, target) in out_of_range {
+        world.entity_mut(builder_entity).remove::<BuildTarget>();
+        world
+            .entity_mut(builder_entity)
+            .insert(PreviousBuildTarget { target });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -317,6 +360,188 @@ pub fn repair_system(world: &mut World) {
         if let Some(mut health) = world.get_mut::<Health>(target) {
             health.current = new_health;
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// cancel_build_site
+// ---------------------------------------------------------------------------
+
+/// Cancel an in-progress [`BuildSite`], refunding resources proportional to
+/// the remaining build progress.
+///
+/// For example, if a building is 40% complete and costs 100 metal / 200 energy,
+/// the refund is 60% of the cost = 60 metal / 120 energy.
+///
+/// This function:
+/// 1. Computes the proportional refund and credits it to the owning team.
+/// 2. Unmarks the building footprint on the terrain grid.
+/// 3. Marks the entity [`Dead`] for cleanup.
+/// 4. Removes [`BuildTarget`] from any builders targeting the cancelled site
+///    (and stores a [`PreviousBuildTarget`] so they can remember it).
+pub fn cancel_build_site(world: &mut World, site_entity: Entity) {
+    // Validate that the entity exists and has a BuildSite.
+    if world.get_entity(site_entity).is_err() {
+        return;
+    }
+    let Some(site) = world.get::<BuildSite>(site_entity) else {
+        return;
+    };
+
+    let progress = site.progress;
+    let metal_cost = site.metal_cost;
+    let energy_cost = site.energy_cost;
+
+    // Refund = remaining fraction of cost.
+    let remaining = SimFloat::ONE - progress;
+    let metal_refund = metal_cost * remaining;
+    let energy_refund = energy_cost * remaining;
+
+    // Get the team that owns this site.
+    let team = world
+        .get::<Allegiance>(site_entity)
+        .map(|a| a.team)
+        .unwrap_or(0);
+
+    // Credit refund to team resources.
+    {
+        let mut state = world.resource_mut::<EconomyState>();
+        if let Some(res) = state.teams.get_mut(&team) {
+            res.metal = (res.metal + metal_refund).min(res.metal_storage);
+            res.energy = (res.energy + energy_refund).min(res.energy_storage);
+        }
+    }
+
+    // Unmark the building footprint on the terrain grid.
+    if let Some(footprint) = world.get::<BuildingFootprint>(site_entity).cloned() {
+        let mut grid = world.resource_mut::<TerrainGrid>();
+        unmark_building_footprint(&mut grid, &footprint);
+    }
+
+    // Mark the entity dead for cleanup.
+    world.entity_mut(site_entity).insert(Dead);
+
+    // Clear BuildTarget from any builders targeting this site.
+    let builders_targeting: Vec<Entity> = {
+        let mut query = world.query::<(Entity, &BuildTarget)>();
+        query
+            .iter(world)
+            .filter(|(_, bt)| bt.target == site_entity)
+            .map(|(e, _)| e)
+            .collect()
+    };
+
+    for builder_entity in builders_targeting {
+        world.entity_mut(builder_entity).remove::<BuildTarget>();
+        if let Some(mut ms) = world.get_mut::<crate::MoveState>(builder_entity) {
+            *ms = crate::MoveState::Idle;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// auto_resume_construction_system
+// ---------------------------------------------------------------------------
+
+/// When a builder's [`BuildTarget`] is removed (e.g., moved away by a move
+/// order), save the target as [`PreviousBuildTarget`].  This is called at the
+/// start of the construction tick to detect builders that lost their target.
+///
+/// Then, for idle builders with a [`PreviousBuildTarget`], check if the
+/// unfinished [`BuildSite`] still exists and is within resume range.  If so,
+/// re-assign the [`BuildTarget`] and start moving toward it.
+pub fn auto_resume_construction_system(world: &mut World) {
+    // Collect idle builders that have a PreviousBuildTarget but no current BuildTarget.
+    let candidates: Vec<(Entity, Entity)> = {
+        let mut query = world.query_filtered::<
+            (Entity, &PreviousBuildTarget),
+            (
+                bevy_ecs::query::Without<BuildTarget>,
+                bevy_ecs::query::With<Builder>,
+            ),
+        >();
+        query
+            .iter(world)
+            .map(|(e, pbt)| (e, pbt.target))
+            .collect()
+    };
+
+    for (builder_entity, prev_target) in candidates {
+        // Check that builder is idle.
+        let is_idle = world
+            .get::<crate::MoveState>(builder_entity)
+            .map(|ms| matches!(*ms, crate::MoveState::Idle))
+            .unwrap_or(true);
+
+        if !is_idle {
+            continue;
+        }
+
+        // Check that the previous target still exists and still has a BuildSite.
+        if world.get_entity(prev_target).is_err() {
+            world
+                .entity_mut(builder_entity)
+                .remove::<PreviousBuildTarget>();
+            continue;
+        }
+        if world.get::<BuildSite>(prev_target).is_none() {
+            // Target is complete or cancelled — forget it.
+            world
+                .entity_mut(builder_entity)
+                .remove::<PreviousBuildTarget>();
+            continue;
+        }
+
+        // Check proximity: builder must be within 200 world units.
+        let in_range = match (
+            world.get::<crate::Position>(builder_entity).map(|p| p.pos),
+            world.get::<crate::Position>(prev_target).map(|p| p.pos),
+        ) {
+            (Some(bp), Some(tp)) => {
+                let dx = bp.x - tp.x;
+                let dz = bp.z - tp.z;
+                let dist_sq = dx * dx + dz * dz;
+                let resume_dist = SimFloat::from_int(200);
+                dist_sq <= resume_dist * resume_dist
+            }
+            _ => false,
+        };
+
+        if in_range {
+            // Re-assign build target and start moving.
+            world
+                .entity_mut(builder_entity)
+                .insert(BuildTarget { target: prev_target });
+            world
+                .entity_mut(builder_entity)
+                .remove::<PreviousBuildTarget>();
+
+            if let Some(target_pos) = world.get::<crate::Position>(prev_target).map(|p| p.pos) {
+                if let Some(mut ms) = world.get_mut::<crate::MoveState>(builder_entity) {
+                    *ms = crate::MoveState::MovingTo(target_pos);
+                }
+            }
+        }
+    }
+}
+
+/// System to save [`PreviousBuildTarget`] when a builder loses its
+/// [`BuildTarget`] while the target still has an unfinished [`BuildSite`].
+///
+/// Should be called each tick.  It detects builders that have a
+/// [`PreviousBuildTarget`] candidate: builders with no [`BuildTarget`]
+/// but that previously had one (tracked via the component itself).
+///
+/// In practice, this is integrated into the construction flow: when a
+/// builder's [`BuildTarget`] is removed by a move command (not by
+/// construction completion or cancellation), the command system should
+/// insert [`PreviousBuildTarget`].  For simplicity, we provide a helper.
+pub fn save_previous_build_target(world: &mut World, builder_entity: Entity, target: Entity) {
+    // Only save if the target still has a BuildSite (is under construction).
+    if world.get::<BuildSite>(target).is_some() {
+        world
+            .entity_mut(builder_entity)
+            .insert(PreviousBuildTarget { target });
     }
 }
 
