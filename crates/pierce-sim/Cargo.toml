@@ -7,6 +7,7 @@ description = "ECS-based simulation for the Pierce RTS engine"
 
 [features]
 compute-backends = []
+batch-math = []
 
 [dependencies]
 pierce-math = { path = "../pierce-math" }
