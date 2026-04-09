@@ -51,19 +51,46 @@ impl SimCapabilities {
 /// Run one frame of the simulation. Use [`SimCapabilities::detect`] once
 /// after world setup and pass the result each tick.
 pub fn sim_tick_with(world: &mut World, caps: &SimCapabilities) {
-    // 1. Rebuild spatial grid (exclude Dead entities)
+    // 0. Ensure SimFrameData resource exists.
+    if !world.contains_resource::<crate::frame_data::SimFrameData>() {
+        world.insert_resource(crate::frame_data::SimFrameData::default());
+    }
+
+    // 1. Collect frame data + rebuild spatial grid (single query pass).
     {
-        let entities: Vec<(Entity, SimVec2)> = world
-            .query_filtered::<(Entity, &Position), bevy_ecs::query::Without<crate::Dead>>()
-            .iter(world)
-            .map(|(e, p)| (e, SimVec2::new(p.pos.x, p.pos.z)))
-            .collect();
+        let mut frame = world.remove_resource::<crate::frame_data::SimFrameData>().unwrap();
+        frame.clear();
+
+        let mut query = world.query_filtered::<(
+            Entity,
+            &Position,
+            Option<&crate::components::CollisionRadius>,
+            Option<&crate::components::MoveState>,
+        ), bevy_ecs::query::Without<crate::Dead>>();
+
+        for (e, p, cr, ms) in query.iter(world) {
+            let pos_xz = SimVec2::new(p.pos.x, p.pos.z);
+            frame.spatial_entries.push((e, pos_xz));
+
+            if let Some(r) = cr {
+                frame.collision_entities.push(crate::frame_data::CollisionData {
+                    entity: e,
+                    bits: e.to_bits(),
+                    pos_x: p.pos.x,
+                    pos_z: p.pos.z,
+                    radius: r.radius,
+                    is_mobile: ms.is_some(),
+                });
+            }
+        }
 
         let mut grid = world.resource_mut::<SpatialGrid>();
         grid.clear();
-        for (entity, pos) in entities {
+        for &(entity, pos) in &frame.spatial_entries {
             grid.insert(entity, pos);
         }
+
+        world.insert_resource(frame);
     }
 
     // 2. Command processing

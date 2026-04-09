@@ -4,6 +4,7 @@ pub mod combat_data;
 pub mod commands;
 pub mod components;
 pub mod compute;
+pub mod frame_data;
 pub mod construction;
 pub mod damage;
 pub mod determinism;
