@@ -12,11 +12,16 @@ use bevy_ecs::prelude::{Component, With, World};
 use serde::{Deserialize, Serialize};
 
 use crate::components::{MoveState, Position};
+#[cfg(not(feature = "flowfield-pathing"))]
 use crate::pathfinding::{find_path, TerrainGrid};
+#[cfg(feature = "flowfield-pathing")]
+use crate::flowfield::FlowFieldCache;
+#[cfg(feature = "flowfield-pathing")]
+use crate::pathfinding::TerrainGrid;
 use crate::{SimFloat, SimVec2, SimVec3};
 
-/// Maximum A* pathfinding computations per tick. Excess is deferred to next tick
-/// (units move in a straight line until their turn comes).
+/// Maximum A* pathfinding computations per tick (non-flowfield path).
+#[cfg(not(feature = "flowfield-pathing"))]
 const MAX_PATHFINDING_PER_TICK: usize = 100;
 
 // ---------------------------------------------------------------------------
@@ -312,14 +317,44 @@ pub fn command_system(world: &mut World) {
         .iter(world)
         .collect();
 
+    #[cfg(not(feature = "flowfield-pathing"))]
     let mut pathfinding_count = 0usize;
+
+    // With flow fields: pre-compute fields for all destinations this tick.
+    #[cfg(feature = "flowfield-pathing")]
+    {
+        // Collect all Move destinations to pre-warm the flow field cache.
+        let destinations: Vec<SimVec2> = entities
+            .iter()
+            .filter_map(|&e| {
+                let cmd = world.get::<CommandQueue>(e)?.current()?;
+                if let Command::Move(target) = cmd {
+                    Some(SimVec2::new(target.x, target.z))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if !destinations.is_empty() {
+            if let Some(terrain) = world.get_resource::<TerrainGrid>() {
+                let terrain = terrain.clone();
+                let mut cache = world
+                    .remove_resource::<FlowFieldCache>()
+                    .unwrap_or_default();
+                for dest in &destinations {
+                    cache.get_or_compute(&terrain, *dest);
+                }
+                world.insert_resource(cache);
+            }
+        }
+    }
 
     for entity in entities {
         let Some(cmd) = world
             .get::<CommandQueue>(entity)
             .and_then(|q| q.current().cloned())
         else {
-            // Empty queue — do nothing.
             continue;
         };
 
@@ -331,18 +366,50 @@ pub fn command_system(world: &mut World) {
                 world.get_mut::<CommandQueue>(entity).unwrap().advance();
             }
             CommandResult::InProgress => {
-                // If this is a Move command and the unit just started moving,
-                // try to compute A* pathfinding (within budget).
-                if matches!(cmd, Command::Move(_))
-                    && pathfinding_count < MAX_PATHFINDING_PER_TICK
+                #[cfg(not(feature = "flowfield-pathing"))]
                 {
-                    if let Some(ms) = world.get::<MoveState>(entity) {
-                        if let MoveState::MovingTo(target) = *ms {
-                            pathfinding_count += 1;
-                            let first = compute_pathfinding_waypoints(world, entity, target);
-                            if first != target {
-                                *world.get_mut::<MoveState>(entity).unwrap() =
-                                    MoveState::MovingTo(first);
+                    // A* pathfinding with budget cap.
+                    if matches!(cmd, Command::Move(_))
+                        && pathfinding_count < MAX_PATHFINDING_PER_TICK
+                    {
+                        if let Some(ms) = world.get::<MoveState>(entity) {
+                            if let MoveState::MovingTo(target) = *ms {
+                                pathfinding_count += 1;
+                                let first = compute_pathfinding_waypoints(world, entity, target);
+                                if first != target {
+                                    *world.get_mut::<MoveState>(entity).unwrap() =
+                                        MoveState::MovingTo(first);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                #[cfg(feature = "flowfield-pathing")]
+                {
+                    // Flow field: sample direction for this unit's current position.
+                    if let Command::Move(target) = cmd {
+                        if let Some(pos) = world.get::<Position>(entity) {
+                            let pos_xz = SimVec2::new(pos.pos.x, pos.pos.z);
+                            let goal_xz = SimVec2::new(target.x, target.z);
+                            if let Some(cache) = world.get_resource::<FlowFieldCache>() {
+                                let dir = cache
+                                    .cache
+                                    .values()
+                                    .next() // TODO: look up by goal cell
+                                    .map(|ff| ff.sample(pos_xz))
+                                    .unwrap_or(SimVec2::ZERO);
+                                if dir != SimVec2::ZERO {
+                                    // Move toward flow direction, keeping original target for arrival.
+                                    let step = SimFloat::from_int(2); // step size
+                                    let next = SimVec3::new(
+                                        pos.pos.x + dir.x * step,
+                                        SimFloat::ZERO,
+                                        pos.pos.z + dir.y * step,
+                                    );
+                                    *world.get_mut::<MoveState>(entity).unwrap() =
+                                        MoveState::MovingTo(next);
+                                }
                             }
                         }
                     }

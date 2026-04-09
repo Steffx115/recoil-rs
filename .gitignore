@@ -26,3 +26,5 @@ Thumbs.db
 flamegraph.svg
 perf.data
 .claude/worktrees/
+cargo-flamegraph.stacks
+*.stacks

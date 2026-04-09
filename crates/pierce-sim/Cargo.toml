@@ -21,8 +21,11 @@ movement-batch = []   # Use BatchMathBackend for bulk atan2/sincos
 # Collision
 collision-gpu = []    # (future) GPU collision compute
 
+# Pathfinding
+flowfield-pathing = [] # Use flow fields instead of per-unit A*
+
 # Convenience: enable all GPU backends at once
-all-gpu = ["fog-gpu", "targeting-gpu", "movement-batch", "collision-gpu"]
+all-gpu = ["fog-gpu", "targeting-gpu", "movement-batch", "collision-gpu", "flowfield-pathing"]
 
 [dependencies]
 pierce-math = { path = "../pierce-math" }

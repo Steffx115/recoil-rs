@@ -465,9 +465,9 @@ pub fn compute_flow_field(terrain: &TerrainGrid, goal: SimVec2) -> FlowField {
 /// Cache of computed flow fields keyed by goal cell coordinates.
 ///
 /// Uses [`BTreeMap`] for deterministic iteration order.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, bevy_ecs::system::Resource)]
 pub struct FlowFieldCache {
-    cache: BTreeMap<(usize, usize), FlowField>,
+    pub cache: BTreeMap<(usize, usize), FlowField>,
 }
 
 impl FlowFieldCache {
