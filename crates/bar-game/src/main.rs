@@ -33,6 +33,7 @@ use egui_wgpu::ScreenDescriptor;
 mod camera_controller;
 mod icons;
 mod input;
+mod loadtest;
 
 use camera_controller::{CameraController, FpsCounter};
 use icons::IconAtlas;
@@ -69,11 +70,28 @@ struct App {
     egui_renderer: Option<egui_wgpu::Renderer>,
     fps_counter: FpsCounter,
     icon_atlas: Option<IconAtlas>,
+    loadtest: loadtest::LoadtestState,
 }
+
+const LOADTEST_MAP_PATH: &str = "assets/maps/loadtest/manifest.ron";
 
 impl App {
     fn new() -> Self {
-        let game = GameState::new(Path::new(BAR_UNITS_PATH), Path::new(MAP_MANIFEST_PATH));
+        let args: Vec<String> = std::env::args().collect();
+        let is_loadtest = args.iter().any(|a| a == "--loadtest");
+        let units_per_wave: usize = args
+            .iter()
+            .position(|a| a == "--wave-size")
+            .and_then(|i| args.get(i + 1)?.parse().ok())
+            .unwrap_or(50);
+        let max_units: usize = args
+            .iter()
+            .position(|a| a == "--max-units")
+            .and_then(|i| args.get(i + 1)?.parse().ok())
+            .unwrap_or(2000);
+
+        let map_path = if is_loadtest { LOADTEST_MAP_PATH } else { MAP_MANIFEST_PATH };
+        let game = GameState::new(Path::new(BAR_UNITS_PATH), Path::new(map_path));
         let (cx, cz) = game
             .commander_team0
             .and_then(|e| game.world.get::<Position>(e))
@@ -96,6 +114,11 @@ impl App {
             egui_renderer: None,
             fps_counter: FpsCounter::new(),
             icon_atlas: None,
+            loadtest: if is_loadtest {
+                loadtest::LoadtestState::new(units_per_wave, max_units)
+            } else {
+                loadtest::LoadtestState::default()
+            },
         }
     }
 
@@ -355,6 +378,8 @@ impl ApplicationHandler for App {
                 if !self.game.paused && !self.game.is_game_over() {
                     let (impacts, deaths) = self.game.tick();
                     self.game.frame_count += 1;
+                    self.loadtest
+                        .tick(&mut self.game.world, self.game.frame_count);
                     for pos in &impacts {
                         self.particle_system.emit(
                             *pos,

@@ -2613,6 +2613,7 @@ dependencies = [
  "criterion",
  "pierce-math",
  "proptest",
+ "rayon",
  "ron",
  "serde",
  "tempfile",

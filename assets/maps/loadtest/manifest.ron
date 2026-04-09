@@ -1,0 +1,31 @@
+(
+    name: "Load Test Arena",
+    width: 256,
+    height: 256,
+    cell_size: 8.0,
+    water_level: 0.0,
+    start_positions: [
+        (x: 400.0, z: 1024.0, team: 0),
+        (x: 1600.0, z: 1024.0, team: 1),
+    ],
+    metal_spots: [
+        // Team 0 economy cluster
+        (x: 300.0, z: 900.0, metal_per_tick: 10.0),
+        (x: 300.0, z: 1000.0, metal_per_tick: 10.0),
+        (x: 300.0, z: 1100.0, metal_per_tick: 10.0),
+        (x: 400.0, z: 900.0, metal_per_tick: 10.0),
+        (x: 400.0, z: 1100.0, metal_per_tick: 10.0),
+        (x: 500.0, z: 900.0, metal_per_tick: 10.0),
+        (x: 500.0, z: 1000.0, metal_per_tick: 10.0),
+        (x: 500.0, z: 1100.0, metal_per_tick: 10.0),
+        // Team 1 economy cluster
+        (x: 1500.0, z: 900.0, metal_per_tick: 10.0),
+        (x: 1500.0, z: 1000.0, metal_per_tick: 10.0),
+        (x: 1500.0, z: 1100.0, metal_per_tick: 10.0),
+        (x: 1600.0, z: 900.0, metal_per_tick: 10.0),
+        (x: 1600.0, z: 1100.0, metal_per_tick: 10.0),
+        (x: 1700.0, z: 900.0, metal_per_tick: 10.0),
+        (x: 1700.0, z: 1000.0, metal_per_tick: 10.0),
+        (x: 1700.0, z: 1100.0, metal_per_tick: 10.0),
+    ],
+)

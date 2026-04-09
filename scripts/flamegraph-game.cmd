@@ -1,26 +1,58 @@
 @echo off
-:: Generate flamegraph from the actual game binary (with rendering)
-:: Usage: flamegraph-game.cmd [OUTPUT]
-:: Defaults: flamegraph-game.svg
+:: Generate flamegraph from the game binary
+:: Usage: flamegraph-game.cmd [--loadtest] [OUTPUT]
+::
+:: Options:
+::   --loadtest              Enable loadtest mode (auto-spawns waves of units)
+::   --wave-size N           Units per wave (default: 50)
+::   --max-units N           Max total units (default: 2000)
 ::
 :: Requires: cargo-flamegraph, xperf (Windows Performance Toolkit)
-:: Run as Administrator (xperf requires elevated privileges)
+:: Run as Administrator
 ::
-:: The game will launch normally. Play/observe for a while, then close
-:: the window. The flamegraph is generated from the recorded samples.
+:: Examples:
+::   flamegraph-game.cmd                                Normal game
+::   flamegraph-game.cmd --loadtest                     Loadtest, 2000 units
+::   flamegraph-game.cmd --loadtest --max-units 5000    Loadtest, 5000 units
 
-setlocal
+setlocal enabledelayedexpansion
+set OUTPUT=flamegraph-game.svg
+set GAME_ARGS=
+
+:parse_args
+if "%~1"=="" goto done_args
+if "%~1"=="--loadtest" (
+    set "GAME_ARGS=!GAME_ARGS! --loadtest"
+    shift
+    goto parse_args
+)
+if "%~1"=="--wave-size" (
+    set "GAME_ARGS=!GAME_ARGS! --wave-size %~2"
+    shift
+    shift
+    goto parse_args
+)
+if "%~1"=="--max-units" (
+    set "GAME_ARGS=!GAME_ARGS! --max-units %~2"
+    shift
+    shift
+    goto parse_args
+)
+:: Assume it's the output filename
 set OUTPUT=%~1
-if "%OUTPUT%"=="" set OUTPUT=flamegraph-game.svg
+shift
+goto parse_args
+:done_args
 
 echo Profiling game binary...
 echo Output: %OUTPUT%
+if defined GAME_ARGS echo Game args:%GAME_ARGS%
 echo.
-echo Play the game, then close the window to generate the flamegraph.
+echo Close the game window to generate the flamegraph.
 echo.
 
 cd /d "%~dp0.."
-cargo flamegraph --profile profiling --bin bar-game -p bar-game --features gpu-compute -o "%OUTPUT%"
+cargo flamegraph --profile profiling --bin bar-game -p bar-game --features gpu-compute -o "%OUTPUT%" --%GAME_ARGS%
 
 if %ERRORLEVEL% equ 0 (
     echo.
