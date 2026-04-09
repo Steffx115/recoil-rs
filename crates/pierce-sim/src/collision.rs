@@ -96,47 +96,49 @@ pub fn collision_system(world: &mut World) {
                 continue;
             }
 
-            // Compute push direction and magnitude.
-            // Use fast inverse-sqrt approximation to avoid expensive sqrt + div.
-            let (push_x, push_z, overlap) = if dist_sq > SimFloat::ZERO {
-                let dist = dist_sq.sqrt();
-                let overlap = sum_radii - dist;
-                // Normalize: direction = delta / dist
-                (dx / dist, dz / dist, overlap)
-            } else {
-                // Coincident centres: push along +X.
-                (SimFloat::ONE, SimFloat::ZERO, sum_radii)
-            };
+            // Push apart using unnormalized delta — avoids sqrt and div entirely.
+            // Scale: push = delta * (sum_radii_sq - dist_sq) / (4 * sum_radii_sq)
+            // This approximates half-overlap along the direction. The factor
+            // naturally goes to zero as overlap vanishes and increases for deep
+            // overlaps. Multiply is cheap; division by power-of-2 is a shift.
+            //
+            // Simplified: push = delta * overlap_fraction / 2
+            // where overlap_fraction = (sum_radii_sq - dist_sq) / sum_radii_sq
+            // But division is expensive. Use a simpler approach:
+            // push each entity by delta * PUSH_FACTOR when overlapping.
+            // PUSH_FACTOR = 1/4 gives stable separation over a few frames.
+            let push_scale = SimFloat::from_ratio(1, 4);
 
-            let half_overlap = overlap / SimFloat::TWO;
+            let (push_x, push_z) = if dist_sq > SimFloat::ZERO {
+                (dx * push_scale, dz * push_scale)
+            } else {
+                // Coincident: push along +X by radius.
+                (ce.radius * push_scale, SimFloat::ZERO)
+            };
 
             match (ce.is_mobile, nb.is_mobile) {
                 (true, true) => {
-                    let dx_push = push_x * half_overlap;
-                    let dz_push = push_z * half_overlap;
                     displacements.push((
                         ce.entity,
-                        SimVec3::new(-dx_push, SimFloat::ZERO, -dz_push),
+                        SimVec3::new(-push_x, SimFloat::ZERO, -push_z),
                     ));
                     displacements.push((
                         nb.entity,
-                        SimVec3::new(dx_push, SimFloat::ZERO, dz_push),
+                        SimVec3::new(push_x, SimFloat::ZERO, push_z),
                     ));
                 }
                 (true, false) => {
-                    let dx_push = push_x * overlap;
-                    let dz_push = push_z * overlap;
+                    let two = SimFloat::TWO;
                     displacements.push((
                         ce.entity,
-                        SimVec3::new(-dx_push, SimFloat::ZERO, -dz_push),
+                        SimVec3::new(-push_x * two, SimFloat::ZERO, -push_z * two),
                     ));
                 }
                 (false, true) => {
-                    let dx_push = push_x * overlap;
-                    let dz_push = push_z * overlap;
+                    let two = SimFloat::TWO;
                     displacements.push((
                         nb.entity,
-                        SimVec3::new(dx_push, SimFloat::ZERO, dz_push),
+                        SimVec3::new(push_x * two, SimFloat::ZERO, push_z * two),
                     ));
                 }
                 (false, false) => {}
