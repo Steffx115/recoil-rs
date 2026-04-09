@@ -3,7 +3,6 @@ pub mod collision;
 pub mod combat_data;
 pub mod commands;
 pub mod components;
-#[cfg(feature = "compute-backends")]
 pub mod compute;
 pub mod frame_data;
 pub mod construction;

@@ -174,14 +174,14 @@ pub fn fog_system(world: &mut World, cell_size: SimFloat) {
     fog_system_dispatched(world, cell_size);
 }
 
-/// Dispatched fog system. When `compute-backends` feature is enabled AND
-/// the `ComputeBackends` resource exists, uses the backend. Otherwise inline.
+/// Dispatched fog system. Compile-time selection: backend or inline.
+#[cfg(feature = "compute-backends")]
 pub fn fog_system_dispatched(world: &mut World, cell_size: SimFloat) {
-    #[cfg(feature = "compute-backends")]
-    if world.contains_resource::<ComputeBackends>() {
-        fog_system_with_backend(world, cell_size);
-        return;
-    }
+    fog_system_with_backend(world, cell_size);
+}
+
+#[cfg(not(feature = "compute-backends"))]
+pub fn fog_system_dispatched(world: &mut World, cell_size: SimFloat) {
     fog_system_inline(world, cell_size);
 }
 

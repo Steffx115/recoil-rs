@@ -138,14 +138,14 @@ fn angle_to_target(from_x: SimFloat, from_z: SimFloat, to_x: SimFloat, to_z: Sim
 /// 7. Check min_range for each weapon.
 /// 8. Score by weapon priority, threat level, then distance (ties broken by `SimId`).
 /// 9. Apply overkill avoidance: skip targets with enough pending damage.
-/// Entry point called by sim_tick_with. Uses compute backend when the
-/// feature is enabled AND the resource exists. Otherwise runs inline.
+/// Dispatched targeting. Compile-time selection: backend or inline.
+#[cfg(feature = "compute-backends")]
 pub fn targeting_system_dispatched(world: &mut World) {
-    #[cfg(feature = "compute-backends")]
-    if world.contains_resource::<crate::compute::ComputeBackends>() {
-        targeting_system_with_backend(world);
-        return;
-    }
+    targeting_system_with_backend(world);
+}
+
+#[cfg(not(feature = "compute-backends"))]
+pub fn targeting_system_dispatched(world: &mut World) {
     targeting_system(world);
 }
 
