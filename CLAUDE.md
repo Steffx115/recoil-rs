@@ -1,5 +1,10 @@
 # Pierce RTS Engine — Project Instructions
 
+## VCS & GitHub
+
+- **Use GitHub MCP** (`mcp__github__*`) for all GitHub operations (PRs, issues, branches, CI status, code search).
+- **No jj in this repo.** This is a git-only repo — use `git` commands for local VCS operations.
+
 ## Build & Test
 
 ```bash
