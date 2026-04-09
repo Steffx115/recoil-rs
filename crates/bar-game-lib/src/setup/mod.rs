@@ -52,19 +52,27 @@ pub fn setup_game_with_options(
     // Map world extent = manifest.width * manifest.cell_size.
     // SpatialGrid cell_size=16 → spatial_w = world_extent / 16.
     // TerrainGrid cell_size=1  → terrain_w = world_extent.
+    // Map cell_size is in world units per manifest cell.
+    // TerrainGrid for pathfinding uses the manifest dimensions directly
+    // (each terrain cell = one manifest cell = cell_size world units).
     let (spatial_w, spatial_h, terrain_w, terrain_h) = if let Some(ref manifest) = map_data.manifest {
         let world_w = manifest.width as usize * manifest.cell_size as usize;
         let world_h = manifest.height as usize * manifest.cell_size as usize;
         (
             (world_w / 16).max(64),
             (world_h / 16).max(64),
-            world_w.max(1024),
-            world_h.max(1024),
+            manifest.width as usize,
+            manifest.height as usize,
         )
     } else {
-        (64, 64, 1024, 1024)
+        (64, 64, 64, 64)
     };
-    sim_runner::init_sim_world_sized(world, spatial_w, spatial_h, terrain_w, terrain_h);
+    let terrain_cell_size = if let Some(ref manifest) = map_data.manifest {
+        pierce_math::SimFloat::from_f64(manifest.cell_size)
+    } else {
+        pierce_math::SimFloat::from_int(16)
+    };
+    sim_runner::init_sim_world_sized(world, spatial_w, spatial_h, terrain_w, terrain_h, terrain_cell_size);
 
     world_init::init_world_with_options(world, unit_def_registry, &map_data, options)
 }
