@@ -5,10 +5,6 @@
 ::
 :: Requires: WPR (Windows Performance Toolkit), run as Administrator
 :: Output: profile-bench.etl (open with WPA - Windows Performance Analyzer)
-::
-:: Examples:
-::   profile-bench.cmd                    500 units, 600 frames
-::   profile-bench.cmd 2000 200           2000 units, 200 frames
 
 setlocal
 set UNITS=%~1
@@ -18,7 +14,10 @@ if "%FRAMES%"=="" set FRAMES=600
 
 cd /d "%~dp0.."
 
-echo Building loadtest bench (release + debug symbols)...
+:: Set symbol path so WPA finds PDBs next to the exe
+set _NT_SYMBOL_PATH=%CD%\target\profiling\deps;%_NT_SYMBOL_PATH%
+
+echo Building loadtest bench (profiling profile)...
 cargo build --profile profiling --bench loadtest -p bar-game-lib --features gpu-compute
 if %ERRORLEVEL% neq 0 (
     echo Build failed.
@@ -44,6 +43,7 @@ wpr -stop profile-bench.etl
 if %ERRORLEVEL% equ 0 (
     echo.
     echo Trace saved to profile-bench.etl
+    echo Symbol path: %_NT_SYMBOL_PATH%
     echo Opening in WPA...
     start "" profile-bench.etl
 ) else (
