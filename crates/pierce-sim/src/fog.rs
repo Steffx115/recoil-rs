@@ -12,6 +12,7 @@ use bevy_ecs::world::World;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{Allegiance, Position, SightRange};
+use crate::compute::{ComputeBackends, FogGridParams, FogUnitInput};
 use crate::{SimFloat, SimVec3};
 
 /// Truncate a SimFloat toward negative infinity and return an i32.
@@ -32,24 +33,16 @@ pub enum CellVisibility {
 }
 
 /// Per-team fog-of-war grids.
-///
-/// The grid covers `width * height` cells. Cell `(x, y)` is stored at
-/// index `y * width + x`. Each team has its own independent grid.
 #[derive(Debug, Clone, Resource, Serialize, Deserialize)]
 pub struct FogOfWar {
     width: u32,
     height: u32,
-    /// Per-team visibility grids. Uses `BTreeMap` for deterministic
-    /// iteration order (no `HashMap` in sim code).
     pub grids: BTreeMap<u8, Vec<CellVisibility>>,
-    /// Cells marked visible last frame, per team. Used for fast reset
-    /// instead of scanning the entire grid.
     #[serde(skip)]
     previously_visible: BTreeMap<u8, Vec<u32>>,
 }
 
 impl FogOfWar {
-    /// Create a new fog-of-war resource with all cells set to `Unexplored`.
     pub fn new(width: u32, height: u32, teams: &[u8]) -> Self {
         let cell_count = (width as usize) * (height as usize);
         let mut grids = BTreeMap::new();
@@ -66,19 +59,14 @@ impl FogOfWar {
         }
     }
 
-    /// Width of the fog grid in cells.
     pub fn width(&self) -> u32 {
         self.width
     }
 
-    /// Height of the fog grid in cells.
     pub fn height(&self) -> u32 {
         self.height
     }
 
-    /// Get the visibility of cell `(x, y)` for `team`.
-    ///
-    /// Returns `Unexplored` if the team or coordinates are out of range.
     pub fn get(&self, team: u8, x: u32, y: u32) -> CellVisibility {
         if x >= self.width || y >= self.height {
             return CellVisibility::Unexplored;
@@ -89,13 +77,10 @@ impl FogOfWar {
             .unwrap_or(CellVisibility::Unexplored)
     }
 
-    /// Returns `true` if cell `(x, y)` is currently `Visible` for `team`.
     pub fn is_visible(&self, team: u8, x: u32, y: u32) -> bool {
         self.get(team, x, y) == CellVisibility::Visible
     }
 
-    /// Returns `true` if cell `(x, y)` has been seen at least once
-    /// (`Explored` or `Visible`) by `team`.
     pub fn is_explored(&self, team: u8, x: u32, y: u32) -> bool {
         matches!(
             self.get(team, x, y),
@@ -103,9 +88,7 @@ impl FogOfWar {
         )
     }
 
-    /// Reset only the cells that were visible last frame back to `Explored`.
     fn reset_visible(&mut self) {
-        let w = self.width as usize;
         for (team, indices) in &self.previously_visible {
             if let Some(grid) = self.grids.get_mut(team) {
                 for &idx in indices {
@@ -116,14 +99,11 @@ impl FogOfWar {
                 }
             }
         }
-        // Clear for this frame's collection.
         for indices in self.previously_visible.values_mut() {
             indices.clear();
         }
-        let _ = w;
     }
 
-    /// Mark cell at flat index as `Visible` for `team` and track it.
     #[inline]
     fn mark_visible_idx(&mut self, team: u8, idx: u32) {
         if let Some(grid) = self.grids.get_mut(&team) {
@@ -136,29 +116,122 @@ impl FogOfWar {
             }
         }
     }
+
+    /// Convert grids to raw u8 format for compute backends.
+    pub fn grids_as_u8(&self) -> BTreeMap<u8, Vec<u8>> {
+        self.grids
+            .iter()
+            .map(|(&team, grid)| {
+                (
+                    team,
+                    grid.iter()
+                        .map(|v| match v {
+                            CellVisibility::Unexplored => 0,
+                            CellVisibility::Explored => 1,
+                            CellVisibility::Visible => 2,
+                        })
+                        .collect(),
+                )
+            })
+            .collect()
+    }
+
+    /// Apply raw u8 grids from compute backend.
+    fn apply_u8_grids(&mut self, raw: &BTreeMap<u8, Vec<u8>>) {
+        self.previously_visible.values_mut().for_each(|v| v.clear());
+        for (&team, raw_grid) in raw {
+            if let Some(grid) = self.grids.get_mut(&team) {
+                for (i, &val) in raw_grid.iter().enumerate() {
+                    if i < grid.len() {
+                        grid[i] = match val {
+                            0 => CellVisibility::Unexplored,
+                            1 => CellVisibility::Explored,
+                            _ => CellVisibility::Visible,
+                        };
+                        if val == 2 {
+                            if let Some(prev) = self.previously_visible.get_mut(&team) {
+                                prev.push(i as u32);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Sorted team IDs.
+    pub fn teams(&self) -> Vec<u8> {
+        self.grids.keys().copied().collect()
+    }
 }
 
 /// Run the fog-of-war system on the given `World`.
 ///
-/// 1. Resets previously visible cells to `Explored`.
-/// 2. For each entity with `(Position, SightRange, Allegiance)`,
-///    marks all cells within sight range as `Visible` for that team.
+/// If `ComputeBackends` resource is present, dispatches to it.
+/// Otherwise runs the inline CPU implementation.
 pub fn fog_system(world: &mut World, cell_size: SimFloat) {
+    // Check for compute backend.
+    let has_backend = world.contains_resource::<ComputeBackends>();
+
+    if has_backend {
+        fog_system_with_backend(world, cell_size);
+    } else {
+        fog_system_inline(world, cell_size);
+    }
+}
+
+/// Fog via compute backend (CPU or GPU).
+fn fog_system_with_backend(world: &mut World, cell_size: SimFloat) {
+    let fog = match world.remove_resource::<FogOfWar>() {
+        Some(f) => f,
+        None => return,
+    };
+
+    // Gather unit inputs.
+    let mut units = Vec::new();
+    let mut query = world.query::<(&Position, &SightRange, &Allegiance)>();
+    for (pos, sight, allegiance) in query.iter(world) {
+        units.push(FogUnitInput {
+            pos_x_raw: pos.pos.x.raw(),
+            pos_z_raw: pos.pos.z.raw(),
+            range_raw: sight.range.raw(),
+            team: allegiance.team,
+        });
+    }
+
+    let params = FogGridParams {
+        width: fog.width(),
+        height: fog.height(),
+        cell_size_raw: cell_size.raw(),
+        teams: fog.teams(),
+    };
+    let prev = fog.grids_as_u8();
+
+    // Take the backend out to avoid borrow conflicts.
+    let mut backends = world.remove_resource::<ComputeBackends>().unwrap();
+    let result = backends.fog.compute_fog(&params, &units, &prev);
+    world.insert_resource(backends);
+
+    // Apply results.
+    let mut fog = fog;
+    fog.apply_u8_grids(&result);
+    world.insert_resource(fog);
+}
+
+/// Inline CPU fog (original optimized implementation).
+fn fog_system_inline(world: &mut World, cell_size: SimFloat) {
     let mut fog = match world.remove_resource::<FogOfWar>() {
         Some(f) => f,
         None => return,
     };
 
-    // Step 1: reset only previously visible cells.
     fog.reset_visible();
 
-    // Precompute cell_size as i64 fixed-point for integer math in inner loop.
     let cell_raw = cell_size.raw();
     let half_cell_raw = cell_raw >> 1;
     let w = fog.width();
     let h = fog.height();
 
-    // Step 2: reveal cells around each unit using integer math.
     let mut query = world.query::<(&Position, &SightRange, &Allegiance)>();
     for (pos, sight, allegiance) in query.iter(world) {
         let team = allegiance.team;
@@ -168,7 +241,6 @@ pub fn fog_system(world: &mut World, cell_size: SimFloat) {
         let cell_y = floor_to_i32(pos.pos.z / cell_size);
 
         let range_cells = floor_to_i32(range / cell_size) + 1;
-        // Use raw i64 for squared distance comparison.
         let range_sq_raw = range.raw() as i128 * range.raw() as i128;
 
         let min_x = (cell_x - range_cells).max(0) as u32;
@@ -181,17 +253,13 @@ pub fn fog_system(world: &mut World, cell_size: SimFloat) {
 
         for gy in min_y..=max_y {
             let row_offset = gy * w;
-            // Cell center Z in fixed-point.
             let center_z = (gy as i64) * cell_raw + half_cell_raw;
             let dz = center_z - pos_z_raw;
 
             for gx in min_x..=max_x {
-                // Cell center X in fixed-point.
                 let center_x = (gx as i64) * cell_raw + half_cell_raw;
                 let dx = center_x - pos_x_raw;
 
-                // Squared distance in fixed-point (result is 64.64, compare
-                // against range_sq which is also 64.64).
                 let dist_sq = (dx as i128) * (dx as i128) + (dz as i128) * (dz as i128);
 
                 if dist_sq <= range_sq_raw {

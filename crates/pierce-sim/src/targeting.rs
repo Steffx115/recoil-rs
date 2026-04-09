@@ -139,7 +139,12 @@ fn angle_to_target(from_x: SimFloat, from_z: SimFloat, to_x: SimFloat, to_z: Sim
 /// 8. Score by weapon priority, threat level, then distance (ties broken by `SimId`).
 /// 9. Apply overkill avoidance: skip targets with enough pending damage.
 pub fn targeting_system(world: &mut World) {
-    
+    // Dispatch to compute backend if available.
+    if world.contains_resource::<crate::compute::ComputeBackends>() {
+        targeting_system_with_backend(world);
+        return;
+    }
+
     let grid = world.resource::<SpatialGrid>().clone();
     let registry = world.resource::<WeaponRegistry>().clone();
     let heightmap = world.get_resource::<HeightmapData>().cloned();
@@ -461,6 +466,164 @@ pub fn targeting_system(world: &mut World) {
     // Write back targets.
     for (entity, target_entity) in assignments {
         if let Some(mut target) = world.get_mut::<Target>(entity) {
+            target.entity = target_entity;
+        }
+    }
+}
+
+/// Targeting via compute backend (CPU or GPU).
+fn targeting_system_with_backend(world: &mut World) {
+    use crate::compute::{ComputeBackends, TargetingCandidateInput, TargetingShooterInput};
+    use crate::fog::FogOfWar;
+
+    let registry = world.resource::<WeaponRegistry>().clone();
+    let fog = world.get_resource::<FogOfWar>().cloned();
+    let pending = world
+        .get_resource::<PendingDamage>()
+        .cloned()
+        .unwrap_or_default();
+
+    // Build candidate list: all entities with Position + Allegiance.
+    let mut candidate_entities: Vec<Entity> = Vec::new();
+    let mut candidates: Vec<TargetingCandidateInput> = Vec::new();
+
+    {
+        let mut q = world.query::<(
+            Entity,
+            &Position,
+            &Allegiance,
+            Option<&Dead>,
+            Option<&Health>,
+            Option<&SimId>,
+            Option<&WeaponSet>,
+            Option<&crate::components::BuildingFootprint>,
+        )>();
+        for (entity, pos, allegiance, dead, health, sim_id, weapon_set, footprint) in q.iter(world)
+        {
+            candidate_entities.push(entity);
+            candidates.push(TargetingCandidateInput {
+                pos_x_raw: pos.pos.x.raw(),
+                pos_y_raw: pos.pos.y.raw(),
+                pos_z_raw: pos.pos.z.raw(),
+                team: allegiance.team,
+                is_dead: dead.is_some(),
+                health_raw: health.map_or(0, |h| h.current.raw()),
+                sim_id: sim_id.map_or(u64::MAX, |s| s.id),
+                has_weapons: weapon_set.is_some_and(|ws| !ws.weapons.is_empty()),
+                is_building: footprint.is_some(),
+                pending_damage_raw: pending.get(entity).raw(),
+            });
+        }
+    }
+
+    // Build entity-to-candidate-index map for manual target / last attacker lookup.
+    let entity_to_idx: std::collections::BTreeMap<u64, i32> = candidate_entities
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (e.to_bits(), i as i32))
+        .collect();
+
+    // Build shooter list.
+    let mut shooter_entities: Vec<Entity> = Vec::new();
+    let mut shooters: Vec<TargetingShooterInput> = Vec::new();
+
+    {
+        let mut q = world.query::<(
+            Entity,
+            &Position,
+            &Allegiance,
+            &WeaponSet,
+            &Target,
+            Option<&crate::components::FireMode>,
+            Option<&crate::components::LastAttacker>,
+            Option<&crate::components::ManualTarget>,
+        )>();
+        for (entity, pos, allegiance, weapon_set, _target, fire_mode, last_attacker, manual_target)
+            in q.iter(world)
+        {
+            let fm = fire_mode.copied().unwrap_or(crate::components::FireMode::FireAtWill);
+            let fire_mode_u8 = match fm {
+                crate::components::FireMode::FireAtWill => 0,
+                crate::components::FireMode::ReturnFire => 1,
+                crate::components::FireMode::HoldFire => 2,
+            };
+
+            let mut max_range_raw = 0i64;
+            let mut has_indirect = false;
+            let mut weapon_min_ranges = [0i64; 4];
+            let mut weapon_count = 0u8;
+
+            for (i, w) in weapon_set.weapons.iter().enumerate() {
+                if let Some(def) = registry.defs.get(w.def_id as usize) {
+                    if def.range.raw() > max_range_raw {
+                        max_range_raw = def.range.raw();
+                    }
+                    if def.indirect_fire {
+                        has_indirect = true;
+                    }
+                    if i < 4 {
+                        weapon_min_ranges[i] = def.min_range.raw();
+                        weapon_count = (i + 1) as u8;
+                    }
+                }
+            }
+
+            let manual_idx = manual_target
+                .and_then(|mt| mt.forced_entity)
+                .and_then(|e| entity_to_idx.get(&e.to_bits()).copied())
+                .unwrap_or(-1);
+
+            let attacker_idx = last_attacker
+                .and_then(|la| la.entity)
+                .and_then(|e| entity_to_idx.get(&e.to_bits()).copied())
+                .unwrap_or(-1);
+
+            shooter_entities.push(entity);
+            shooters.push(TargetingShooterInput {
+                index: shooter_entities.len() as u32 - 1,
+                pos_x_raw: pos.pos.x.raw(),
+                pos_y_raw: pos.pos.y.raw(),
+                pos_z_raw: pos.pos.z.raw(),
+                team: allegiance.team,
+                max_range_raw,
+                fire_mode: fire_mode_u8,
+                has_indirect,
+                manual_target_idx: manual_idx,
+                last_attacker_idx: attacker_idx,
+                weapon_min_ranges,
+                weapon_count,
+            });
+        }
+    }
+
+    // Get fog data for compute backend.
+    let (fog_grids, fog_width, fog_height, fog_cell_raw) = if let Some(ref f) = fog {
+        (Some(f.grids_as_u8()), f.width(), f.height(), SimFloat::ONE.raw())
+    } else {
+        (None, 0, 0, 0)
+    };
+
+    // Dispatch to backend.
+    let mut backends = world.remove_resource::<ComputeBackends>().unwrap();
+    let results = backends.targeting.compute_targets(
+        &shooters,
+        &candidates,
+        fog_grids.as_ref(),
+        fog_width,
+        fog_height,
+        fog_cell_raw,
+    );
+    world.insert_resource(backends);
+
+    // Apply results: map candidate indices back to entities.
+    for (i, &target_idx) in results.iter().enumerate() {
+        let shooter_entity = shooter_entities[i];
+        let target_entity = if target_idx >= 0 && (target_idx as usize) < candidate_entities.len() {
+            Some(candidate_entities[target_idx as usize])
+        } else {
+            None
+        };
+        if let Some(mut target) = world.get_mut::<Target>(shooter_entity) {
             target.entity = target_entity;
         }
     }
