@@ -16,7 +16,7 @@ use pierce_math::{SimFloat, SimVec3};
 use pierce_sim::combat_data::{ArmorClass, DamageType, WeaponDef, WeaponInstance, WeaponSet};
 use pierce_sim::construction::construction_system;
 use pierce_sim::economy::EconomyState;
-use pierce_sim::sim_runner::{sim_tick_with, SimCapabilities};
+use pierce_sim::sim_runner::sim_tick;
 use pierce_sim::targeting::WeaponRegistry;
 use pierce_sim::{
     Allegiance, CollisionRadius, Heading, Health, MoveState, MovementParams, Position, SightRange,
@@ -198,11 +198,10 @@ fn main() {
 
     eprintln!("Setup complete. Running simulation...");
 
-    let caps = SimCapabilities::detect(&game.world);
     let start = Instant::now();
     for frame in 0..frames {
         construction_system(&mut game.world);
-        sim_tick_with(&mut game.world, &caps);
+        sim_tick(&mut game.world);
         building::equip_factory_spawned_units(&mut game.world, &game.weapon_def_ids);
         building::finalize_completed_buildings(&mut game.world);
         game.frame_count = frame + 1;

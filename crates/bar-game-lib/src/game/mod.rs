@@ -58,8 +58,6 @@ pub struct GameState {
     pub rng_seed: u64,
     /// Set when the game ends.
     pub game_over: Option<GameOver>,
-    /// Cached sim capabilities (avoids per-tick TypeId lookups).
-    sim_caps: pierce_sim::sim_runner::SimCapabilities,
 }
 
 impl GameState {
@@ -74,7 +72,6 @@ impl GameState {
         let config = setup::setup_game_with_options(&mut world, bar_units_path, map_manifest_path, options);
 
         let ai_state = AiState::new(42, 1, 0, config.commander_team1, config.commander_team0);
-        let sim_caps = pierce_sim::sim_runner::SimCapabilities::detect(&world);
 
         Self {
             world,
@@ -90,14 +87,12 @@ impl GameState {
             factory_team1: None,
             rng_seed: 12345,
             game_over: None,
-            sim_caps,
         }
     }
 
     /// Create from an existing World and GameConfig (for testing or custom setups).
     pub fn from_config(world: World, config: GameConfig) -> Self {
         let ai_state = AiState::new(42, 1, 0, config.commander_team1, config.commander_team0);
-        let sim_caps = pierce_sim::sim_runner::SimCapabilities::detect(&world);
 
         Self {
             world,
@@ -113,7 +108,6 @@ impl GameState {
             factory_team1: None,
             rng_seed: 12345,
             game_over: None,
-            sim_caps,
         }
     }
 
@@ -133,7 +127,6 @@ impl GameState {
         self.ai_state = AiState::new(42, 1, 0, config.commander_team1, config.commander_team0);
         self.rng_seed = self.rng_seed.wrapping_add(7);
         self.game_over = None;
-        self.sim_caps = pierce_sim::sim_runner::SimCapabilities::detect(&self.world);
     }
 
     /// Returns true if the game has ended.
@@ -180,11 +173,6 @@ impl GameState {
         }
     }
 
-    /// Re-detect sim capabilities (call after inserting/removing resources like ComputeBackends).
-    pub fn refresh_sim_caps(&mut self) {
-        self.sim_caps = pierce_sim::sim_runner::SimCapabilities::detect(&self.world);
-    }
-
     /// Run one simulation tick. Returns (impact_positions, death_positions) for rendering.
     pub fn tick(&mut self) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
         if self.game_over.is_some() || self.paused {
@@ -218,7 +206,7 @@ impl GameState {
         pierce_sim::construction::construction_system(&mut self.world);
 
         // Run all systems via sim_runner
-        pierce_sim::sim_runner::sim_tick_with(&mut self.world, &self.sim_caps);
+        pierce_sim::sim_runner::sim_tick(&mut self.world);
 
         // Equip factory-spawned units with full components
         building::equip_factory_spawned_units(&mut self.world, &self.weapon_def_ids);

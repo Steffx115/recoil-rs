@@ -315,7 +315,6 @@ impl ApplicationHandler for App {
             );
 
             // Refresh sim capabilities since we added ComputeBackends.
-            self.game.refresh_sim_caps();
         }
 
         self.renderer = Some(renderer);
