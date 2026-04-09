@@ -5,7 +5,6 @@
 //! trivial at GPU throughput. No spatial grid needed.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use bytemuck::Zeroable;
 use pierce_sim::compute::{TargetCompute, TargetingCandidateInput, TargetingShooterInput};
@@ -14,15 +13,15 @@ use crate::buffers::{i64_to_pair, GpuCandidate, GpuShooter, GpuTargetingParams};
 
 /// GPU targeting backend.
 pub struct GpuTargetingCompute {
-    device: Arc<wgpu::Device>,
-    queue: Arc<wgpu::Queue>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     params_buffer: wgpu::Buffer,
 }
 
 impl GpuTargetingCompute {
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+    pub fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         let shader_src = include_str!("shaders/targeting.wgsl");
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("targeting compute shader"),

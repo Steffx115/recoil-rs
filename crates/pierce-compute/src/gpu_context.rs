@@ -1,11 +1,7 @@
 //! Headless wgpu device creation for compute-only usage.
 
-use std::sync::Arc;
-
 /// Create a headless wgpu device and queue (no surface required).
-///
-/// Used for GPU compute in headless servers or tests.
-pub fn create_headless_device() -> (Arc<wgpu::Device>, Arc<wgpu::Queue>) {
+pub fn create_headless_device() -> (wgpu::Device, wgpu::Queue) {
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: wgpu::Backends::all(),
         ..Default::default()
@@ -29,5 +25,5 @@ pub fn create_headless_device() -> (Arc<wgpu::Device>, Arc<wgpu::Queue>) {
     ))
     .expect("Failed to create GPU device for compute");
 
-    (Arc::new(device), Arc::new(queue))
+    (device, queue)
 }

@@ -3,7 +3,6 @@
 //! Uses a WGSL compute shader with integer-only arithmetic for determinism.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use pierce_sim::compute::{FogCompute, FogGridParams, FogUnitInput};
 
@@ -11,15 +10,15 @@ use crate::buffers::{GpuFogParams, GpuFogUnit, i64_to_pair};
 
 /// GPU fog-of-war backend.
 pub struct GpuFogCompute {
-    device: Arc<wgpu::Device>,
-    queue: Arc<wgpu::Queue>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     params_buffer: wgpu::Buffer,
 }
 
 impl GpuFogCompute {
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+    pub fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         let shader_src = include_str!("shaders/fog.wgsl");
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("fog compute shader"),
