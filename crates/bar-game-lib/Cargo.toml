@@ -17,3 +17,7 @@ tracing-subscriber = { workspace = true }
 pierce-net = { path = "../pierce-net" }
 proptest = { workspace = true }
 bincode = { workspace = true }
+
+[[bench]]
+name = "loadtest"
+harness = false

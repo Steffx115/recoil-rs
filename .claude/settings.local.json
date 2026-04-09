@@ -13,7 +13,10 @@
       "Bash(kill %1)",
       "Bash(RUST_LOG=warn target/debug/bar-game.exe)",
       "Bash(target/debug/bar-game.exe)",
-      "Read(//c/Users/Stefan/.claude/**)"
+      "Read(//c/Users/Stefan/.claude/**)",
+      "Bash(bash C:/Users/Stefan/source/repos/bar/recoil-rust/scripts/jira.sh issues RR 5)",
+      "Bash(jira.sh:*)",
+      "Bash(C:/Users/Stefan/source/repos/bar/recoil-rust/scripts/jira-parse.cmd:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

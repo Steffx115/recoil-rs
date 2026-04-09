@@ -4,17 +4,28 @@
 
 - **Use GitHub MCP** (`mcp__github__*`) for all GitHub operations (PRs, issues, branches, CI status, code search).
 - **No jj in this repo.** This is a git-only repo — use `git` commands for local VCS operations.
+- **Always use `git -C <path>`** for direct git commands. Never `cd && git`.
+
+## Jira
+
+- **Use Docker MCP** (`mcp__MCP_DOCKER__*`) for all Jira operations. Do NOT use `mcp__mcp-atlassian__*` (broken API).
+- **Cloud ID:** `aa7c9251-e0d9-46d7-a7cf-5324859b4b7f` — required for all Docker MCP Jira calls.
+- **Fallback:** `scripts/jira.sh` provides curl-based Jira access (requires `JIRA_API_TOKEN` env var).
+- Key tools: `searchJiraIssuesUsingJql`, `getJiraIssue`, `transitionJiraIssue`, `editJiraIssue`, `createJiraIssue`, `addCommentToJiraIssue`.
+- **Large results:** When MCP output exceeds inline limits and is saved to a file, parse it with `scripts/jira-parse.cmd <file>` (PowerShell, no node).
 
 ## Build & Test
 
 ```bash
-cargo test --workspace                          # run all tests
+cargo test --workspace -- --test-threads=4      # run all tests (capped threads)
 cargo clippy --workspace --all-targets          # lint (CI uses -D warnings via RUSTFLAGS)
 cargo fmt --all --check                         # format check
 cargo build --release -p bar-game               # full release build
 ```
 
-Use `--message-format=short` on cargo build/clippy during iterative fix loops.
+- Build parallelism is capped to 4 jobs via `.cargo/config.toml`.
+- Always pass `--test-threads=4` (or set `RUST_TEST_THREADS=4`) to limit test parallelism.
+- Use `--message-format=short` on cargo build/clippy during iterative fix loops.
 
 ## Commit Discipline
 
