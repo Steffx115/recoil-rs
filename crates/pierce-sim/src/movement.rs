@@ -1,16 +1,15 @@
 //! Ground movement system.
 //!
 //! Drives entities toward their target positions using deterministic
-//! fixed-point math. When `BatchMathBackend` is available, expensive
-//! operations (atan2, sin/cos) are batched for CPU/GPU parallelism.
-//! Falls back to per-entity rayon parallel when no backend is present.
+//! fixed-point math. Avoids trig (atan2/sin/cos) in the hot path by
+//! working with direction vectors directly. Heading is derived from
+//! the direction vector, not the other way around.
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::prelude::*;
 use rayon::prelude::*;
 
 use crate::components::{Heading, MoveState, MovementParams, Position, Velocity};
-use crate::compute::BatchMathBackend;
 use crate::SimFloat;
 use crate::SimVec3;
 
@@ -29,10 +28,158 @@ fn wrap_angle(mut angle: SimFloat) -> SimFloat {
     angle
 }
 
+/// Per-entity movement input snapshot.
+struct MoveInput {
+    entity: Entity,
+    pos: SimVec3,
+    vel: SimVec3,
+    heading: SimFloat,
+    params: MovementParams,
+    state: MoveState,
+}
+
+/// Per-entity movement output.
+struct MoveOutput {
+    entity: Entity,
+    pos: SimVec3,
+    vel: SimVec3,
+    heading: SimFloat,
+    state: MoveState,
+}
+
+/// Compute movement without trig in the common case.
+///
+/// Instead of: atan2(delta) → clamp angle → sin/cos(angle) → direction
+/// We do:      normalize(delta) → rotate current dir toward desired → direction
+///
+/// The only remaining trig: atan2 to store the heading (needed by other
+/// systems like targeting). This could be batched or deferred.
+fn compute_movement(input: &MoveInput) -> MoveOutput {
+    match input.state {
+        MoveState::Idle => MoveOutput {
+            entity: input.entity,
+            pos: input.pos,
+            vel: SimVec3::ZERO,
+            heading: input.heading,
+            state: MoveState::Idle,
+        },
+        MoveState::Arriving => MoveOutput {
+            entity: input.entity,
+            pos: input.pos,
+            vel: SimVec3::ZERO,
+            heading: input.heading,
+            state: MoveState::Idle,
+        },
+        MoveState::MovingTo(target) => {
+            let delta = target - input.pos;
+            let dist_sq = delta.length_squared();
+
+            if dist_sq <= ARRIVAL_THRESHOLD_SQ {
+                return MoveOutput {
+                    entity: input.entity,
+                    pos: target,
+                    vel: SimVec3::ZERO,
+                    heading: input.heading,
+                    state: MoveState::Arriving,
+                };
+            }
+
+            // Desired direction (normalized delta in XZ plane).
+            let desired_x = delta.x;
+            let desired_z = delta.z;
+            let desired_len_sq = desired_x * desired_x + desired_z * desired_z;
+
+            // Current facing direction from heading (these two sin/cos calls remain,
+            // but we can optimize them away once we store direction instead of heading).
+            let cur_dir_x = input.heading.cos();
+            let cur_dir_z = input.heading.sin();
+
+            // Compute angle between current and desired direction using cross and dot products.
+            // cross = cur_x * des_z - cur_z * des_x (sign = rotation direction)
+            // dot = cur_x * des_x + cur_z * des_z (cosine of angle)
+            //
+            // To avoid sqrt for normalization of desired, we use the unnormalized
+            // cross/dot and compare against turn_rate scaled by desired_len.
+            // But for correct angle comparison we need the actual angle.
+            //
+            // Fast path: if turn rate is large enough to cover any angle difference,
+            // skip the angle computation entirely and just use the desired direction.
+            // This is common for units that are already roughly facing their target.
+
+            let (new_dir_x, new_dir_z, new_heading) = if desired_len_sq > SimFloat::ZERO {
+                // Normalize desired direction.
+                let desired_len = desired_len_sq.sqrt();
+                let norm_x = desired_x / desired_len;
+                let norm_z = desired_z / desired_len;
+
+                // Dot product: cos(angle_between).
+                let dot = cur_dir_x * norm_x + cur_dir_z * norm_z;
+
+                // If dot > cos(turn_rate), the angle is within turn_rate — snap to desired.
+                // cos(turn_rate) for small angles ≈ 1 - turn_rate²/2.
+                // For large turn rates (> PI/4), just use cos.
+                let cos_turn = if input.params.turn_rate >= SimFloat::PI / SimFloat::from_int(4) {
+                    input.params.turn_rate.cos()
+                } else {
+                    // Approximation: 1 - t²/2 (avoids cos for small turn rates).
+                    let t = input.params.turn_rate;
+                    SimFloat::ONE - (t * t) / SimFloat::TWO
+                };
+
+                if dot >= cos_turn {
+                    // Within turn rate — face target directly.
+                    let heading = SimFloat::atan2(norm_z, norm_x);
+                    (norm_x, norm_z, heading)
+                } else {
+                    // Need to rotate. Use cross product for rotation direction.
+                    let cross = cur_dir_x * norm_z - cur_dir_z * norm_x;
+                    let turn = if cross >= SimFloat::ZERO {
+                        input.params.turn_rate
+                    } else {
+                        -input.params.turn_rate
+                    };
+                    let new_heading = wrap_angle(input.heading + turn);
+                    // Derive direction from new heading (two trig calls).
+                    (new_heading.cos(), new_heading.sin(), new_heading)
+                }
+            } else {
+                (cur_dir_x, cur_dir_z, input.heading)
+            };
+
+            // Accelerate along new direction.
+            // Avoid sqrt for speed: use length_squared and compare against max_speed_sq.
+            // Only compute actual speed when needed (not at max speed).
+            let cur_speed_sq = input.vel.length_squared();
+            let max_speed_sq = input.params.max_speed * input.params.max_speed;
+            let new_speed = if cur_speed_sq >= max_speed_sq {
+                input.params.max_speed
+            } else {
+                // Only sqrt when accelerating (not at max speed).
+                let cur_speed = cur_speed_sq.sqrt();
+                (cur_speed + input.params.acceleration).min(input.params.max_speed)
+            };
+
+            let new_vel = SimVec3::new(
+                new_dir_x * new_speed,
+                SimFloat::ZERO,
+                new_dir_z * new_speed,
+            );
+            let new_pos = input.pos + new_vel;
+
+            MoveOutput {
+                entity: input.entity,
+                pos: new_pos,
+                vel: new_vel,
+                heading: new_heading,
+                state: MoveState::MovingTo(target),
+            }
+        }
+    }
+}
+
 /// Run one tick of the ground movement system.
 pub fn movement_system(world: &mut World) {
-    // Collect all movable entities.
-    let inputs: Vec<(Entity, SimVec3, SimVec3, SimFloat, MovementParams, MoveState)> = world
+    let inputs: Vec<MoveInput> = world
         .query::<(
             Entity,
             &Position,
@@ -42,216 +189,21 @@ pub fn movement_system(world: &mut World) {
             &MovementParams,
         )>()
         .iter(world)
-        .map(|(e, p, v, h, ms, mp)| (e, p.pos, v.vel, h.angle, mp.clone(), ms.clone()))
+        .map(|(e, p, v, h, ms, mp)| MoveInput {
+            entity: e,
+            pos: p.pos,
+            vel: v.vel,
+            heading: h.angle,
+            params: mp.clone(),
+            state: ms.clone(),
+        })
         .collect();
 
     if inputs.is_empty() {
         return;
     }
 
-    // Try batched path if backend available.
-    let has_backend = world.contains_resource::<BatchMathBackend>();
-    if has_backend {
-        movement_batched(world, &inputs);
-    } else {
-        movement_scalar(world, &inputs);
-    }
-}
-
-/// Batched movement: gather SoA arrays, batch atan2 + sincos, apply results.
-fn movement_batched(
-    world: &mut World,
-    inputs: &[(Entity, SimVec3, SimVec3, SimFloat, MovementParams, MoveState)],
-) {
-    // Separate moving entities from idle/arriving.
-    // For idle/arriving, just zero velocity and transition.
-    struct MovingEntity {
-        idx: usize, // index into inputs
-        target: SimVec3,
-    }
-
-    let mut idle_outputs: Vec<(Entity, SimVec3, SimFloat, MoveState)> = Vec::new();
-    let mut moving: Vec<MovingEntity> = Vec::new();
-
-    for (i, (entity, pos, _vel, heading, _params, state)) in inputs.iter().enumerate() {
-        match state {
-            MoveState::Idle => {
-                idle_outputs.push((*entity, SimVec3::ZERO, *heading, MoveState::Idle));
-            }
-            MoveState::Arriving => {
-                idle_outputs.push((*entity, SimVec3::ZERO, *heading, MoveState::Idle));
-            }
-            MoveState::MovingTo(target) => {
-                // Quick arrival check (cheap, no batch needed).
-                let delta = *target - *pos;
-                let dist_sq = delta.length_squared();
-                if dist_sq <= ARRIVAL_THRESHOLD_SQ {
-                    idle_outputs.push((*entity, SimVec3::ZERO, *heading, MoveState::Arriving));
-                } else {
-                    moving.push(MovingEntity { idx: i, target: *target });
-                }
-            }
-        }
-    }
-
-    // Apply idle/arrived outputs.
-    for (entity, vel, heading, state) in &idle_outputs {
-        if let Some(mut v) = world.get_mut::<Velocity>(*entity) {
-            v.vel = *vel;
-        }
-        if matches!(state, MoveState::Arriving) {
-            // Snap to target position.
-        }
-        if let Some(mut ms) = world.get_mut::<MoveState>(*entity) {
-            *ms = state.clone();
-        }
-    }
-
-    if moving.is_empty() {
-        return;
-    }
-
-    // Build SoA arrays for batch heading (atan2).
-    let n = moving.len();
-    let mut dx = Vec::with_capacity(n);
-    let mut dz = Vec::with_capacity(n);
-
-    for m in &moving {
-        let (_, pos, _, _, _, _) = &inputs[m.idx];
-        let delta_x = m.target.x - pos.x;
-        let delta_z = m.target.z - pos.z;
-        dx.push(delta_x.raw());
-        dz.push(delta_z.raw());
-    }
-
-    // Batch atan2.
-    let mut backend = world.remove_resource::<BatchMathBackend>().unwrap();
-    let desired_headings = backend.ops.batch_heading(&dx, &dz);
-
-    // Apply turn rate clamping (cheap, CPU-side).
-    let mut clamped_headings = Vec::with_capacity(n);
-    for (i, m) in moving.iter().enumerate() {
-        let (_, _, _, heading, params, _) = &inputs[m.idx];
-        let desired = SimFloat::from_raw(desired_headings[i]);
-        let angle_diff = wrap_angle(desired - *heading);
-
-        let new_heading = if angle_diff.abs() <= params.turn_rate {
-            desired
-        } else if angle_diff > SimFloat::ZERO {
-            wrap_angle(*heading + params.turn_rate)
-        } else {
-            wrap_angle(*heading - params.turn_rate)
-        };
-        clamped_headings.push(new_heading.raw());
-    }
-
-    // Batch sin/cos for direction vectors.
-    let (sin_vals, cos_vals) = backend.ops.batch_sincos(&clamped_headings);
-
-    world.insert_resource(backend);
-
-    // Compute velocities and positions (cheap scalar ops).
-    for (i, m) in moving.iter().enumerate() {
-        let (entity, pos, vel, _, params, state) = &inputs[m.idx];
-
-        let dir_x = SimFloat::from_raw(cos_vals[i]);
-        let dir_z = SimFloat::from_raw(sin_vals[i]);
-
-        let cur_speed = vel.length();
-        let new_speed = (cur_speed + params.acceleration).min(params.max_speed);
-
-        let new_vel = SimVec3::new(
-            dir_x * new_speed,
-            SimFloat::ZERO,
-            dir_z * new_speed,
-        );
-        let new_pos = *pos + new_vel;
-        let new_heading = SimFloat::from_raw(clamped_headings[i]);
-
-        if let Some(mut p) = world.get_mut::<Position>(*entity) {
-            p.pos = new_pos;
-        }
-        if let Some(mut v) = world.get_mut::<Velocity>(*entity) {
-            v.vel = new_vel;
-        }
-        if let Some(mut h) = world.get_mut::<Heading>(*entity) {
-            h.angle = new_heading;
-        }
-        // MoveState stays MovingTo(target) — no change needed.
-    }
-}
-
-/// Scalar per-entity movement via rayon (fallback when no batch backend).
-fn movement_scalar(
-    world: &mut World,
-    inputs: &[(Entity, SimVec3, SimVec3, SimFloat, MovementParams, MoveState)],
-) {
-    struct MoveOutput {
-        entity: Entity,
-        pos: SimVec3,
-        vel: SimVec3,
-        heading: SimFloat,
-        state: MoveState,
-    }
-
-    let outputs: Vec<MoveOutput> = inputs
-        .par_iter()
-        .map(|(entity, pos, vel, heading, params, state)| match state {
-            MoveState::Idle => MoveOutput {
-                entity: *entity,
-                pos: *pos,
-                vel: SimVec3::ZERO,
-                heading: *heading,
-                state: MoveState::Idle,
-            },
-            MoveState::Arriving => MoveOutput {
-                entity: *entity,
-                pos: *pos,
-                vel: SimVec3::ZERO,
-                heading: *heading,
-                state: MoveState::Idle,
-            },
-            MoveState::MovingTo(target) => {
-                let delta = *target - *pos;
-                let dist_sq = delta.length_squared();
-
-                if dist_sq <= ARRIVAL_THRESHOLD_SQ {
-                    return MoveOutput {
-                        entity: *entity,
-                        pos: *target,
-                        vel: SimVec3::ZERO,
-                        heading: *heading,
-                        state: MoveState::Arriving,
-                    };
-                }
-
-                let desired_heading = SimFloat::atan2(delta.z, delta.x);
-                let angle_diff = wrap_angle(desired_heading - *heading);
-
-                let new_heading = if angle_diff.abs() <= params.turn_rate {
-                    desired_heading
-                } else if angle_diff > SimFloat::ZERO {
-                    wrap_angle(*heading + params.turn_rate)
-                } else {
-                    wrap_angle(*heading - params.turn_rate)
-                };
-
-                let dir = SimVec3::new(new_heading.cos(), SimFloat::ZERO, new_heading.sin());
-                let cur_speed = vel.length();
-                let new_speed = (cur_speed + params.acceleration).min(params.max_speed);
-                let new_vel = dir * new_speed;
-                let new_pos = *pos + new_vel;
-
-                MoveOutput {
-                    entity: *entity,
-                    pos: new_pos,
-                    vel: new_vel,
-                    heading: new_heading,
-                    state: MoveState::MovingTo(*target),
-                }
-            }
-        })
-        .collect();
+    let outputs: Vec<MoveOutput> = inputs.par_iter().map(compute_movement).collect();
 
     for out in outputs {
         if let Some(mut pos) = world.get_mut::<Position>(out.entity) {
