@@ -243,6 +243,91 @@ pub fn generate_flat_map(
 }
 
 // ---------------------------------------------------------------------------
+// HeightmapData — ECS resource for terrain LOS raycasting
+// ---------------------------------------------------------------------------
+
+/// Heightmap data stored as a Bevy resource for terrain line-of-sight checks.
+#[derive(Resource, Debug, Clone)]
+pub struct HeightmapData {
+    pub width: u32,
+    pub height: u32,
+    /// World units per heightmap cell.
+    pub cell_size: SimFloat,
+    /// Row-major heightmap values (u16 raw heights).
+    pub heights: Vec<u16>,
+}
+
+impl HeightmapData {
+    /// Sample the height at a world-space position (XZ plane).
+    /// Returns the height as a SimFloat, or ZERO if out of bounds.
+    pub fn sample_height(&self, world_x: SimFloat, world_z: SimFloat) -> SimFloat {
+        let cx = (world_x / self.cell_size).floor().raw() >> 32;
+        let cz = (world_z / self.cell_size).floor().raw() >> 32;
+        if cx < 0 || cz < 0 || cx >= self.width as i64 || cz >= self.height as i64 {
+            return SimFloat::ZERO;
+        }
+        let idx = (cz as usize) * (self.width as usize) + (cx as usize);
+        if idx < self.heights.len() {
+            // Convert u16 height to SimFloat (scale: 1 height unit = 1/100 world unit).
+            SimFloat::from_ratio(self.heights[idx] as i32, 100)
+        } else {
+            SimFloat::ZERO
+        }
+    }
+
+    /// Check terrain line-of-sight between two world-space positions.
+    ///
+    /// Steps along the 2D ray from `from` to `to` and checks if any
+    /// intermediate terrain point blocks the line. The check uses the
+    /// height of the shooter and target (Y component of their positions)
+    /// and verifies the terrain doesn't rise above the interpolated
+    /// sight line.
+    ///
+    /// Returns `true` if there is a clear line of sight.
+    pub fn has_line_of_sight(
+        &self,
+        from_x: SimFloat,
+        from_y: SimFloat,
+        from_z: SimFloat,
+        to_x: SimFloat,
+        to_y: SimFloat,
+        to_z: SimFloat,
+    ) -> bool {
+        let dx = to_x - from_x;
+        let dz = to_z - from_z;
+        let dist_sq = dx * dx + dz * dz;
+
+        // If distance is very small, LOS is clear.
+        if dist_sq < SimFloat::ONE {
+            return true;
+        }
+
+        // Number of steps: one per cell_size unit of distance.
+        let dist = dist_sq.sqrt();
+        // Step count: at least 2, capped at 64 for performance.
+        let raw_steps = (dist / self.cell_size).raw() >> 32;
+        let steps = (raw_steps.max(2) as u32).min(64);
+
+        let dy = to_y - from_y;
+
+        for i in 1..steps {
+            let t = SimFloat::from_ratio(i as i32, steps as i32);
+            let sample_x = from_x + dx * t;
+            let sample_z = from_z + dz * t;
+            let sight_height = from_y + dy * t;
+
+            let terrain_height = self.sample_height(sample_x, sample_z);
+
+            if terrain_height > sight_height {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+// ---------------------------------------------------------------------------
 // RON I/O
 // ---------------------------------------------------------------------------
 

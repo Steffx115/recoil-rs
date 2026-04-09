@@ -103,6 +103,55 @@ pub struct Target {
     pub entity: Option<Entity>,
 }
 
+/// Per-unit weapon engagement mode.
+#[derive(Component, Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FireMode {
+    /// Fire at any enemy in range.
+    #[default]
+    FireAtWill,
+    /// Only fire at units that have attacked this unit.
+    ReturnFire,
+    /// Never auto-fire. Manual target override still works.
+    HoldFire,
+}
+
+/// Manual target override: force-fire on a ground position.
+#[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct ManualTarget {
+    /// Force-fire target position (ground attack).
+    pub position: Option<SimVec3>,
+    /// Force-fire target entity.
+    #[serde(with = "entity_option_serde")]
+    pub forced_entity: Option<Entity>,
+}
+
+/// Attack-move command: move toward destination while engaging enemies.
+#[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct AttackMove {
+    pub destination: SimVec3,
+}
+
+/// Tracks which entity last attacked this unit (for return-fire mode).
+#[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct LastAttacker {
+    #[serde(with = "entity_option_serde")]
+    pub entity: Option<Entity>,
+}
+
+/// Per-weapon turret state for facing and rotation.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TurretState {
+    /// Current turret facing in radians.
+    pub facing: SimFloat,
+}
+
+/// Component holding per-weapon turret facing state.
+#[derive(Component, Serialize, Deserialize, Debug, Clone)]
+pub struct TurretFacings {
+    /// One entry per weapon slot, matching `WeaponSet::weapons` indices.
+    pub facings: Vec<TurretState>,
+}
+
 // ---------------------------------------------------------------------------
 // Vision
 // ---------------------------------------------------------------------------

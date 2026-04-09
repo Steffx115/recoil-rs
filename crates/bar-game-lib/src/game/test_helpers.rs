@@ -251,9 +251,7 @@ pub(crate) fn register_test_weapon(game: &mut GameState) -> u32 {
         damage_type: DamageType::Normal,
         range: SimFloat::from_int(200),
         reload_time: 10,
-        projectile_speed: SimFloat::ZERO,
-        area_of_effect: SimFloat::ZERO,
-        is_paralyzer: false,
+        ..Default::default()
     });
     id
 }

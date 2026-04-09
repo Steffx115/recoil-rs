@@ -227,9 +227,7 @@ fn test_combat_units_take_damage() {
             damage_type: DamageType::Normal,
             range: SimFloat::from_int(200),
             reload_time: 10,
-            projectile_speed: SimFloat::ZERO, // hitscan
-            area_of_effect: SimFloat::ZERO,
-            is_paralyzer: false,
+            ..Default::default()
         });
         id
     };
@@ -855,8 +853,7 @@ fn test_projectiles_spawn_and_impact() {
             range: SimFloat::from_int(200),
             reload_time: 15,
             projectile_speed: SimFloat::from_int(5),
-            area_of_effect: SimFloat::ZERO,
-            is_paralyzer: false,
+            ..Default::default()
         });
         id
     };
@@ -944,9 +941,7 @@ fn test_dead_units_cleaned_up() {
             damage_type: DamageType::Normal,
             range: SimFloat::from_int(500),
             reload_time: 1,
-            projectile_speed: SimFloat::ZERO,
-            area_of_effect: SimFloat::ZERO,
-            is_paralyzer: false,
+            ..Default::default()
         });
         id
     };
@@ -1122,9 +1117,8 @@ fn test_aoe_damage() {
             damage_type: DamageType::Explosive,
             range: SimFloat::from_int(200),
             reload_time: 5,
-            projectile_speed: SimFloat::ZERO, // hitscan
             area_of_effect: SimFloat::from_int(50),
-            is_paralyzer: false,
+            ..Default::default()
         });
         id
     };
@@ -3150,9 +3144,7 @@ fn action_wreckage_spawns_on_death() {
             damage_type: DamageType::Normal,
             range: SimFloat::from_int(500),
             reload_time: 1,
-            projectile_speed: SimFloat::ZERO,
-            area_of_effect: SimFloat::ZERO,
-            is_paralyzer: false,
+            ..Default::default()
         });
         id
     };
@@ -4964,9 +4956,7 @@ fn determinism_cross_system_2000_frames() {
                 damage_type: DamageType::Normal,
                 range: SimFloat::from_int(200),
                 reload_time: 15,
-                projectile_speed: SimFloat::ZERO,
-                area_of_effect: SimFloat::ZERO,
-                is_paralyzer: false,
+                ..Default::default()
             });
             id
         };
@@ -5246,9 +5236,7 @@ fn entity_lifecycle_chain() {
             damage_type: DamageType::Normal,
             range: SimFloat::from_int(500),
             reload_time: 1,
-            projectile_speed: SimFloat::ZERO,
-            area_of_effect: SimFloat::ZERO,
-            is_paralyzer: false,
+            ..Default::default()
         });
         id
     };

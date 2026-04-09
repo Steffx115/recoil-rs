@@ -7,9 +7,8 @@ fn weapon(damage: SimFloat, damage_type: DamageType) -> WeaponDef {
         damage_type,
         range: SimFloat::from_int(100),
         reload_time: 30,
-        projectile_speed: SimFloat::ZERO,
-        area_of_effect: SimFloat::ZERO,
         is_paralyzer: damage_type == DamageType::Paralyzer,
+        ..Default::default()
     }
 }
 
