@@ -35,7 +35,8 @@ if %ERRORLEVEL% neq 0 (
 
 echo.
 echo Running loadtest: %UNITS% units/team, %FRAMES% frames...
-target\profiling\deps\loadtest-*.exe %UNITS% %FRAMES%
+for %%f in (target\profiling\deps\loadtest-*.exe) do set "BENCH_EXE=%%f"
+"%BENCH_EXE%" %UNITS% %FRAMES%
 
 echo.
 echo Stopping WPR trace...
