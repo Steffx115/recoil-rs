@@ -1,7 +1,8 @@
 //! Uniform-grid spatial index for broad-phase queries.
 //!
-//! The grid is rebuilt from scratch each tick so that we never mutate
-//! cells while iterating them. All math is deterministic fixed-point.
+//! The grid is rebuilt from scratch each tick. All math is deterministic
+//! fixed-point. Cell coordinate computation uses bit shift (cell_size
+//! must be a power of 2).
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Resource;
@@ -9,28 +10,31 @@ use bevy_ecs::system::Resource;
 use crate::{SimFloat, SimVec2};
 
 /// 2-D uniform grid that bins entities by their XZ position.
-///
-/// Stored as a Bevy [`Resource`] and rebuilt every tick from the
-/// authoritative [`Position`](crate::Position) components.
-///
-/// Positions are stored in a flat `Vec` for O(1) indexed lookup during
-/// radius/rect queries, replacing the previous `BTreeMap<u64, SimVec2>`.
-/// The index into `positions` is stored alongside the entity in each cell.
 #[derive(Resource, Debug, Clone)]
 pub struct SpatialGrid {
-    cell_size: SimFloat,
+    /// Log2 of cell_size. Cell coords = pos.raw() >> (32 + shift).
+    cell_shift: u32,
+    cell_size_raw: i64,
     width: i32,
     height: i32,
     cells: Vec<Vec<(Entity, u32)>>,
-    /// Flat storage of all inserted positions. Index matches insertion order.
     positions: Vec<SimVec2>,
 }
 
 impl SpatialGrid {
+    /// Create a new grid. `cell_size` MUST be a power of 2.
     pub fn new(cell_size: SimFloat, width: i32, height: i32) -> Self {
         let total = (width as usize) * (height as usize);
+        let cell_size_int = (cell_size.raw() >> 32) as u32;
+        debug_assert!(
+            cell_size_int.is_power_of_two(),
+            "SpatialGrid cell_size must be a power of 2, got {cell_size_int}"
+        );
+        let cell_shift = cell_size_int.trailing_zeros();
+
         Self {
-            cell_size,
+            cell_shift,
+            cell_size_raw: cell_size.raw(),
             width,
             height,
             cells: vec![Vec::new(); total],
@@ -45,14 +49,17 @@ impl SpatialGrid {
         self.positions.clear();
     }
 
+    /// Cell coordinates via bit shift (no division).
+    #[inline]
     fn cell_coords(&self, pos: SimVec2) -> (i32, i32) {
-        let cx = (pos.x / self.cell_size).floor().raw() >> 32;
-        let cz = (pos.y / self.cell_size).floor().raw() >> 32;
-        let cx = (cx as i32).clamp(0, self.width - 1);
-        let cz = (cz as i32).clamp(0, self.height - 1);
-        (cx, cz)
+        // pos.raw() is 32.32 fixed-point. Integer part = raw >> 32.
+        // Divide by cell_size (power of 2) = shift right by cell_shift more.
+        let cx = ((pos.x.raw() >> 32) >> self.cell_shift as i64) as i32;
+        let cz = ((pos.y.raw() >> 32) >> self.cell_shift as i64) as i32;
+        (cx.clamp(0, self.width - 1), cz.clamp(0, self.height - 1))
     }
 
+    #[inline]
     fn cell_index(&self, cx: i32, cz: i32) -> usize {
         (cz as usize) * (self.width as usize) + (cx as usize)
     }
@@ -65,25 +72,38 @@ impl SpatialGrid {
         self.cells[idx].push((entity, pos_idx));
     }
 
-    pub fn units_in_radius(&self, center: SimVec2, radius: SimFloat) -> Vec<Entity> {
+    /// Query entities within radius. Uses a callback to avoid Vec allocation.
+    #[inline]
+    pub fn for_each_in_radius(
+        &self,
+        center: SimVec2,
+        radius: SimFloat,
+        mut f: impl FnMut(Entity, SimVec2),
+    ) {
         let radius_sq = radius * radius;
         let min = SimVec2::new(center.x - radius, center.y - radius);
         let max = SimVec2::new(center.x + radius, center.y + radius);
         let (min_cx, min_cz) = self.cell_coords(min);
         let (max_cx, max_cz) = self.cell_coords(max);
 
-        let mut result = Vec::new();
         for cz in min_cz..=max_cz {
             for cx in min_cx..=max_cx {
                 let idx = self.cell_index(cx, cz);
                 for &(entity, pos_idx) in &self.cells[idx] {
                     let pos = self.positions[pos_idx as usize];
                     if pos.distance_squared(center) <= radius_sq {
-                        result.push(entity);
+                        f(entity, pos);
                     }
                 }
             }
         }
+    }
+
+    /// Query entities within radius, returning a Vec. Use `for_each_in_radius`
+    /// in hot paths to avoid allocation.
+    pub fn units_in_radius(&self, center: SimVec2, radius: SimFloat) -> Vec<Entity> {
+        let mut result = Vec::new();
+        self.for_each_in_radius(center, radius, |e, _| result.push(e));
         result
     }
 
@@ -108,6 +128,14 @@ impl SpatialGrid {
             }
         }
         result
+    }
+
+    pub fn width(&self) -> i32 {
+        self.width
+    }
+
+    pub fn height(&self) -> i32 {
+        self.height
     }
 
     pub fn len(&self) -> usize {

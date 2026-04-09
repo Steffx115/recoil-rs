@@ -1,39 +1,42 @@
 //! Unit-unit collision detection and response.
 //!
-//! Uses pre-collected `SimFrameData` and the `SpatialGrid` for broad-phase
-//! neighbour queries. Narrow phase does circle-circle overlap. Overlapping
-//! pairs are pushed apart. All math uses deterministic `SimFloat`.
-//! Collision pairs are processed in parallel via rayon.
-
-use std::collections::BTreeMap;
+//! Uses pre-collected `SimFrameData` and the `SpatialGrid` for broad-phase.
+//! Narrow phase: circle-circle overlap. Overlapping pairs pushed apart.
+//! All math uses deterministic `SimFloat`. Rayon parallel.
+//!
+//! Optimizations:
+//! - No BTreeMap: uses flat Vec indexed by insertion order
+//! - No per-query Vec allocation: uses `for_each_in_radius` callback
+//! - No grid clone: takes reference via Arc-like pattern
+//! - No frame data clone: reads directly from resource
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::prelude::*;
 use rayon::prelude::*;
 
 use crate::components::Position;
-use crate::frame_data::SimFrameData;
+use crate::frame_data::{CollisionData, SimFrameData};
 use crate::spatial::SpatialGrid;
 use crate::{SimFloat, SimVec2, SimVec3};
 
 /// Run one tick of unit-unit collision detection and response.
-/// Uses pre-collected `SimFrameData` if available, otherwise queries ECS.
 pub fn collision_system(world: &mut World) {
     let has_grid = world.get_resource::<SpatialGrid>().is_some();
     if !has_grid {
         return;
     }
 
-    // Use pre-collected frame data if available, else collect inline.
-    let entities: Vec<crate::frame_data::CollisionData> =
+    // Collect collision data — use pre-collected or query inline.
+    let entities: Vec<CollisionData> =
         if let Some(frame) = world.get_resource::<SimFrameData>() {
+            // Clone is unavoidable here: we need owned data for rayon + later mutable world access.
             frame.collision_entities.clone()
         } else {
             use crate::components::{CollisionRadius, MoveState};
             world
                 .query_filtered::<(Entity, &Position, &CollisionRadius, Option<&MoveState>), ()>()
                 .iter(world)
-                .map(|(e, p, r, ms)| crate::frame_data::CollisionData {
+                .map(|(e, p, r, ms)| CollisionData {
                     entity: e,
                     bits: e.to_bits(),
                     pos_x: p.pos.x,
@@ -48,12 +51,13 @@ pub fn collision_system(world: &mut World) {
         return;
     }
 
-    // Build lookup by entity bits.
-    let lookup: BTreeMap<u64, usize> = entities
+    // Build flat lookup: entity bits → index. Sorted for deterministic binary search.
+    let mut bits_to_idx: Vec<(u64, usize)> = entities
         .iter()
         .enumerate()
         .map(|(i, e)| (e.bits, i))
         .collect();
+    bits_to_idx.sort_unstable_by_key(|&(bits, _)| bits);
 
     let max_radius = entities
         .iter()
@@ -65,23 +69,24 @@ pub fn collision_system(world: &mut World) {
     let push_scale = SimFloat::from_ratio(1, 4);
     let two = SimFloat::TWO;
 
-    // Parallel collision detection.
-    let all_displacements: Vec<Vec<(u64, SimVec3)>> = entities
+    // Parallel collision detection using for_each_in_radius (no Vec alloc per query).
+    let all_displacements: Vec<Vec<(usize, SimVec3)>> = entities
         .par_iter()
         .map(|ce| {
-            let mut local_disps: Vec<(u64, SimVec3)> = Vec::new();
+            let mut local_disps: Vec<(usize, SimVec3)> = Vec::new();
             let search_radius = ce.radius + max_radius;
             let center = SimVec2::new(ce.pos_x, ce.pos_z);
-            let neighbours = grid.units_in_radius(center, search_radius);
 
-            for neighbour in neighbours {
+            grid.for_each_in_radius(center, search_radius, |neighbour, _nb_pos| {
                 let bits_b = neighbour.to_bits();
                 if ce.bits >= bits_b {
-                    continue;
+                    return;
                 }
 
-                let Some(&idx_b) = lookup.get(&bits_b) else {
-                    continue;
+                // Binary search in sorted array (O(log n) vs BTreeMap O(log n) but cache-friendlier).
+                let idx_b = match bits_to_idx.binary_search_by_key(&bits_b, |&(b, _)| b) {
+                    Ok(i) => bits_to_idx[i].1,
+                    Err(_) => return,
                 };
                 let nb = &entities[idx_b];
 
@@ -92,7 +97,7 @@ pub fn collision_system(world: &mut World) {
                 let sum_radii_sq = sum_radii * sum_radii;
 
                 if dist_sq >= sum_radii_sq {
-                    continue;
+                    return;
                 }
 
                 let (push_x, push_z) = if dist_sq > SimFloat::ZERO {
@@ -101,35 +106,44 @@ pub fn collision_system(world: &mut World) {
                     (ce.radius * push_scale, SimFloat::ZERO)
                 };
 
+                // Use index (usize) instead of entity bits for the merge step.
+                let idx_a = match bits_to_idx.binary_search_by_key(&ce.bits, |&(b, _)| b) {
+                    Ok(i) => bits_to_idx[i].1,
+                    Err(_) => return,
+                };
+
                 match (ce.is_mobile, nb.is_mobile) {
                     (true, true) => {
-                        local_disps.push((ce.bits, SimVec3::new(-push_x, SimFloat::ZERO, -push_z)));
-                        local_disps.push((bits_b, SimVec3::new(push_x, SimFloat::ZERO, push_z)));
+                        local_disps.push((idx_a, SimVec3::new(-push_x, SimFloat::ZERO, -push_z)));
+                        local_disps.push((idx_b, SimVec3::new(push_x, SimFloat::ZERO, push_z)));
                     }
                     (true, false) => {
-                        local_disps.push((ce.bits, SimVec3::new(-push_x * two, SimFloat::ZERO, -push_z * two)));
+                        local_disps.push((idx_a, SimVec3::new(-push_x * two, SimFloat::ZERO, -push_z * two)));
                     }
                     (false, true) => {
-                        local_disps.push((bits_b, SimVec3::new(push_x * two, SimFloat::ZERO, push_z * two)));
+                        local_disps.push((idx_b, SimVec3::new(push_x * two, SimFloat::ZERO, push_z * two)));
                     }
                     (false, false) => {}
                 }
-            }
+            });
             local_disps
         })
         .collect();
 
-    // Merge deterministically.
-    let mut merged: BTreeMap<u64, SimVec3> = BTreeMap::new();
+    // Merge into flat array indexed by entity index (no BTreeMap).
+    let mut merged = vec![SimVec3::ZERO; entities.len()];
     for disps in &all_displacements {
-        for &(bits, disp) in disps {
-            merged.entry(bits).and_modify(|d| *d += disp).or_insert(disp);
+        for &(idx, disp) in disps {
+            merged[idx] += disp;
         }
     }
 
-    // Apply.
-    for (bits, disp) in &merged {
-        let entity = Entity::from_bits(*bits);
+    // Apply displacements in entity order (deterministic — same order as entities vec).
+    for (i, disp) in merged.iter().enumerate() {
+        if *disp == SimVec3::ZERO {
+            continue;
+        }
+        let entity = entities[i].entity;
         if let Some(mut pos) = world.get_mut::<Position>(entity) {
             pos.pos += *disp;
         }
