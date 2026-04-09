@@ -109,8 +109,13 @@ impl LoadtestState {
             );
         }
 
-        // Send all units toward center.
+        // Send all spawned units toward center.
         issue_attack_move(world);
+
+        // On first wave, move commanders to the back so they don't die.
+        if self.total_spawned == 0 {
+            move_commanders_back(world);
+        }
 
         self.total_spawned += batch;
         tracing::info!(
@@ -168,6 +173,28 @@ fn spawn_loadtest_unit(
         CommandQueue::default(),
     ));
     entity
+}
+
+/// Move commanders to the back of the map so they don't get killed.
+fn move_commanders_back(world: &mut World) {
+    use pierce_sim::construction::Builder;
+
+    let commanders: Vec<(Entity, u8)> = world
+        .query::<(Entity, &Allegiance, &Builder)>()
+        .iter(world)
+        .map(|(e, a, _)| (e, a.team))
+        .collect();
+
+    for (entity, team) in commanders {
+        let (tx, tz) = if team == 0 { (100, 500) } else { (1900, 500) };
+        if let Some(mut cq) = world.get_mut::<CommandQueue>(entity) {
+            cq.replace(Command::Move(SimVec3::new(
+                SimFloat::from_int(tx),
+                SimFloat::ZERO,
+                SimFloat::from_int(tz),
+            )));
+        }
+    }
 }
 
 /// Send all idle units toward the map center.
