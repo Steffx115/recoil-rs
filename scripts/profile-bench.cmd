@@ -25,8 +25,8 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo.
-echo Starting WPR trace (CPU sampling + context switches)...
-wpr -start CPU -start DiskIO
+echo Starting WPR trace (CPU + GPU + DiskIO)...
+wpr -start CPU -start GPU -start DiskIO
 if %ERRORLEVEL% neq 0 (
     echo WPR failed. Run as Administrator.
     exit /b 1
