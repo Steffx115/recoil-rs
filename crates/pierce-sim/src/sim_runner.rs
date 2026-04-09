@@ -90,6 +90,9 @@ pub fn sim_tick_with(world: &mut World, caps: &SimCapabilities) {
             grid.insert(entity, pos);
         }
 
+        // Store Arc snapshot for rayon-parallel systems (avoids full grid clone).
+        frame.grid_snapshot = Some(std::sync::Arc::new(grid.clone()));
+
         world.insert_resource(frame);
     }
 

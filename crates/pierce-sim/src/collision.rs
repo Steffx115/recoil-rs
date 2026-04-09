@@ -65,7 +65,17 @@ pub fn collision_system(world: &mut World) {
         .max()
         .unwrap_or(SimFloat::ZERO);
 
-    let grid = world.resource::<SpatialGrid>().clone();
+    // Use Arc snapshot from SimFrameData if available (avoids grid clone).
+    let grid: std::sync::Arc<SpatialGrid> =
+        if let Some(frame) = world.get_resource::<SimFrameData>() {
+            if let Some(ref snap) = frame.grid_snapshot {
+                snap.clone() // Arc::clone = pointer bump
+            } else {
+                std::sync::Arc::new(world.resource::<SpatialGrid>().clone())
+            }
+        } else {
+            std::sync::Arc::new(world.resource::<SpatialGrid>().clone())
+        };
     let push_scale = SimFloat::from_ratio(1, 4);
     let two = SimFloat::TWO;
 

@@ -4,9 +4,12 @@
 //! causes significant allocation overhead. This resource persists across
 //! frames and reuses its buffers via `clear()` (which preserves capacity).
 
+use std::sync::Arc;
+
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Resource;
 
+use crate::spatial::SpatialGrid;
 use crate::{SimFloat, SimVec2, SimVec3};
 
 /// Cached entity data for spatial grid, collision, and movement.
@@ -21,6 +24,10 @@ pub struct SimFrameData {
 
     /// Displacement accumulation for collision.
     pub displacements: Vec<(u64, SimVec3)>,
+
+    /// Snapshot of the spatial grid after rebuild. Arc so rayon threads
+    /// can share it without cloning the entire grid.
+    pub grid_snapshot: Option<Arc<SpatialGrid>>,
 }
 
 /// Pre-collected collision data.
@@ -40,6 +47,7 @@ impl Default for SimFrameData {
             spatial_entries: Vec::with_capacity(4096),
             collision_entities: Vec::with_capacity(4096),
             displacements: Vec::with_capacity(4096),
+            grid_snapshot: None,
         }
     }
 }
@@ -50,5 +58,6 @@ impl SimFrameData {
         self.spatial_entries.clear();
         self.collision_entities.clear();
         self.displacements.clear();
+        self.grid_snapshot = None;
     }
 }
