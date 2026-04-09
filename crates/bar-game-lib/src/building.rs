@@ -81,7 +81,7 @@ pub fn place_building(
             SimFloat::from_f64(def.metal_cost),
             SimFloat::from_f64(def.energy_cost),
             SimFloat::from_f64(def.build_time as f64),
-            SimFloat::from_f64(def.max_health),
+            def.max_health as i32,
             SimFloat::from_f64(def.collision_radius),
         )
     };
@@ -136,7 +136,7 @@ pub fn place_building(
                 progress: SimFloat::ZERO,
             },
             Health {
-                current: SimFloat::from_int(1),
+                current: 1,
                 max: max_health,
             },
             Allegiance { team },

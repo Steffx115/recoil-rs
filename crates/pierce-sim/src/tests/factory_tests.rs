@@ -16,7 +16,7 @@ fn setup() -> World {
         metal_cost: SimFloat::from_int(100),
         energy_cost: SimFloat::from_int(50),
         build_time: 10,
-        max_health: SimFloat::from_int(200),
+        max_health: 200,
     });
     world.insert_resource(registry);
     world
@@ -414,7 +414,7 @@ fn queue_order_is_fifo() {
             metal_cost: SimFloat::from_int(200),
             energy_cost: SimFloat::from_int(100),
             build_time: 5,
-            max_health: SimFloat::from_int(300),
+            max_health: 300,
         });
     }
 

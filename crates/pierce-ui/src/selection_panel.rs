@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 
 use egui::Ui;
-use pierce_sim::SimFloat;
 
 /// Snapshot of a single selected unit, extracted from ECS components.
 #[derive(Debug, Clone)]
@@ -13,9 +12,9 @@ pub struct SelectedUnitInfo {
     /// Unit type id.
     pub unit_type: u32,
     /// Current health.
-    pub hp_current: SimFloat,
+    pub hp_current: i32,
     /// Maximum health.
-    pub hp_max: SimFloat,
+    pub hp_max: i32,
     /// World position (x, y, z as f32 for display).
     pub position: [f32; 3],
     /// Human-readable description of the current order, if any.
@@ -37,8 +36,8 @@ fn hp_color(fraction: f32) -> egui::Color32 {
 
 /// Draw info for a single selected unit.
 fn draw_single(ui: &mut Ui, info: &SelectedUnitInfo) {
-    let hp_cur = info.hp_current.to_f32();
-    let hp_max = info.hp_max.to_f32().max(1.0);
+    let hp_cur = info.hp_current as f32;
+    let hp_max = (info.hp_max as f32).max(1.0);
     let fraction = (hp_cur / hp_max).clamp(0.0, 1.0);
 
     ui.horizontal(|ui| {

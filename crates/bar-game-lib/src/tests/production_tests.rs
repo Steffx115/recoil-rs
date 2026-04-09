@@ -25,8 +25,8 @@ fn test_queue_unit_by_id() {
             Allegiance { team: 0 },
             UnitType { id: 50002 },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
         ))
         .id();
@@ -79,7 +79,7 @@ fn test_queue_unit_by_name() {
         metal_cost: SimFloat::from_int(50),
         energy_cost: SimFloat::from_int(100),
         build_time: 60,
-        max_health: SimFloat::from_int(200),
+        max_health: 200,
     });
     world.insert_resource(unit_reg);
 
@@ -97,8 +97,8 @@ fn test_queue_unit_by_name() {
             Allegiance { team: 0 },
             UnitType { id: 50002 },
             Health {
-                current: SimFloat::from_int(500),
-                max: SimFloat::from_int(500),
+                current: 500,
+                max: 500,
             },
         ))
         .id();

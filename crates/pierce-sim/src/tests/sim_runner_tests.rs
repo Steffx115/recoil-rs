@@ -38,8 +38,8 @@ fn spawn_full_unit(world: &mut World, x: SimFloat, z: SimFloat, team: u8) -> Ent
         UnitType { id: 1 },
         Allegiance { team },
         Health {
-            current: SimFloat::from_int(100),
-            max: SimFloat::from_int(100),
+            current: 100,
+            max: 100,
         },
     );
     world.entity_mut(entity).insert((
@@ -77,8 +77,8 @@ fn spawn_armed_unit(
         UnitType { id: 1 },
         Allegiance { team },
         Health {
-            current: SimFloat::from_int(hp),
-            max: SimFloat::from_int(hp),
+            current: hp,
+            max: hp,
         },
     );
     world.entity_mut(entity).insert((
@@ -275,7 +275,8 @@ fn test_combat_determinism() {
             range: SimFloat::from_int(30),
             reload_time: 5,
             projectile_speed: SimFloat::from_int(3),
-            ..Default::default()
+            area_of_effect: SimFloat::ZERO,
+            is_paralyzer: false, ..Default::default()
         };
 
         let mut world = init_combat_world(vec![weapon_def]);
@@ -381,7 +382,9 @@ fn test_rapid_spawn_despawn() {
             damage_type: DamageType::Normal,
             range: SimFloat::from_int(20),
             reload_time: 3,
-            ..Default::default()
+            projectile_speed: SimFloat::ZERO, // beam = instant
+            area_of_effect: SimFloat::ZERO,
+            is_paralyzer: false, ..Default::default()
         };
 
         let mut world = init_combat_world(vec![weapon_def]);
@@ -402,7 +405,7 @@ fn test_rapid_spawn_despawn() {
             // Kill 25 of them (set health to zero, damage_system marks dead).
             for &e in &batch[..25] {
                 if let Some(mut h) = world.get_mut::<Health>(e) {
-                    h.current = SimFloat::ZERO;
+                    h.current = 0;
                 }
             }
 
@@ -493,7 +496,8 @@ fn test_full_combat_stress_10000_frames() {
                 range: SimFloat::from_int(25),
                 reload_time: 4,
                 projectile_speed: SimFloat::from_int(4),
-                ..Default::default()
+                area_of_effect: SimFloat::ZERO,
+                is_paralyzer: false, ..Default::default()
             },
             WeaponDef {
                 damage: SimFloat::from_int(20),
@@ -502,7 +506,7 @@ fn test_full_combat_stress_10000_frames() {
                 reload_time: 10,
                 projectile_speed: SimFloat::from_int(2),
                 area_of_effect: SimFloat::from_int(5),
-                ..Default::default()
+                is_paralyzer: false, ..Default::default()
             },
         ];
 
@@ -652,8 +656,8 @@ fn test_building_death_restores_terrain() {
                 ),
             },
             Health {
-                current: SimFloat::from_int(100),
-                max: SimFloat::from_int(100),
+                current: 100,
+                max: 100,
             },
             fp,
         ))

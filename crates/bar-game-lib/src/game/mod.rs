@@ -15,7 +15,6 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::world::World;
 
-use pierce_math::SimFloat;
 use pierce_sim::construction::Builder;
 use pierce_sim::factory::BuildQueue;
 use pierce_sim::projectile::ImpactEventQueue;
@@ -151,7 +150,7 @@ impl GameState {
                     || self
                         .world
                         .get::<Health>(e)
-                        .map(|h| h.current <= SimFloat::ZERO)
+                        .map(|h| h.current <= 0)
                         .unwrap_or(true)
             }
         }
@@ -196,7 +195,7 @@ impl GameState {
             .world
             .query_filtered::<(&Position, &Health), Without<Dead>>()
             .iter(&self.world)
-            .filter(|(_, h)| h.current <= SimFloat::ZERO)
+            .filter(|(_, h)| h.current <= 0)
             .map(|(p, _)| [p.pos.x.to_f32(), p.pos.y.to_f32() + 5.0, p.pos.z.to_f32()])
             .collect();
 
@@ -239,7 +238,7 @@ impl GameState {
         let new_deaths: Vec<[f32; 3]> = {
             let mut q = self.world.query::<(&Position, &Dead, &Health)>();
             q.iter(&self.world)
-                .filter(|(_, _, h)| h.current <= SimFloat::ZERO)
+                .filter(|(_, _, h)| h.current <= 0)
                 .map(|(p, _, _)| [p.pos.x.to_f32(), p.pos.y.to_f32() + 5.0, p.pos.z.to_f32()])
                 .collect()
         };

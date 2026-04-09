@@ -89,7 +89,7 @@ impl UnitDef {
             metal_cost: SimFloat::from_f64(self.metal_cost),
             energy_cost: SimFloat::from_f64(self.energy_cost),
             build_time: self.build_time,
-            max_health: SimFloat::from_f64(self.max_health),
+            max_health: self.max_health as i32,
         }
     }
 

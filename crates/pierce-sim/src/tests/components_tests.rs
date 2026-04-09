@@ -39,11 +39,11 @@ fn heading_roundtrip() {
 #[test]
 fn health_roundtrip() {
     let c = roundtrip(Health {
-        current: SimFloat::from_int(80),
-        max: SimFloat::from_int(100),
+        current: 80,
+        max: 100,
     });
-    assert_eq!(c.current, SimFloat::from_int(80));
-    assert_eq!(c.max, SimFloat::from_int(100));
+    assert_eq!(c.current, 80);
+    assert_eq!(c.max, 100);
 }
 
 #[test]
@@ -107,8 +107,8 @@ fn spawn_all_components_on_one_entity() {
                 angle: pierce_math::Angle::ZERO,
             },
             Health {
-                current: SimFloat::from_int(100),
-                max: SimFloat::from_int(100),
+                current: 100,
+                max: 100,
             },
             UnitType { id: 5 },
             Allegiance { team: 1 },

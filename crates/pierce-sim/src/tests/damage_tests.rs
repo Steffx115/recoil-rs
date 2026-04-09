@@ -45,8 +45,8 @@ fn single_target_takes_damage() {
         .spawn((
             pos.clone(),
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
         ))
         .id();
@@ -66,7 +66,7 @@ fn single_target_takes_damage() {
     damage_system(&mut world);
 
     let health = world.get::<Health>(entity).unwrap();
-    assert_eq!(health.current, sf(70), "Should have taken 30 damage");
+    assert_eq!(health.current, 70, "Should have taken 30 damage");
 }
 
 // -----------------------------------------------------------------------
@@ -83,8 +83,8 @@ fn aoe_damages_multiple_targets() {
         .spawn((
             pos_a.clone(),
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
         ))
         .id();
@@ -95,8 +95,8 @@ fn aoe_damages_multiple_targets() {
         .spawn((
             pos_b.clone(),
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
         ))
         .id();
@@ -108,8 +108,8 @@ fn aoe_damages_multiple_targets() {
         .spawn((
             pos_c.clone(),
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
         ))
         .id();
@@ -133,16 +133,16 @@ fn aoe_damages_multiple_targets() {
     let hc = world.get::<Health>(c).unwrap();
 
     assert!(
-        ha.current < sf(100),
+        ha.current < 100,
         "Unit A should be damaged by AOE, got {:?}",
         ha.current
     );
     assert!(
-        hb.current < sf(100),
+        hb.current < 100,
         "Unit B should be damaged by AOE, got {:?}",
         hb.current
     );
-    assert_eq!(hc.current, sf(100), "Unit C should be unaffected");
+    assert_eq!(hc.current, 100, "Unit C should be unaffected");
 }
 
 // -----------------------------------------------------------------------
@@ -158,8 +158,8 @@ fn unit_dies_and_spawns_wreckage() {
         .spawn((
             pos.clone(),
             Health {
-                current: sf(50),
-                max: sf(200),
+                current: 50,
+                max: 200,
             },
         ))
         .id();
@@ -210,8 +210,8 @@ fn paralyzer_stuns_instead_of_killing() {
         .spawn((
             pos.clone(),
             Health {
-                current: sf(50),
-                max: sf(100),
+                current: 50,
+                max: 100,
             },
         ))
         .id();
@@ -232,7 +232,7 @@ fn paralyzer_stuns_instead_of_killing() {
     damage_system(&mut world);
 
     let health = world.get::<Health>(entity).unwrap();
-    assert_eq!(health.current, sf(50), "Paralyzer should NOT reduce health");
+    assert_eq!(health.current, 50, "Paralyzer should NOT reduce health");
     assert!(
         world.get::<Dead>(entity).is_none(),
         "Paralyzer should NOT kill"
@@ -258,8 +258,8 @@ fn armor_multipliers_apply() {
         .spawn((
             pos.clone(),
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
             ArmorClass::Heavy,
         ))
@@ -283,7 +283,7 @@ fn armor_multipliers_apply() {
     // 20 * 1.5 = 30 damage => 100 - 30 = 70
     assert_eq!(
         health.current,
-        sf(70),
+        70,
         "Explosive vs Heavy should deal 1.5x damage"
     );
 }
@@ -299,8 +299,8 @@ fn armor_default_to_light_when_missing() {
         .spawn((
             pos.clone(),
             Health {
-                current: sf(100),
-                max: sf(100),
+                current: 100,
+                max: 100,
             },
         ))
         .id();
@@ -323,7 +323,7 @@ fn armor_default_to_light_when_missing() {
     // 20 * 1.5 = 30 damage => 100 - 30 = 70
     assert_eq!(
         health.current,
-        sf(70),
+        70,
         "No ArmorClass should default to Light (Laser 1.5x)"
     );
 }
@@ -361,7 +361,7 @@ fn stun_system_decrements_and_removes() {
 
 #[test]
 fn determinism_identical_runs() {
-    fn run() -> Vec<(SimFloat, bool, bool)> {
+    fn run() -> Vec<(i32, bool, bool)> {
         let mut world = setup_world();
 
         // Spawn three units at known positions.
@@ -372,8 +372,8 @@ fn determinism_identical_runs() {
                 .spawn((
                     pos.clone(),
                     Health {
-                        current: sf(100),
-                        max: sf(100),
+                        current: 100,
+                        max: 100,
                     },
                 ))
                 .id();

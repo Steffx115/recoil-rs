@@ -166,11 +166,11 @@ pub struct SightRange {
 // Combat
 // ---------------------------------------------------------------------------
 
-/// Hit-points pool.
+/// Hit-points pool.  Values are whole-number HP (no fractional health).
 #[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Health {
-    pub current: SimFloat,
-    pub max: SimFloat,
+    pub current: i32,
+    pub max: i32,
 }
 
 /// Marker placed on entities that have been destroyed / killed.

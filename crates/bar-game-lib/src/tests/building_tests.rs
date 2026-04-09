@@ -207,8 +207,8 @@ fn test_finalize_completed_solar() {
             ),
         },
         Health {
-            current: SimFloat::from_int(500),
-            max: SimFloat::from_int(500),
+            current: 500,
+            max: 500,
         },
         Allegiance { team: 0 },
         UnitType {

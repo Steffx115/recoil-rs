@@ -1,5 +1,5 @@
 use super::*;
-use crate::{SimFloat, SimVec3};
+use crate::SimVec3;
 
 /// Create a fresh world with the lifecycle resource initialised.
 fn new_world() -> World {
@@ -15,8 +15,8 @@ fn unit_params(team: u8) -> (Position, UnitType, Allegiance, Health) {
         UnitType { id: 1 },
         Allegiance { team },
         Health {
-            current: SimFloat::from_int(100),
-            max: SimFloat::from_int(100),
+            current: 100,
+            max: 100,
         },
     )
 }

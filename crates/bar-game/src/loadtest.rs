@@ -141,8 +141,8 @@ fn spawn_loadtest_unit(
         UnitType { id: 1 },
         Allegiance { team },
         Health {
-            current: SimFloat::from_int(500),
-            max: SimFloat::from_int(500),
+            current: 500,
+            max: 500,
         },
     );
     world.entity_mut(entity).insert((

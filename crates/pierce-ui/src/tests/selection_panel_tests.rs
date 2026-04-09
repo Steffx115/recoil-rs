@@ -1,12 +1,11 @@
 use super::*;
 
 fn make_info(id: u64, unit_type: u32, hp_frac: f32) -> SelectedUnitInfo {
-    let max = SimFloat::from_int(100);
     SelectedUnitInfo {
         sim_id: id,
         unit_type,
-        hp_current: SimFloat::from_int((hp_frac * 100.0) as i32),
-        hp_max: max,
+        hp_current: (hp_frac * 100.0) as i32,
+        hp_max: 100,
         position: [10.0, 20.0, 0.0],
         current_order: Some("Move".into()),
         stunned_frames: None,

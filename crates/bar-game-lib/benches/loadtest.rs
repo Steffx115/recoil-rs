@@ -51,8 +51,8 @@ fn spawn_unit(world: &mut World, x: i32, z: i32, team: u8, weapon_id: u32) {
         UnitType { id: 1 },
         Allegiance { team },
         Health {
-            current: SimFloat::from_int(500),
-            max: SimFloat::from_int(500),
+            current: 500,
+            max: 500,
         },
     );
     world.entity_mut(entity).insert((
