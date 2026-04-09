@@ -12,7 +12,7 @@ use bevy_ecs::world::World;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{Allegiance, Position, SightRange};
-#[cfg(feature = "compute-backends")]
+#[cfg(feature = "fog-gpu")]
 use crate::compute::{ComputeBackends, FogGridParams, FogUnitInput};
 use crate::{SimFloat, SimVec3};
 
@@ -174,19 +174,19 @@ pub fn fog_system(world: &mut World, cell_size: SimFloat) {
     fog_system_dispatched(world, cell_size);
 }
 
-/// Dispatched fog system. Compile-time selection: backend or inline.
-#[cfg(feature = "compute-backends")]
+/// Dispatched fog system. Compile-time selection via `fog-gpu` feature.
+#[cfg(feature = "fog-gpu")]
 pub fn fog_system_dispatched(world: &mut World, cell_size: SimFloat) {
     fog_system_with_backend(world, cell_size);
 }
 
-#[cfg(not(feature = "compute-backends"))]
+#[cfg(not(feature = "fog-gpu"))]
 pub fn fog_system_dispatched(world: &mut World, cell_size: SimFloat) {
     fog_system_inline(world, cell_size);
 }
 
 /// Fog via compute backend (CPU or GPU).
-#[cfg(feature = "compute-backends")]
+#[cfg(feature = "fog-gpu")]
 fn fog_system_with_backend(world: &mut World, cell_size: SimFloat) {
     let fog = match world.remove_resource::<FogOfWar>() {
         Some(f) => f,

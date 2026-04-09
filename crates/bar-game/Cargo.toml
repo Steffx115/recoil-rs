@@ -6,7 +6,7 @@ license.workspace = true
 description = "BAR-inspired RTS game binary"
 
 [features]
-gpu-compute = ["dep:pierce-compute", "pierce-sim/compute-backends", "pierce-sim/batch-math"]
+gpu-compute = ["dep:pierce-compute", "pierce-sim/all-gpu"]
 
 [dependencies]
 bar-game-lib = { path = "../bar-game-lib" }

@@ -6,8 +6,23 @@ license.workspace = true
 description = "ECS-based simulation for the Pierce RTS engine"
 
 [features]
-compute-backends = []
-batch-math = []
+## Per-system backend selection. Default = all inline CPU.
+## Enable specific features to switch individual systems to GPU/batch.
+
+# Fog of war
+fog-gpu = []          # Use ComputeBackends.fog (GPU or CPU backend)
+
+# Targeting
+targeting-gpu = []    # Use ComputeBackends.targeting (GPU brute-force)
+
+# Movement
+movement-batch = []   # Use BatchMathBackend for bulk atan2/sincos
+
+# Collision
+collision-gpu = []    # (future) GPU collision compute
+
+# Convenience: enable all GPU backends at once
+all-gpu = ["fog-gpu", "targeting-gpu", "movement-batch", "collision-gpu"]
 
 [dependencies]
 pierce-math = { path = "../pierce-math" }

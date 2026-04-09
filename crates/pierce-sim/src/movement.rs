@@ -120,18 +120,18 @@ fn compute_movement(input: &MoveInput) -> MoveOutput {
 }
 
 /// Dispatched movement system. Compile-time selection.
-#[cfg(feature = "batch-math")]
+#[cfg(feature = "movement-batch")]
 pub fn movement_system(world: &mut World) {
     movement_system_batched(world);
 }
 
-#[cfg(not(feature = "batch-math"))]
+#[cfg(not(feature = "movement-batch"))]
 pub fn movement_system(world: &mut World) {
     movement_system_scalar(world);
 }
 
 /// Batched movement using BatchMathBackend for atan2/sincos.
-#[cfg(feature = "batch-math")]
+#[cfg(feature = "movement-batch")]
 fn movement_system_batched(world: &mut World) {
     use crate::compute::BatchMathBackend;
 

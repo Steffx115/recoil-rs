@@ -138,13 +138,13 @@ fn angle_to_target(from_x: SimFloat, from_z: SimFloat, to_x: SimFloat, to_z: Sim
 /// 7. Check min_range for each weapon.
 /// 8. Score by weapon priority, threat level, then distance (ties broken by `SimId`).
 /// 9. Apply overkill avoidance: skip targets with enough pending damage.
-/// Dispatched targeting. Compile-time selection: backend or inline.
-#[cfg(feature = "compute-backends")]
+/// Dispatched targeting. Compile-time selection via `targeting-gpu` feature.
+#[cfg(feature = "targeting-gpu")]
 pub fn targeting_system_dispatched(world: &mut World) {
     targeting_system_with_backend(world);
 }
 
-#[cfg(not(feature = "compute-backends"))]
+#[cfg(not(feature = "targeting-gpu"))]
 pub fn targeting_system_dispatched(world: &mut World) {
     targeting_system(world);
 }
@@ -488,7 +488,7 @@ pub fn targeting_system(world: &mut World) {
 }
 
 /// Targeting via compute backend (CPU or GPU).
-#[cfg(feature = "compute-backends")]
+#[cfg(feature = "targeting-gpu")]
 fn targeting_system_with_backend(world: &mut World) {
     use crate::compute::{ComputeBackends, TargetingCandidateInput, TargetingShooterInput};
     use crate::fog::FogOfWar;
