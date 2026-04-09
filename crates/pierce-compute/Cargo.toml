@@ -1,0 +1,23 @@
+[package]
+name = "pierce-compute"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "GPU compute backends for fog-of-war and targeting (with CPU fallback)"
+
+[features]
+default = ["gpu"]
+gpu = ["dep:wgpu", "dep:bytemuck", "dep:pollster"]
+
+[dependencies]
+pierce-math = { path = "../pierce-math" }
+pierce-sim = { path = "../pierce-sim" }
+tracing = { workspace = true }
+
+# GPU-only deps
+wgpu = { workspace = true, optional = true }
+bytemuck = { workspace = true, optional = true }
+pollster = { workspace = true, optional = true }
+
+[dev-dependencies]
+bevy_ecs = { workspace = true }

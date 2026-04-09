@@ -2534,6 +2534,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pierce-compute"
+version = "0.1.0"
+dependencies = [
+ "bevy_ecs",
+ "bytemuck",
+ "pierce-math",
+ "pierce-sim",
+ "pollster",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
 name = "pierce-math"
 version = "0.1.0"
 dependencies = [
