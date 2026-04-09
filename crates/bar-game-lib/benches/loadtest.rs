@@ -128,7 +128,23 @@ fn main() {
             targeting: Box::new(pierce_compute::CpuTargetCompute),
         });
         game.refresh_sim_caps();
-        eprintln!("GPU compute backends enabled");
+
+        // Batch math backend (GPU for distance_sq, CPU for rest).
+        let (device2, queue2) = pierce_compute::create_headless_device();
+        let batch = pierce_compute::GpuBatchMath::new(device2, queue2);
+        game.world.insert_resource(pierce_sim::compute::BatchMathBackend {
+            ops: Box::new(batch),
+        });
+        eprintln!("GPU compute + batch math backends enabled");
+    }
+
+    // CPU batch math fallback when gpu-compute is disabled.
+    #[cfg(not(feature = "gpu-compute"))]
+    {
+        game.world.insert_resource(pierce_sim::compute::BatchMathBackend {
+            ops: Box::new(pierce_compute::CpuBatchMath),
+        });
+        eprintln!("CPU batch math backend enabled");
     }
 
     let weapon_id = register_weapon(&mut game.world);

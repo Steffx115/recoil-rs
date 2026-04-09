@@ -303,6 +303,17 @@ impl ApplicationHandler for App {
                     targeting: Box::new(pierce_compute::CpuTargetCompute),
                 },
             );
+            // Batch math backend (GPU distance_sq, CPU fallback for rest).
+            let batch = pierce_compute::GpuBatchMath::new(
+                renderer.gpu.device.clone(),
+                renderer.gpu.queue.clone(),
+            );
+            self.game.world.insert_resource(
+                pierce_sim::compute::BatchMathBackend {
+                    ops: Box::new(batch),
+                },
+            );
+
             // Refresh sim capabilities since we added ComputeBackends.
             self.game.refresh_sim_caps();
         }
