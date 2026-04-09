@@ -103,7 +103,7 @@ fn i64_is_zero(a: vec2<i32>) -> bool {
 // Arithmetic right shift by N bits (for small N < 32).
 fn i64_asr(a: vec2<i32>, n: u32) -> vec2<i32> {
     let lo = (bitcast<u32>(a.x) >> n) | (bitcast<u32>(a.y) << (32u - n));
-    let hi = a.y >> i32(n);
+    let hi = a.y >> n;
     return vec2<i32>(bitcast<i32>(lo), hi);
 }
 
