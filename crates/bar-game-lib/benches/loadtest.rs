@@ -127,7 +127,6 @@ fn main() {
             fog: Box::new(manager),
             targeting: Box::new(pierce_compute::CpuTargetCompute),
         });
-        game.refresh_sim_caps();
 
         // Batch math backend (GPU for distance_sq, CPU for rest).
         let (device2, queue2) = pierce_compute::create_headless_device();
