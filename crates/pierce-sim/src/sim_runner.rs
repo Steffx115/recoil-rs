@@ -178,18 +178,24 @@ pub fn world_checksum(world: &mut World) -> u64 {
 }
 
 /// Initialize a world for simulation with all system resources.
-/// Uses default 64×64 grid (1024×1024 world units).
+/// Uses default 64×64 spatial grid, 1024×1024 terrain grid.
 pub fn init_sim_world(world: &mut World) {
-    init_sim_world_sized(world, 64, 64);
+    init_sim_world_sized(world, 64, 64, 1024, 1024);
 }
 
 /// Initialize a world for simulation with custom grid dimensions.
-/// `grid_w` and `grid_h` are in spatial grid cells (cell_size=16).
-/// TerrainGrid uses the same dimensions with cell_size=1.
-pub fn init_sim_world_sized(world: &mut World, grid_w: usize, grid_h: usize) {
+/// `spatial_w/h` are in spatial grid cells (cell_size=16).
+/// `terrain_w/h` are in terrain grid cells (cell_size=1, i.e. world units).
+pub fn init_sim_world_sized(
+    world: &mut World,
+    spatial_w: usize,
+    spatial_h: usize,
+    terrain_w: usize,
+    terrain_h: usize,
+) {
     init_lifecycle(world);
-    world.insert_resource(SpatialGrid::new(SimFloat::from_int(16), grid_w as i32, grid_h as i32));
-    world.insert_resource(TerrainGrid::new(grid_w, grid_h, SimFloat::ONE));
+    world.insert_resource(SpatialGrid::new(SimFloat::from_int(16), spatial_w as i32, spatial_h as i32));
+    world.insert_resource(TerrainGrid::new(terrain_w, terrain_h, SimFloat::ONE));
 
     // Combat resources
     if !world.contains_resource::<WeaponRegistry>() {

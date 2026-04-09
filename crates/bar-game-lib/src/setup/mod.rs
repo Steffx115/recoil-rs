@@ -48,16 +48,23 @@ pub fn setup_game_with_options(
     let unit_def_registry = unit_loader::load_unit_defs(bar_units_path);
     let map_data = map_loader::load_map(map_manifest_path);
 
-    // Size grids to fit the map. SpatialGrid cell_size=16, so divide map
-    // world-extent by 16. Fall back to 64×64 if no manifest.
-    let (grid_w, grid_h) = if let Some(ref manifest) = map_data.manifest {
-        let w = (manifest.width as usize * manifest.cell_size as usize) / 16;
-        let h = (manifest.height as usize * manifest.cell_size as usize) / 16;
-        (w.max(64), h.max(64))
+    // Size grids to fit the map.
+    // Map world extent = manifest.width * manifest.cell_size.
+    // SpatialGrid cell_size=16 → spatial_w = world_extent / 16.
+    // TerrainGrid cell_size=1  → terrain_w = world_extent.
+    let (spatial_w, spatial_h, terrain_w, terrain_h) = if let Some(ref manifest) = map_data.manifest {
+        let world_w = manifest.width as usize * manifest.cell_size as usize;
+        let world_h = manifest.height as usize * manifest.cell_size as usize;
+        (
+            (world_w / 16).max(64),
+            (world_h / 16).max(64),
+            world_w.max(1024),
+            world_h.max(1024),
+        )
     } else {
-        (64, 64)
+        (64, 64, 1024, 1024)
     };
-    sim_runner::init_sim_world_sized(world, grid_w, grid_h);
+    sim_runner::init_sim_world_sized(world, spatial_w, spatial_h, terrain_w, terrain_h);
 
     world_init::init_world_with_options(world, unit_def_registry, &map_data, options)
 }
