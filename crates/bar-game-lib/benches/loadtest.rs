@@ -111,7 +111,11 @@ fn main() {
     // Setup
     let bar_units = Path::new("nonexistent/units");
     let map_manifest = Path::new("assets/maps/small_duel/manifest.ron");
-    let mut game = GameState::new(bar_units, map_manifest);
+    let mut game = GameState::with_options(
+        bar_units,
+        map_manifest,
+        bar_game_lib::InitOptions { fog_of_war: false },
+    );
     fund_teams(&mut game.world);
 
     let weapon_id = register_weapon(&mut game.world);
