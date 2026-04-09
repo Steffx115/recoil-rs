@@ -493,7 +493,16 @@ fn targeting_system_with_backend(world: &mut World) {
     use crate::compute::{ComputeBackends, TargetingCandidateInput, TargetingShooterInput};
     use crate::fog::FogOfWar;
 
-    let registry = world.resource::<WeaponRegistry>().clone();
+    // Use Arc snapshot if available, else clone.
+    let registry = if let Some(frame) = world.get_resource::<crate::frame_data::SimFrameData>() {
+        if let Some(ref snap) = frame.registry_snapshot {
+            snap.as_ref().clone()
+        } else {
+            world.resource::<WeaponRegistry>().clone()
+        }
+    } else {
+        world.resource::<WeaponRegistry>().clone()
+    };
     let fog = world.get_resource::<FogOfWar>().cloned();
     let pending = world
         .get_resource::<PendingDamage>()
@@ -533,12 +542,19 @@ fn targeting_system_with_backend(world: &mut World) {
         }
     }
 
-    // Build entity-to-candidate-index map for manual target / last attacker lookup.
-    let entity_to_idx: std::collections::BTreeMap<u64, i32> = candidate_entities
+    // Build entity-to-candidate-index map (sorted Vec + binary search, no BTreeMap).
+    let mut entity_to_idx: Vec<(u64, i32)> = candidate_entities
         .iter()
         .enumerate()
         .map(|(i, e)| (e.to_bits(), i as i32))
         .collect();
+    entity_to_idx.sort_unstable_by_key(|&(bits, _)| bits);
+    let lookup_idx = |bits: u64| -> i32 {
+        entity_to_idx
+            .binary_search_by_key(&bits, |&(b, _)| b)
+            .map(|i| entity_to_idx[i].1)
+            .unwrap_or(-1)
+    };
 
     // Build shooter list.
     let mut shooter_entities: Vec<Entity> = Vec::new();
@@ -587,12 +603,12 @@ fn targeting_system_with_backend(world: &mut World) {
 
             let manual_idx = manual_target
                 .and_then(|mt| mt.forced_entity)
-                .and_then(|e| entity_to_idx.get(&e.to_bits()).copied())
+                .map(|e| lookup_idx(e.to_bits()))
                 .unwrap_or(-1);
 
             let attacker_idx = last_attacker
                 .and_then(|la| la.entity)
-                .and_then(|e| entity_to_idx.get(&e.to_bits()).copied())
+                .map(|e| lookup_idx(e.to_bits()))
                 .unwrap_or(-1);
 
             shooter_entities.push(entity);
