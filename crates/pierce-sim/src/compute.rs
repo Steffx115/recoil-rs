@@ -123,3 +123,10 @@ pub struct ComputeBackends {
     pub fog: Box<dyn FogCompute>,
     pub targeting: Box<dyn TargetCompute>,
 }
+
+/// ECS resource holding the batch math backend. When present, systems
+/// can offload bulk fixed-point operations to CPU/GPU.
+#[derive(Resource)]
+pub struct BatchMathBackend {
+    pub ops: Box<dyn pierce_math::BatchMathOps>,
+}

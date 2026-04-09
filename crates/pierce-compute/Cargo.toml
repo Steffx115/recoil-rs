@@ -13,6 +13,7 @@ gpu = ["dep:wgpu", "dep:bytemuck", "dep:pollster"]
 pierce-math = { path = "../pierce-math" }
 pierce-sim = { path = "../pierce-sim" }
 tracing = { workspace = true }
+rayon = { workspace = true }
 
 # GPU-only deps
 wgpu = { workspace = true, optional = true }
