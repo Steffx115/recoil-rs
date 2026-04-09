@@ -1,15 +1,14 @@
 @echo off
 :: Profile the loadtest bench using WPR (Windows Performance Recorder)
 :: Usage: profile-bench.cmd [UNITS_PER_TEAM] [FRAMES]
+:: Defaults: 500 units/team, 600 frames
 ::
-:: This script does NOT start/stop WPR itself to avoid COM conflicts.
-:: Run wpr -start and wpr -stop manually in a separate admin terminal.
+:: Requires: WPR (Windows Performance Toolkit), run as Administrator
+:: Output: profile-bench.etl (open with WPA - Windows Performance Analyzer)
 ::
-:: Steps:
-::   1. Open an admin terminal (PowerShell or cmd)
-::   2. Run: wpr -start CPU -start GPU -start DiskIO
-::   3. Run this script: scripts\profile-bench.cmd 5000 100
-::   4. After it finishes, in the admin terminal run: wpr -stop profile-bench.etl
+:: Examples:
+::   profile-bench.cmd                    500 units, 600 frames
+::   profile-bench.cmd 2000 200           2000 units, 200 frames
 
 setlocal
 set UNITS=%~1
@@ -19,32 +18,34 @@ if "%FRAMES%"=="" set FRAMES=600
 
 cd /d "%~dp0.."
 
-set _NT_SYMBOL_PATH=%CD%\target\profiling\deps;%_NT_SYMBOL_PATH%
-
-echo Building loadtest bench (profiling profile)...
+echo Building loadtest bench (release + debug symbols)...
 cargo build --profile profiling --bench loadtest -p bar-game-lib --features gpu-compute
 if %ERRORLEVEL% neq 0 (
     echo Build failed.
     exit /b 1
 )
 
-for %%f in (target\profiling\deps\loadtest-*.exe) do set "BENCH_EXE=%%f"
+echo.
+echo Starting WPR trace (CPU sampling + context switches)...
+wpr -start CPU -start DiskIO
+if %ERRORLEVEL% neq 0 (
+    echo WPR failed. Run as Administrator.
+    exit /b 1
+)
 
 echo.
-echo ============================================================
-echo  Make sure WPR is recording!
-echo  If not, run in a separate admin terminal:
-echo    wpr -start CPU -start GPU -start DiskIO
-echo ============================================================
-echo.
-pause
-
 echo Running loadtest: %UNITS% units/team, %FRAMES% frames...
-"%BENCH_EXE%" %UNITS% %FRAMES%
+target\profiling\deps\loadtest-*.exe %UNITS% %FRAMES%
 
 echo.
-echo ============================================================
-echo  Bench finished. Now stop WPR in the admin terminal:
-echo    wpr -stop profile-bench.etl
-echo ============================================================
+echo Stopping WPR trace...
+wpr -stop profile-bench.etl
+if %ERRORLEVEL% equ 0 (
+    echo.
+    echo Trace saved to profile-bench.etl
+    echo Opening in WPA...
+    start "" profile-bench.etl
+) else (
+    echo Failed to save trace.
+)
 endlocal

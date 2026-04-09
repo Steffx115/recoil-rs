@@ -2,15 +2,13 @@
 :: Profile the game binary using WPR (Windows Performance Recorder)
 :: Usage: profile-game.cmd [--loadtest] [--max-units N]
 ::
-:: This script does NOT start/stop WPR itself to avoid COM conflicts.
-:: Run wpr -start and wpr -stop manually in a separate admin terminal.
+:: Requires: WPR (Windows Performance Toolkit), run as Administrator
+:: Output: profile-game.etl (open with WPA - Windows Performance Analyzer)
 ::
-:: Steps:
-::   1. Open an admin terminal (PowerShell or cmd)
-::   2. Run: wpr -start CPU -start GPU -start DiskIO
-::   3. Run this script: scripts\profile-game.cmd --loadtest
-::   4. Close the game window
-::   5. In the admin terminal run: wpr -stop profile-game.etl
+:: Examples:
+::   profile-game.cmd                                Normal game
+::   profile-game.cmd --loadtest                     Loadtest mode
+::   profile-game.cmd --loadtest --max-units 5000    5000 units
 
 setlocal enabledelayedexpansion
 set GAME_ARGS=
@@ -24,9 +22,7 @@ goto parse_args
 
 cd /d "%~dp0.."
 
-set _NT_SYMBOL_PATH=%CD%\target\profiling;%CD%\target\profiling\deps;%_NT_SYMBOL_PATH%
-
-echo Building game (profiling profile)...
+echo Building game (release + debug symbols)...
 cargo build --profile profiling --bin bar-game -p bar-game --features gpu-compute
 if %ERRORLEVEL% neq 0 (
     echo Build failed.
@@ -34,23 +30,29 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo.
-echo ============================================================
-echo  Make sure WPR is recording!
-echo  If not, run in a separate admin terminal:
-echo    wpr -start CPU -start GPU -start DiskIO
-echo ============================================================
-echo.
-pause
+echo Starting WPR trace (CPU + GPU + DiskIO)...
+wpr -start CPU -start GPU -start DiskIO
+if %ERRORLEVEL% neq 0 (
+    echo WPR failed. Run as Administrator.
+    exit /b 1
+)
 
-echo Launching game...
+echo.
+echo Launching game... Close the window to stop profiling.
 if defined GAME_ARGS (
     echo Game args:%GAME_ARGS%
 )
 target\profiling\bar-game.exe%GAME_ARGS%
 
 echo.
-echo ============================================================
-echo  Game closed. Now stop WPR in the admin terminal:
-echo    wpr -stop profile-game.etl
-echo ============================================================
+echo Stopping WPR trace...
+wpr -stop profile-game.etl
+if %ERRORLEVEL% equ 0 (
+    echo.
+    echo Trace saved to profile-game.etl
+    echo Opening in WPA...
+    start "" profile-game.etl
+) else (
+    echo Failed to save trace.
+)
 endlocal
