@@ -105,5 +105,21 @@ debug = "line-tables-only"
 [profile.profiling.package.bar-game]
 debug = "line-tables-only"
 
+# External crates that appear in hot paths
+[profile.profiling.package.bevy_ecs]
+debug = "line-tables-only"
+
+[profile.profiling.package.rayon]
+debug = "line-tables-only"
+
+[profile.profiling.package.rayon-core]
+debug = "line-tables-only"
+
+[profile.profiling.package.libm]
+debug = "line-tables-only"
+
+[profile.profiling.package.wide]
+debug = "line-tables-only"
+
 [profile.bench]
 inherits = "release"
