@@ -30,15 +30,23 @@ if %ERRORLEVEL% neq 0 (
 
 echo.
 echo Starting WPR trace (CPU sampling + context switches)...
-wpr -start CPU -start DiskIO
+wpr -start CPU -start GPU
 if %ERRORLEVEL% neq 0 (
     echo WPR failed. Run as Administrator.
     exit /b 1
 )
 
 echo.
-echo Running loadtest: %UNITS% units/team, %FRAMES% frames...
-for %%f in (target\profiling\deps\loadtest-*.exe) do set "BENCH_EXE=%%f"
+echo Finding latest loadtest binary...
+:: Pick the newest exe (last modified)
+for /f "delims=" %%f in ('dir /b /o:-d target\profiling\deps\loadtest-*.exe 2^>nul') do (
+    set "BENCH_EXE=target\profiling\deps\%%f"
+    goto :found_exe
+)
+echo No loadtest binary found.
+exit /b 1
+:found_exe
+echo Running %BENCH_EXE%: %UNITS% units/team, %FRAMES% frames...
 "%BENCH_EXE%" %UNITS% %FRAMES%
 
 echo.
@@ -51,5 +59,6 @@ if %ERRORLEVEL% equ 0 (
     start "" profile-bench.etl
 ) else (
     echo Failed to save trace.
+    wpr -cancel
 )
 endlocal
