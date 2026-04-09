@@ -66,3 +66,19 @@ pollster = "0.4"
 # Tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# --- Profiles ---
+
+# Dev: optimize deps but keep local crates debuggable
+[profile.dev.package."*"]
+opt-level = 2
+
+# Release: full optimization
+[profile.release]
+lto = "thin"
+codegen-units = 4
+
+# Test profile inherits from dev — override to use release-like settings
+# Use `cargo test --release` for fast test execution
+[profile.bench]
+debug = true

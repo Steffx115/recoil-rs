@@ -5811,6 +5811,7 @@ fn fog_targeting_unit_does_not_target_hidden_enemy() {
             projectile_speed: SimFloat::ZERO,
             area_of_effect: SimFloat::ZERO,
             is_paralyzer: false,
+            ..Default::default()
         });
         id
     };
@@ -5956,6 +5957,7 @@ fn fog_targeting_projectile_hits_despite_fog() {
             projectile_speed: SimFloat::from_int(5), // slow projectile
             area_of_effect: SimFloat::ZERO,
             is_paralyzer: false,
+            ..Default::default()
         });
         id
     };

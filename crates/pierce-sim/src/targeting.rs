@@ -260,7 +260,6 @@ pub fn targeting_system(world: &mut World) {
         pos_y: SimFloat,
         pos_z: SimFloat,
         pos_xz: SimVec2,
-        pos_3d: SimVec3,
         sim_id: u64,
         has_weapons: bool,
         is_building: bool,

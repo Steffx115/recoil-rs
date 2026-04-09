@@ -38,6 +38,7 @@ fn spawn_test_projectile(world: &mut World, pos: SimVec3, damage: SimFloat) -> E
                 speed: sf(5),
                 is_paralyzer: false,
                 lifetime: 300,
+                indirect_fire: false,
             },
             Position { pos },
             Velocity {

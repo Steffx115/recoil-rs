@@ -34,8 +34,9 @@ impl ArmorClass {
 }
 
 /// Classification of the damage a weapon deals.
-#[derive(Component, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Component, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum DamageType {
+    #[default]
     Normal,
     Explosive,
     Laser,

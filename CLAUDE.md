@@ -17,12 +17,13 @@
 ## Build & Test
 
 ```bash
-cargo test --workspace -- --test-threads=4      # run all tests (capped threads)
-cargo clippy --workspace --all-targets          # lint (CI uses -D warnings via RUSTFLAGS)
-cargo fmt --all --check                         # format check
-cargo build --release -p bar-game               # full release build
+cargo test --release --workspace -- --test-threads=4  # run all tests (release, capped threads)
+cargo clippy --workspace --all-targets                # lint (CI uses -D warnings via RUSTFLAGS)
+cargo fmt --all --check                               # format check
+cargo build --release -p bar-game                     # full release build
 ```
 
+- **Always run tests in release mode** (`--release`). Debug tests are 5-10x slower.
 - Build parallelism is capped to 4 jobs via `.cargo/config.toml`.
 - Always pass `--test-threads=4` (or set `RUST_TEST_THREADS=4`) to limit test parallelism.
 - Use `--message-format=short` on cargo build/clippy during iterative fix loops.
