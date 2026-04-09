@@ -14,7 +14,7 @@ use pierce_sim::compute::{
 use crate::buffers::{i64_to_pair, GpuCandidate, GpuFogParams, GpuFogUnit, GpuShooter, GpuTargetingParams};
 
 /// Ensure a buffer slot has capacity for at least `count` items of `stride` bytes.
-/// Returns the buffer. Reallocates with 50% headroom if too small.
+/// Reallocates with 50% headroom if too small. Callers access via `slot.as_ref().unwrap().0`.
 fn ensure_buf(
     device: &wgpu::Device,
     slot: &mut Option<(wgpu::Buffer, usize)>,
@@ -22,7 +22,7 @@ fn ensure_buf(
     count: usize,
     stride: usize,
     usage: wgpu::BufferUsages,
-) -> &wgpu::Buffer {
+) {
     let needed = count.max(1);
     let realloc = match slot {
         Some((_, cap)) => *cap < needed,
@@ -40,7 +40,6 @@ fn ensure_buf(
             cap,
         ));
     }
-    &slot.as_ref().unwrap().0
 }
 
 struct PendingFogReadback {
