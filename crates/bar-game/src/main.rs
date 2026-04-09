@@ -282,8 +282,8 @@ impl ApplicationHandler for App {
         // Wire GPU compute backends for fog and targeting.
         #[cfg(feature = "gpu-compute")]
         {
-            let device = Arc::clone(&renderer.gpu.device);
-            let queue = Arc::clone(&renderer.gpu.queue);
+            let device: Arc<wgpu::Device> = Arc::clone(&renderer.gpu.device);
+            let queue: Arc<wgpu::Queue> = Arc::clone(&renderer.gpu.queue);
             let fog_compute = pierce_compute::GpuFogCompute::new(device.clone(), queue.clone());
             let targeting_compute = pierce_compute::GpuTargetingCompute::new(device.clone(), queue.clone());
             self.game.world.insert_resource(
