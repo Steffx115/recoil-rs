@@ -231,3 +231,78 @@ fn test_finalize_completed_solar() {
         "Expected at least 1 ResourceProducer after finalization"
     );
 }
+
+// ---------------------------------------------------------------------------
+// RR-125: Cancel BuildSite with proportional refund
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_cancel_build_site_refunds_and_unmarks() {
+    use pierce_sim::construction::cancel_build_site;
+
+    let mut world = setup_world_with_economy();
+    assert_world_grid_covers(&world, 100.0, 100.0, 32.0);
+
+    // Set a controlled metal/energy amount with sufficient storage for refund tests.
+    {
+        let mut economy = world.resource_mut::<EconomyState>();
+        let res = economy.teams.get_mut(&0).unwrap();
+        res.metal = SimFloat::from_int(500);
+        res.energy = SimFloat::from_int(500);
+        res.metal_storage = SimFloat::from_int(50000);
+        res.energy_storage = SimFloat::from_int(50000);
+    }
+
+    // Place a building (solar: metal_cost=150, energy_cost=0).
+    let site = place_building(&mut world, None, BUILDING_SOLAR_ID, 100.0, 100.0, 0)
+        .expect("Should afford the building");
+
+    // Record metal after placement.
+    let metal_after_place = {
+        let economy = world.resource::<EconomyState>();
+        economy.teams[&0].metal
+    };
+
+    // Verify footprint is marked.
+    {
+        let grid = world.resource::<TerrainGrid>();
+        assert!(
+            !grid.is_passable(100, 100),
+            "Footprint cell should be impassable"
+        );
+    }
+
+    // Advance progress to 25%.
+    {
+        let mut site_comp = world.get_mut::<BuildSite>(site).unwrap();
+        site_comp.progress = SimFloat::from_ratio(1, 4);
+    }
+
+    cancel_build_site(&mut world, site);
+
+    // Site should be dead.
+    assert!(
+        world.get::<pierce_sim::Dead>(site).is_some(),
+        "Cancelled site should be Dead"
+    );
+
+    // Footprint should be restored.
+    {
+        let grid = world.resource::<TerrainGrid>();
+        assert!(
+            grid.is_passable(100, 100),
+            "Footprint cell should be passable after cancel"
+        );
+    }
+
+    // Refund: 75% remaining of 150 metal cost = 112.5 metal.
+    // metal should increase from the post-placement value.
+    let metal_after_cancel = {
+        let economy = world.resource::<EconomyState>();
+        economy.teams[&0].metal
+    };
+    assert!(
+        metal_after_cancel > metal_after_place,
+        "Team should receive a metal refund: after_place={metal_after_place:?}, after_cancel={metal_after_cancel:?}"
+    );
+}
