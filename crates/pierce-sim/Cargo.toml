@@ -11,6 +11,7 @@ bevy_ecs = { workspace = true }
 serde = { workspace = true }
 bincode = { workspace = true }
 tracing = { workspace = true }
+rayon = { workspace = true }
 thiserror = { workspace = true }
 ron = { workspace = true }
 anyhow = { workspace = true }
