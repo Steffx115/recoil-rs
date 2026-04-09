@@ -82,18 +82,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # --- Profiles ---
 
-# Dev: no special dep optimization (wgpu dep chain causes OOM with opt-level=2)
-
-# Release: full optimization
 [profile.release]
-codegen-units = 16
+codegen-units = 8
 
-# Profiling: release + debug symbols for flamegraphs
-# Usage: cargo flamegraph --profile profiling ...
+# Profiling: release + PDB debug symbols for WPR/WPA
 [profile.profiling]
 inherits = "release"
 debug = "line-tables-only"
-codegen-units = 16
 
 [profile.bench]
-debug = "line-tables-only"
+inherits = "release"
