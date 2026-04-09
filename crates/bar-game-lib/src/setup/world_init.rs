@@ -81,10 +81,17 @@ pub fn init_world_with_options(
         world.insert_resource(pierce_sim::map::MetalSpots { spots });
     }
 
-    // Fog of War — only insert if enabled. sim_tick skips fog when the
+    // Fog of War — size to match map extent. sim_tick skips fog when the
     // resource is absent, so omitting it disables fog entirely.
     if options.fog_of_war {
-        let fog = FogOfWar::new(1024, 1024, &[0, 1]);
+        let (fog_w, fog_h) = if let Some(ref manifest) = map_data.manifest {
+            let w = manifest.width as u32 * manifest.cell_size as u32;
+            let h = manifest.height as u32 * manifest.cell_size as u32;
+            (w.max(1024), h.max(1024))
+        } else {
+            (1024, 1024)
+        };
+        let fog = FogOfWar::new(fog_w, fog_h, &[0, 1]);
         world.insert_resource(fog);
     }
 

@@ -45,10 +45,19 @@ pub fn setup_game_with_options(
     map_manifest_path: &Path,
     options: InitOptions,
 ) -> GameConfig {
-    sim_runner::init_sim_world(world);
-
     let unit_def_registry = unit_loader::load_unit_defs(bar_units_path);
     let map_data = map_loader::load_map(map_manifest_path);
+
+    // Size grids to fit the map. SpatialGrid cell_size=16, so divide map
+    // world-extent by 16. Fall back to 64×64 if no manifest.
+    let (grid_w, grid_h) = if let Some(ref manifest) = map_data.manifest {
+        let w = (manifest.width as usize * manifest.cell_size as usize) / 16;
+        let h = (manifest.height as usize * manifest.cell_size as usize) / 16;
+        (w.max(64), h.max(64))
+    } else {
+        (64, 64)
+    };
+    sim_runner::init_sim_world_sized(world, grid_w, grid_h);
 
     world_init::init_world_with_options(world, unit_def_registry, &map_data, options)
 }
