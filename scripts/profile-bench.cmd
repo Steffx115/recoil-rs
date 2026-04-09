@@ -5,10 +5,6 @@
 ::
 :: Requires: WPR (Windows Performance Toolkit), run as Administrator
 :: Output: profile-bench.etl (open with WPA - Windows Performance Analyzer)
-::
-:: Examples:
-::   profile-bench.cmd                    500 units, 600 frames
-::   profile-bench.cmd 2000 200           2000 units, 200 frames
 
 setlocal
 set UNITS=%~1
@@ -30,23 +26,21 @@ if %ERRORLEVEL% neq 0 (
 
 echo.
 echo Starting WPR trace (CPU sampling + context switches)...
-wpr -start CPU -start GPU
+wpr -start CPU -start DiskIO
 if %ERRORLEVEL% neq 0 (
     echo WPR failed. Run as Administrator.
     exit /b 1
 )
 
 echo.
-echo Finding latest loadtest binary...
-:: Pick the newest exe (last modified)
-for /f "delims=" %%f in ('dir /b /o:-d target\profiling\deps\loadtest-*.exe 2^>nul') do (
-    set "BENCH_EXE=target\profiling\deps\%%f"
-    goto :found_exe
+echo Running loadtest: %UNITS% units/team, %FRAMES% frames...
+set "BENCH_EXE="
+for %%f in (target\profiling\deps\loadtest-*.exe) do set "BENCH_EXE=%%f"
+if not defined BENCH_EXE (
+    echo No loadtest binary found.
+    wpr -cancel
+    exit /b 1
 )
-echo No loadtest binary found.
-exit /b 1
-:found_exe
-echo Running %BENCH_EXE%: %UNITS% units/team, %FRAMES% frames...
 "%BENCH_EXE%" %UNITS% %FRAMES%
 
 echo.
@@ -59,6 +53,5 @@ if %ERRORLEVEL% equ 0 (
     start "" profile-bench.etl
 ) else (
     echo Failed to save trace.
-    wpr -cancel
 )
 endlocal
