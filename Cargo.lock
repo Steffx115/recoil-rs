@@ -254,6 +254,7 @@ dependencies = [
  "anyhow",
  "bevy_ecs",
  "bincode",
+ "pierce-compute",
  "pierce-math",
  "pierce-net",
  "pierce-sim",

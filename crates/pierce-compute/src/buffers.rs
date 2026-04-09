@@ -57,6 +57,58 @@ pub fn pair_to_i64(p: [i32; 2]) -> i64 {
     (p[0] as u32 as i64) | ((p[1] as i64) << 32)
 }
 
+/// Per-shooter targeting input (128 bytes, aligned).
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct GpuShooter {
+    pub pos_x: [i32; 2],
+    pub pos_y: [i32; 2],
+    pub pos_z: [i32; 2],
+    pub max_range: [i32; 2],
+    pub min_range_0: [i32; 2],
+    pub min_range_1: [i32; 2],
+    pub min_range_2: [i32; 2],
+    pub min_range_3: [i32; 2],
+    pub team: u32,
+    pub fire_mode: u32,
+    pub has_indirect: u32,
+    pub weapon_count: u32,
+    pub manual_target_idx: i32,
+    pub last_attacker_idx: i32,
+    pub _pad0: u32,
+    pub _pad1: u32,
+}
+
+/// Per-candidate targeting input (64 bytes, aligned).
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct GpuCandidate {
+    pub pos_x: [i32; 2],
+    pub pos_y: [i32; 2],
+    pub pos_z: [i32; 2],
+    pub health: [i32; 2],
+    pub pending_damage: [i32; 2],
+    pub sim_id_lo: u32,
+    pub sim_id_hi: u32,
+    pub team: u32,
+    pub flags: u32, // bit 0: is_dead, bit 1: has_weapons, bit 2: is_building
+    pub _pad0: u32,
+    pub _pad1: u32,
+}
+
+/// Targeting uniform parameters.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct GpuTargetingParams {
+    pub shooter_count: u32,
+    pub candidate_count: u32,
+    pub fog_width: u32,
+    pub fog_height: u32,
+    pub fog_cell_size: [i32; 2],
+    pub has_fog: u32,
+    pub _pad: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

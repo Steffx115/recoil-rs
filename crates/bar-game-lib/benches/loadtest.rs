@@ -123,7 +123,7 @@ fn main() {
     {
         let (device, queue) = pierce_compute::create_headless_device();
         let fog_compute = pierce_compute::GpuFogCompute::new(device.clone(), queue.clone());
-        let targeting_compute = pierce_compute::CpuTargetCompute; // GPU targeting TODO
+        let targeting_compute = pierce_compute::GpuTargetingCompute::new(device.clone(), queue.clone());
         game.world.insert_resource(pierce_sim::compute::ComputeBackends {
             fog: Box::new(fog_compute),
             targeting: Box::new(targeting_compute),

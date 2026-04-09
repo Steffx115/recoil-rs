@@ -262,8 +262,7 @@ impl ApplicationHandler for App {
             let device = Arc::clone(&renderer.gpu.device);
             let queue = Arc::clone(&renderer.gpu.queue);
             let fog_compute = pierce_compute::GpuFogCompute::new(device.clone(), queue.clone());
-            // TODO: GpuTargetingCompute when implemented
-            let targeting_compute = pierce_compute::CpuTargetCompute;
+            let targeting_compute = pierce_compute::GpuTargetingCompute::new(device.clone(), queue.clone());
             self.game.world.insert_resource(
                 pierce_sim::compute::ComputeBackends {
                     fog: Box::new(fog_compute),

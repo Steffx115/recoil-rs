@@ -139,15 +139,13 @@ fn angle_to_target(from_x: SimFloat, from_z: SimFloat, to_x: SimFloat, to_z: Sim
 /// 8. Score by weapon priority, threat level, then distance (ties broken by `SimId`).
 /// 9. Apply overkill avoidance: skip targets with enough pending damage.
 pub fn targeting_system(world: &mut World) {
-    // NOTE: The compute backend dispatch for targeting is disabled until the
-    // GPU targeting shader is functional. The CPU compute backend lacks spatial
-    // grid filtering and is O(n²) — strictly worse than the inline path.
-    // Re-enable when GpuTargetingCompute is ready:
-    //
-    // if world.contains_resource::<crate::compute::ComputeBackends>() {
-    //     targeting_system_with_backend(world);
-    //     return;
-    // }
+    // Dispatch to GPU compute backend if available. The GPU path brute-forces
+    // all candidates per shooter (O(n²)) which is efficient on GPU but slow on
+    // CPU. Only enable this when a GPU backend is wired in.
+    if world.contains_resource::<crate::compute::ComputeBackends>() {
+        targeting_system_with_backend(world);
+        return;
+    }
 
     let grid = world.resource::<SpatialGrid>().clone();
     let registry = world.resource::<WeaponRegistry>().clone();

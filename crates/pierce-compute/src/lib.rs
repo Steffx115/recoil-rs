@@ -13,6 +13,8 @@ pub mod buffers;
 pub mod gpu_context;
 #[cfg(feature = "gpu")]
 pub mod gpu_fog;
+#[cfg(feature = "gpu")]
+pub mod gpu_targeting;
 
 pub use cpu_fog::CpuFogCompute;
 pub use cpu_targeting::CpuTargetCompute;
@@ -21,3 +23,5 @@ pub use cpu_targeting::CpuTargetCompute;
 pub use gpu_context::create_headless_device;
 #[cfg(feature = "gpu")]
 pub use gpu_fog::GpuFogCompute;
+#[cfg(feature = "gpu")]
+pub use gpu_targeting::GpuTargetingCompute;
