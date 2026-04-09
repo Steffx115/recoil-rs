@@ -28,3 +28,5 @@ perf.data
 .claude/worktrees/
 cargo-flamegraph.stacks
 *.stacks
+*.etl
+*.svg
