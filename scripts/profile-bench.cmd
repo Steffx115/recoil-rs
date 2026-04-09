@@ -18,7 +18,10 @@ if "%FRAMES%"=="" set FRAMES=600
 
 cd /d "%~dp0.."
 
-echo Building loadtest bench (release + debug symbols)...
+:: Set symbol path so WPA finds PDBs
+set _NT_SYMBOL_PATH=%CD%\target\profiling\deps;%_NT_SYMBOL_PATH%
+
+echo Building loadtest bench (profiling profile)...
 cargo build --profile profiling --bench loadtest -p bar-game-lib --features gpu-compute
 if %ERRORLEVEL% neq 0 (
     echo Build failed.
@@ -35,7 +38,8 @@ if %ERRORLEVEL% neq 0 (
 
 echo.
 echo Running loadtest: %UNITS% units/team, %FRAMES% frames...
-target\profiling\deps\loadtest-*.exe %UNITS% %FRAMES%
+for %%f in (target\profiling\deps\loadtest-*.exe) do set "BENCH_EXE=%%f"
+"%BENCH_EXE%" %UNITS% %FRAMES%
 
 echo.
 echo Stopping WPR trace...
