@@ -14,7 +14,7 @@ use crate::components::{Heading, Health, MoveState, Position, SimId, Stunned, Ve
 use crate::damage::{damage_system, stun_system};
 use crate::economy::{economy_system, EconomyState};
 use crate::factory::{factory_system, UnitRegistry};
-use crate::fog::{fog_system, FogOfWar};
+use crate::fog::{fog_system_with_flag, FogOfWar};
 use crate::lifecycle::{cleanup_dead, init_lifecycle};
 use crate::movement::movement_system;
 use crate::footprint::footprint_cleanup_system;
@@ -22,7 +22,7 @@ use crate::pathfinding::TerrainGrid;
 use crate::projectile::{projectile_movement_system, spawn_projectile_system, ImpactEventQueue};
 use crate::shield::{shield_absorb_system, shield_regen_system};
 use crate::spatial::SpatialGrid;
-use crate::targeting::{reload_system, targeting_system, FireEventQueue, WeaponRegistry};
+use crate::targeting::{reload_system, targeting_system_with_caps, FireEventQueue, WeaponRegistry};
 use crate::{SimFloat, SimVec2};
 
 /// Cached resource presence flags to avoid per-tick TypeId lookups.
@@ -33,6 +33,8 @@ pub struct SimCapabilities {
     pub has_weapons: bool,
     pub has_impacts: bool,
     pub has_factory: bool,
+    pub has_compute_backends: bool,
+    pub has_batch_math: bool,
 }
 
 impl SimCapabilities {
@@ -44,6 +46,8 @@ impl SimCapabilities {
             has_weapons: world.contains_resource::<WeaponRegistry>(),
             has_impacts: world.contains_resource::<ImpactEventQueue>(),
             has_factory: world.contains_resource::<UnitRegistry>(),
+            has_compute_backends: world.contains_resource::<crate::compute::ComputeBackends>(),
+            has_batch_math: world.contains_resource::<crate::compute::BatchMathBackend>(),
         }
     }
 }
@@ -117,7 +121,7 @@ pub fn sim_tick_with(world: &mut World, caps: &SimCapabilities) {
     // 5. Fog of war (before targeting so visibility is up-to-date)
     if caps.has_fog {
         let cell_size = SimFloat::ONE;
-        fog_system(world, cell_size);
+        fog_system_with_flag(world, cell_size, caps.has_compute_backends);
     }
 
     // 6. Movement
@@ -128,7 +132,7 @@ pub fn sim_tick_with(world: &mut World, caps: &SimCapabilities) {
 
     // 8. Targeting (respects fog visibility)
     if caps.has_weapons {
-        targeting_system(world);
+        targeting_system_with_caps(world, caps);
     }
 
     // 9. Reload (weapon cooldowns -> fire events)

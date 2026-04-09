@@ -170,9 +170,11 @@ impl FogOfWar {
 /// If `ComputeBackends` resource is present, dispatches to it.
 /// Otherwise runs the inline CPU implementation.
 pub fn fog_system(world: &mut World, cell_size: SimFloat) {
-    // Check for compute backend.
-    let has_backend = world.contains_resource::<ComputeBackends>();
+    fog_system_with_flag(world, cell_size, false);
+}
 
+/// Fog system with pre-cached backend flag (avoids per-tick TypeId lookup).
+pub fn fog_system_with_flag(world: &mut World, cell_size: SimFloat, has_backend: bool) {
     if has_backend {
         fog_system_with_backend(world, cell_size);
     } else {

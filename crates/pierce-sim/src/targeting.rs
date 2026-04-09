@@ -138,14 +138,16 @@ fn angle_to_target(from_x: SimFloat, from_z: SimFloat, to_x: SimFloat, to_z: Sim
 /// 7. Check min_range for each weapon.
 /// 8. Score by weapon priority, threat level, then distance (ties broken by `SimId`).
 /// 9. Apply overkill avoidance: skip targets with enough pending damage.
-pub fn targeting_system(world: &mut World) {
-    // Dispatch to GPU compute backend if available. The GPU path brute-forces
-    // all candidates per shooter (O(n²)) which is efficient on GPU but slow on
-    // CPU. Only enable this when a GPU backend is wired in.
-    if world.contains_resource::<crate::compute::ComputeBackends>() {
+/// Entry point called by sim_tick_with with pre-cached capabilities.
+pub fn targeting_system_with_caps(world: &mut World, caps: &crate::sim_runner::SimCapabilities) {
+    if caps.has_compute_backends {
         targeting_system_with_backend(world);
-        return;
+    } else {
+        targeting_system(world);
     }
+}
+
+pub fn targeting_system(world: &mut World) {
 
     // Use Arc snapshot from SimFrameData if available.
     let grid: std::sync::Arc<SpatialGrid> =
