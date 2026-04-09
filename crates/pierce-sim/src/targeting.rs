@@ -23,9 +23,10 @@ use crate::components::{
     Allegiance, AttackMove, Dead, FireMode, Health, Heading, LastAttacker, ManualTarget, Position,
     SimId, Target, TurretFacings,
 };
+use crate::fog::{is_entity_visible, FogOfWar};
 use crate::map::HeightmapData;
 use crate::spatial::SpatialGrid;
-use crate::{SimFloat, SimVec2};
+use crate::{SimFloat, SimVec2, SimVec3};
 
 // ---------------------------------------------------------------------------
 // Resources
@@ -141,6 +142,7 @@ pub fn targeting_system(world: &mut World) {
     let grid = world.resource::<SpatialGrid>().clone();
     let registry = world.resource::<WeaponRegistry>().clone();
     let heightmap = world.get_resource::<HeightmapData>().cloned();
+    let fog = world.get_resource::<FogOfWar>().cloned();
 
     // Gather shooter info.
     struct ShooterInfo {
@@ -258,6 +260,7 @@ pub fn targeting_system(world: &mut World) {
         pos_y: SimFloat,
         pos_z: SimFloat,
         pos_xz: SimVec2,
+        pos_3d: SimVec3,
         sim_id: u64,
         has_weapons: bool,
         is_building: bool,
@@ -358,6 +361,14 @@ pub fn targeting_system(world: &mut World) {
             }
             if !info.health_positive {
                 continue;
+            }
+
+            // Must be visible in fog of war (if fog exists).
+            if let Some(ref fog) = fog {
+                let cand_pos = SimVec3::new(info.pos_x, info.pos_y, info.pos_z);
+                if !is_entity_visible(fog, shooter.team, cand_pos, SimFloat::ONE) {
+                    continue;
+                }
             }
 
             let dist_sq = shooter.pos_xz.distance_squared(info.pos_xz);

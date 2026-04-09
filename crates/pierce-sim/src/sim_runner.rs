@@ -20,6 +20,7 @@ use crate::movement::movement_system;
 use crate::footprint::footprint_cleanup_system;
 use crate::pathfinding::TerrainGrid;
 use crate::projectile::{projectile_movement_system, spawn_projectile_system, ImpactEventQueue};
+use crate::shield::{shield_absorb_system, shield_regen_system};
 use crate::spatial::SpatialGrid;
 use crate::targeting::{reload_system, targeting_system, FireEventQueue, WeaponRegistry};
 use crate::{SimFloat, SimVec2};
@@ -29,18 +30,20 @@ use crate::{SimFloat, SimVec2};
 ///  1. Rebuild [`SpatialGrid`] from all [`Position`] components.
 ///  2. [`command_system`]
 ///  3. [`economy_system`]
-///  4. [`movement_system`]
-///  5. [`collision_system`]
-///  6. [`targeting_system`]
-///  7. [`reload_system`]
-///  8. [`spawn_projectile_system`]
-///  9. [`projectile_movement_system`]
-/// 10. [`damage_system`]
-/// 11. [`stun_system`]
-/// 12. [`fog_system`] (if [`FogOfWar`] resource exists)
-/// 13. [`factory_system`] (if [`UnitRegistry`] resource exists)
-/// 14. [`footprint_cleanup_system`] (restore terrain for dead buildings)
-/// 15. [`cleanup_dead`]
+///  4. [`shield_regen_system`]
+///  5. [`fog_system`] (if [`FogOfWar`] resource exists) -- before targeting
+///  6. [`movement_system`]
+///  7. [`collision_system`]
+///  8. [`targeting_system`] (respects fog visibility)
+///  9. [`reload_system`]
+/// 10. [`spawn_projectile_system`]
+/// 11. [`shield_absorb_system`] (intercepts projectiles before movement)
+/// 12. [`projectile_movement_system`]
+/// 13. [`damage_system`]
+/// 14. [`stun_system`]
+/// 15. [`factory_system`] (if [`UnitRegistry`] resource exists)
+/// 16. [`footprint_cleanup_system`] (restore terrain for dead buildings)
+/// 17. [`cleanup_dead`]
 pub fn sim_tick(world: &mut World) {
     // 1. Rebuild spatial grid (exclude Dead entities)
     {
@@ -65,55 +68,61 @@ pub fn sim_tick(world: &mut World) {
         economy_system(world);
     }
 
-    // 4. Movement
-    movement_system(world);
+    // 4. Shield regeneration
+    shield_regen_system(world);
 
-    // 5. Collision
-    collision_system(world);
-
-    // 6. Targeting
-    if world.contains_resource::<WeaponRegistry>() {
-        targeting_system(world);
-    }
-
-    // 7. Reload (weapon cooldowns -> fire events)
-    if world.contains_resource::<WeaponRegistry>() {
-        reload_system(world);
-    }
-
-    // 8. Spawn projectiles from fire events
-    if world.contains_resource::<WeaponRegistry>() {
-        spawn_projectile_system(world);
-    }
-
-    // 9. Projectile movement and impact detection
-    if world.contains_resource::<ImpactEventQueue>() {
-        projectile_movement_system(world);
-    }
-
-    // 10. Damage application
-    if world.contains_resource::<ImpactEventQueue>() {
-        damage_system(world);
-    }
-
-    // 11. Stun tick-down
-    stun_system(world);
-
-    // 12. Fog of war (only if resource exists)
+    // 5. Fog of war (before targeting so visibility is up-to-date)
     if world.contains_resource::<FogOfWar>() {
         let cell_size = SimFloat::ONE;
         fog_system(world, cell_size);
     }
 
-    // 13. Factory production (only if registry exists)
+    // 6. Movement
+    movement_system(world);
+
+    // 7. Collision
+    collision_system(world);
+
+    // 8. Targeting (respects fog visibility)
+    if world.contains_resource::<WeaponRegistry>() {
+        targeting_system(world);
+    }
+
+    // 9. Reload (weapon cooldowns -> fire events)
+    if world.contains_resource::<WeaponRegistry>() {
+        reload_system(world);
+    }
+
+    // 10. Spawn projectiles from fire events
+    if world.contains_resource::<WeaponRegistry>() {
+        spawn_projectile_system(world);
+    }
+
+    // 11. Shield absorption (intercept projectiles before movement)
+    shield_absorb_system(world);
+
+    // 12. Projectile movement and impact detection
+    if world.contains_resource::<ImpactEventQueue>() {
+        projectile_movement_system(world);
+    }
+
+    // 13. Damage application
+    if world.contains_resource::<ImpactEventQueue>() {
+        damage_system(world);
+    }
+
+    // 14. Stun tick-down
+    stun_system(world);
+
+    // 15. Factory production (only if registry exists)
     if world.contains_resource::<UnitRegistry>() {
         factory_system(world);
     }
 
-    // 14. Restore terrain grid for dead buildings (before despawn)
+    // 16. Restore terrain grid for dead buildings (before despawn)
     footprint_cleanup_system(world);
 
-    // 15. Cleanup dead entities
+    // 17. Cleanup dead entities
     cleanup_dead(world);
 }
 

@@ -18,6 +18,7 @@ pub mod movement;
 pub mod pathfinding;
 pub mod projectile;
 pub mod selection;
+pub mod shield;
 pub mod sim_runner;
 pub mod smf;
 pub mod spatial;
@@ -35,6 +36,7 @@ pub use components::{
     SightRange, SimId, Target, Transport, TurretFacings, TurretState, UnitType, Velocity,
 };
 pub use fog::{fog_system, is_entity_visible, CellVisibility, FogOfWar};
+pub use shield::{shield_absorb_system, shield_regen_system, Shield};
 pub use pathfinding::{AStarPathfinder, FlowFieldPathfinder, HybridPathfinder, Pathfinder};
 pub use selection::{screen_to_ground_raw, SelectionState};
 pub use spatial::SpatialGrid;

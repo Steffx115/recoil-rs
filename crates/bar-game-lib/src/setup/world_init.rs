@@ -68,8 +68,9 @@ pub fn init_world(
         world.insert_resource(pierce_sim::map::MetalSpots { spots });
     }
 
-    // Fog of War
-    let fog = FogOfWar::new(64, 64, &[0, 1]);
+    // Fog of War — grid covers at least 1024x1024 world units (with cell_size=1
+    // used in sim_tick's fog_system call). Matches the spatial grid extent.
+    let fog = FogOfWar::new(1024, 1024, &[0, 1]);
     world.insert_resource(fog);
 
     // Build UnitRegistry for factory_system from loaded UnitDefs

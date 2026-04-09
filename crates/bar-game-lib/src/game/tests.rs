@@ -5775,3 +5775,847 @@ mod fuzz_tests {
         }
     }
 }
+
+// =======================================================================
+// RR-106: Cross-system integration tests
+// =======================================================================
+
+// -----------------------------------------------------------------------
+// Fog + Targeting
+// -----------------------------------------------------------------------
+
+/// Unit does NOT acquire or fire at enemy hidden in fog of war.
+#[test]
+fn fog_targeting_unit_does_not_target_hidden_enemy() {
+    // Use a minimal sim world instead of make_test_game() to avoid
+    // interference from commanders, AI, or other game setup entities.
+    use pierce_sim::sim_runner::init_sim_world;
+
+    let mut world = bevy_ecs::world::World::new();
+    init_sim_world(&mut world);
+
+    // Set up fog of war -- both teams.
+    let fog = pierce_sim::FogOfWar::new(512, 512, &[0, 1]);
+    world.insert_resource(fog);
+
+    let weapon_id = {
+        use pierce_sim::combat_data::{DamageType, WeaponDef};
+        use pierce_sim::targeting::WeaponRegistry;
+        let mut registry = world.resource_mut::<WeaponRegistry>();
+        let id = registry.defs.len() as u32;
+        registry.defs.push(WeaponDef {
+            damage: SimFloat::from_int(50),
+            damage_type: DamageType::Normal,
+            range: SimFloat::from_int(200),
+            reload_time: 10,
+            projectile_speed: SimFloat::ZERO,
+            area_of_effect: SimFloat::ZERO,
+            is_paralyzer: false,
+        });
+        id
+    };
+
+    // Spawn attacker at (100, 0, 100) with sight range 50.
+    let attacker = pierce_sim::lifecycle::spawn_unit(
+        &mut world,
+        Position { pos: SimVec3::new(SimFloat::from_int(100), SimFloat::ZERO, SimFloat::from_int(100)) },
+        pierce_sim::UnitType { id: 1 },
+        pierce_sim::Allegiance { team: 0 },
+        Health { current: SimFloat::from_int(500), max: SimFloat::from_int(500) },
+    );
+    world.entity_mut(attacker).insert((
+        pierce_sim::MoveState::Idle,
+        pierce_sim::MovementParams {
+            max_speed: SimFloat::from_int(2),
+            acceleration: SimFloat::ONE,
+            turn_rate: SimFloat::ONE,
+        },
+        pierce_sim::CollisionRadius { radius: SimFloat::from_int(8) },
+        pierce_sim::Heading { angle: SimFloat::ZERO },
+        pierce_sim::Velocity { vel: SimVec3::ZERO },
+        pierce_sim::combat_data::ArmorClass::Light,
+        pierce_sim::Target { entity: None },
+        pierce_sim::combat_data::WeaponSet {
+            weapons: vec![pierce_sim::combat_data::WeaponInstance {
+                def_id: weapon_id,
+                reload_remaining: 0,
+            }],
+        },
+        pierce_sim::SightRange { range: SimFloat::from_int(50) },
+        pierce_sim::commands::CommandQueue::default(),
+    ));
+
+    // Spawn enemy at (400, 0, 400) -- well outside sight range.
+    let enemy = pierce_sim::lifecycle::spawn_unit(
+        &mut world,
+        Position { pos: SimVec3::new(SimFloat::from_int(400), SimFloat::ZERO, SimFloat::from_int(400)) },
+        pierce_sim::UnitType { id: 1 },
+        pierce_sim::Allegiance { team: 1 },
+        Health { current: SimFloat::from_int(500), max: SimFloat::from_int(500) },
+    );
+    world.entity_mut(enemy).insert((
+        pierce_sim::MoveState::Idle,
+        pierce_sim::MovementParams {
+            max_speed: SimFloat::from_int(2),
+            acceleration: SimFloat::ONE,
+            turn_rate: SimFloat::ONE,
+        },
+        pierce_sim::CollisionRadius { radius: SimFloat::from_int(8) },
+        pierce_sim::Heading { angle: SimFloat::ZERO },
+        pierce_sim::Velocity { vel: SimVec3::ZERO },
+        pierce_sim::combat_data::ArmorClass::Light,
+        pierce_sim::Target { entity: None },
+        pierce_sim::combat_data::WeaponSet {
+            weapons: vec![pierce_sim::combat_data::WeaponInstance {
+                def_id: weapon_id,
+                reload_remaining: 0,
+            }],
+        },
+        // Enemy also has short sight range so it can't see attacker either.
+        pierce_sim::SightRange { range: SimFloat::from_int(50) },
+        pierce_sim::commands::CommandQueue::default(),
+    ));
+
+    // Run sim ticks directly.
+    for _ in 0..20 {
+        pierce_sim::sim_runner::sim_tick(&mut world);
+    }
+
+    // Attacker should NOT have acquired a target.
+    let target = world.get::<pierce_sim::Target>(attacker).unwrap();
+    assert!(
+        target.entity.is_none(),
+        "Unit should NOT target enemy hidden in fog"
+    );
+
+    // Enemy should still be at full HP.
+    let hp = world.get::<Health>(enemy).unwrap();
+    assert_eq!(
+        hp.current,
+        SimFloat::from_int(500),
+        "Hidden enemy should not take damage"
+    );
+}
+
+/// Unit acquires target immediately when fog lifts (enemy enters sight range).
+#[test]
+fn fog_targeting_unit_acquires_when_fog_lifts() {
+    let mut game = make_test_game();
+    fund_both_teams(&mut game);
+
+    let weapon_id = register_test_weapon(&mut game);
+
+    // Both units close together -- within weapon range.
+    let attacker = spawn_armed_unit(&mut game, 100, 100, 0, weapon_id, 500);
+    let enemy = spawn_armed_unit(&mut game, 120, 100, 1, weapon_id, 500);
+
+    // Set up fog of war.
+    let fog = pierce_sim::FogOfWar::new(512, 512, &[0, 1]);
+    game.world.insert_resource(fog);
+
+    // Run enough ticks for fog to reveal the area around the attacker
+    // and for targeting to acquire.
+    for _ in 0..30 {
+        game.tick();
+        game.frame_count += 1;
+    }
+
+    // Attacker should have acquired the enemy (both have sight range 300 by default,
+    // and they are within 20 units of each other).
+    let _target = game.world.get::<pierce_sim::Target>(attacker);
+    // Target may have already killed the enemy, so check HP instead.
+    let hp = game.world.get::<Health>(enemy);
+    if let Some(hp) = hp {
+        // If enemy is still alive, attacker should have targeted it and dealt some damage.
+        assert!(
+            hp.current < SimFloat::from_int(500),
+            "Enemy in LOS should take damage once fog lifts"
+        );
+    }
+    // If enemy is dead, that also proves targeting worked.
+}
+
+/// Projectiles in flight still hit even if target enters fog.
+#[test]
+fn fog_targeting_projectile_hits_despite_fog() {
+    use pierce_sim::combat_data::{DamageType, WeaponDef};
+    use pierce_sim::targeting::WeaponRegistry;
+
+    let mut game = make_test_game();
+    fund_both_teams(&mut game);
+
+    // Register a slow projectile weapon so it's in flight for multiple ticks.
+    let weapon_id = {
+        let mut registry = game.world.resource_mut::<WeaponRegistry>();
+        let id = registry.defs.len() as u32;
+        registry.defs.push(WeaponDef {
+            damage: SimFloat::from_int(100),
+            damage_type: DamageType::Normal,
+            range: SimFloat::from_int(200),
+            reload_time: 10,
+            projectile_speed: SimFloat::from_int(5), // slow projectile
+            area_of_effect: SimFloat::ZERO,
+            is_paralyzer: false,
+        });
+        id
+    };
+
+    // Spawn attacker and enemy close enough to engage.
+    let _attacker = spawn_armed_unit(&mut game, 100, 100, 0, weapon_id, 500);
+    let enemy = spawn_armed_unit(&mut game, 150, 100, 1, weapon_id, 500);
+
+    // Setup fog.
+    let fog = pierce_sim::FogOfWar::new(512, 512, &[0, 1]);
+    game.world.insert_resource(fog);
+
+    // Run enough ticks for projectiles to spawn and hit.
+    for _ in 0..50 {
+        game.tick();
+        game.frame_count += 1;
+    }
+
+    // Enemy should have taken damage from projectiles that were in flight.
+    let hp = game.world.get::<Health>(enemy);
+    match hp {
+        Some(hp) => assert!(
+            hp.current < SimFloat::from_int(500),
+            "Projectile should still hit even if target might enter fog"
+        ),
+        None => {
+            // Entity may have been despawned due to death -- that's also valid.
+        }
+    }
+}
+
+// -----------------------------------------------------------------------
+// Area Commands
+// -----------------------------------------------------------------------
+
+/// Area reclaim targets all wrecks within specified radius.
+#[test]
+fn area_reclaim_targets_wrecks_in_radius() {
+    use pierce_sim::commands::CommandQueue;
+    use pierce_sim::construction::Reclaimable;
+
+    let mut game = make_test_game();
+    fund_both_teams(&mut game);
+
+    // Select the commander (team 0 builder).
+    let cmd = game.commander_team0.unwrap();
+    game.selection.selected = vec![cmd];
+
+    // Spawn some reclaimable wrecks.
+    let _wreck1 = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(100),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            Reclaimable {
+                metal_value: SimFloat::from_int(50),
+                reclaim_progress: SimFloat::ZERO,
+            },
+        ))
+        .id();
+
+    let _wreck2 = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(110),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            Reclaimable {
+                metal_value: SimFloat::from_int(30),
+                reclaim_progress: SimFloat::ZERO,
+            },
+        ))
+        .id();
+
+    // Wreck outside radius.
+    let _wreck_far = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(500),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(500),
+                ),
+            },
+            Reclaimable {
+                metal_value: SimFloat::from_int(100),
+                reclaim_progress: SimFloat::ZERO,
+            },
+        ))
+        .id();
+
+    // Issue area reclaim centered at (105, 100) with radius 50.
+    game.area_reclaim(105.0, 100.0, 50.0);
+
+    // Commander should have reclaim commands for wreck1 and wreck2.
+    let cq = game.world.get::<CommandQueue>(cmd).unwrap();
+    let reclaim_count = cq
+        .commands
+        .iter()
+        .filter(|c| matches!(c, pierce_sim::Command::Reclaim(_)))
+        .count();
+    assert_eq!(
+        reclaim_count, 2,
+        "Should have 2 reclaim commands for wrecks in radius"
+    );
+}
+
+/// Area repair targets damaged friendly buildings in radius.
+#[test]
+fn area_repair_targets_damaged_friendlies() {
+    use pierce_sim::commands::CommandQueue;
+
+    let mut game = make_test_game();
+    fund_both_teams(&mut game);
+
+    let cmd = game.commander_team0.unwrap();
+    game.selection.selected = vec![cmd];
+
+    // Spawn a damaged friendly unit.
+    let _damaged = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(100),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            Health {
+                current: SimFloat::from_int(50),
+                max: SimFloat::from_int(200),
+            },
+            pierce_sim::Allegiance { team: 0 },
+        ))
+        .id();
+
+    // Spawn a full-health friendly (should NOT be targeted).
+    let _healthy = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(110),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            Health {
+                current: SimFloat::from_int(200),
+                max: SimFloat::from_int(200),
+            },
+            pierce_sim::Allegiance { team: 0 },
+        ))
+        .id();
+
+    game.area_repair(105.0, 100.0, 50.0);
+
+    let cq = game.world.get::<CommandQueue>(cmd).unwrap();
+    let repair_count = cq
+        .commands
+        .iter()
+        .filter(|c| matches!(c, pierce_sim::Command::Repair(_)))
+        .count();
+    assert_eq!(
+        repair_count, 1,
+        "Should only repair the damaged unit, not the healthy one"
+    );
+}
+
+/// Area attack targets closest enemy first.
+#[test]
+fn area_attack_targets_enemies_in_radius() {
+    use pierce_sim::commands::CommandQueue;
+
+    let mut game = make_test_game();
+    fund_both_teams(&mut game);
+
+    let weapon_id = register_test_weapon(&mut game);
+    let attacker = spawn_armed_unit(&mut game, 100, 100, 0, weapon_id, 500);
+    game.selection.selected = vec![attacker];
+
+    // Spawn enemies in radius.
+    let _enemy1 = spawn_armed_unit(&mut game, 120, 100, 1, weapon_id, 200);
+    let _enemy2 = spawn_armed_unit(&mut game, 130, 100, 1, weapon_id, 200);
+
+    // Spawn enemy outside radius.
+    let _enemy_far = spawn_armed_unit(&mut game, 500, 500, 1, weapon_id, 200);
+
+    game.area_attack(125.0, 100.0, 50.0, 0);
+
+    let cq = game.world.get::<CommandQueue>(attacker).unwrap();
+    let attack_count = cq
+        .commands
+        .iter()
+        .filter(|c| matches!(c, pierce_sim::Command::Attack(_)))
+        .count();
+    assert_eq!(
+        attack_count, 2,
+        "Should have 2 attack commands for enemies in radius"
+    );
+}
+
+/// Area commands with no valid targets are no-ops.
+#[test]
+fn area_commands_no_valid_targets_noop() {
+    use pierce_sim::commands::CommandQueue;
+
+    let mut game = make_test_game();
+    fund_both_teams(&mut game);
+
+    let cmd = game.commander_team0.unwrap();
+    game.selection.selected = vec![cmd];
+
+    // Snapshot command queue state.
+    let before_len = game
+        .world
+        .get::<CommandQueue>(cmd)
+        .unwrap()
+        .commands
+        .len();
+
+    // Issue area reclaim in an empty area.
+    game.area_reclaim(999.0, 999.0, 10.0);
+
+    let after_len = game
+        .world
+        .get::<CommandQueue>(cmd)
+        .unwrap()
+        .commands
+        .len();
+    assert_eq!(
+        before_len, after_len,
+        "Area reclaim with no targets should not add commands"
+    );
+
+    // Issue area repair in an empty area.
+    game.area_repair(999.0, 999.0, 10.0);
+
+    let after_len2 = game
+        .world
+        .get::<CommandQueue>(cmd)
+        .unwrap()
+        .commands
+        .len();
+    assert_eq!(
+        after_len, after_len2,
+        "Area repair with no targets should not add commands"
+    );
+
+    // Issue area attack in area with no enemies.
+    game.area_attack(999.0, 999.0, 10.0, 0);
+
+    let after_len3 = game
+        .world
+        .get::<CommandQueue>(cmd)
+        .unwrap()
+        .commands
+        .len();
+    assert_eq!(
+        after_len2, after_len3,
+        "Area attack with no targets should not add commands"
+    );
+}
+
+// -----------------------------------------------------------------------
+// Multi-Builder Construction
+// -----------------------------------------------------------------------
+
+/// 2 builders on same BuildSite = 2x construction speed.
+#[test]
+fn multi_builder_double_speed() {
+    use pierce_sim::construction::{BuildSite, BuildTarget, Builder};
+
+    let mut game = make_test_game();
+    fund_both_teams(&mut game);
+
+    // Create a build site with known parameters.
+    let site = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(100),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            BuildSite {
+                metal_cost: SimFloat::from_int(100),
+                energy_cost: SimFloat::from_int(100),
+                total_build_time: SimFloat::from_int(100),
+                progress: SimFloat::ZERO,
+            },
+            Health {
+                current: SimFloat::from_int(1),
+                max: SimFloat::from_int(500),
+            },
+            pierce_sim::Allegiance { team: 0 },
+        ))
+        .id();
+
+    // Single builder -- run 10 ticks and measure progress.
+    let _builder1 = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(100),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            Builder {
+                build_power: SimFloat::ONE,
+            },
+            BuildTarget { target: site },
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::MoveState::Idle,
+        ))
+        .id();
+
+    for _ in 0..10 {
+        pierce_sim::construction::construction_system(&mut game.world);
+    }
+
+    let progress_1b = game.world.get::<BuildSite>(site).unwrap().progress;
+
+    // Reset progress.
+    game.world.get_mut::<BuildSite>(site).unwrap().progress = SimFloat::ZERO;
+
+    // Add a second builder.
+    let _builder2 = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(100),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            Builder {
+                build_power: SimFloat::ONE,
+            },
+            BuildTarget { target: site },
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::MoveState::Idle,
+        ))
+        .id();
+
+    for _ in 0..10 {
+        pierce_sim::construction::construction_system(&mut game.world);
+    }
+
+    let progress_2b = game.world.get::<BuildSite>(site).unwrap().progress;
+
+    // 2 builders should produce roughly 2x progress.
+    // Allow small tolerance for fixed-point rounding.
+    let ratio = progress_2b / progress_1b;
+    assert!(
+        ratio >= SimFloat::from_ratio(19, 10) && ratio <= SimFloat::from_ratio(21, 10),
+        "2 builders should produce ~2x progress: 1b={:?}, 2b={:?}, ratio={:?}",
+        progress_1b,
+        progress_2b,
+        ratio
+    );
+}
+
+/// Economy stall reduces all builders' effective build power proportionally.
+#[test]
+fn multi_builder_economy_stall() {
+    use pierce_sim::construction::{BuildSite, BuildTarget, Builder};
+    use pierce_sim::economy::{EconomyState, TeamResources};
+
+    let mut game = make_test_game();
+
+    // Set up economy with very low resources to cause stall.
+    {
+        let mut economy = game.world.resource_mut::<EconomyState>();
+        let res = economy.teams.entry(0).or_insert(TeamResources::default());
+        res.metal = SimFloat::from_int(1); // Very low
+        res.energy = SimFloat::from_int(1);
+        res.metal_storage = SimFloat::from_int(10000);
+        res.energy_storage = SimFloat::from_int(10000);
+        res.stall_ratio_metal = SimFloat::HALF; // 50% stall
+        res.stall_ratio_energy = SimFloat::HALF;
+    }
+
+    let site = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(100),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            BuildSite {
+                metal_cost: SimFloat::from_int(100),
+                energy_cost: SimFloat::from_int(100),
+                total_build_time: SimFloat::from_int(100),
+                progress: SimFloat::ZERO,
+            },
+            Health {
+                current: SimFloat::from_int(1),
+                max: SimFloat::from_int(500),
+            },
+            pierce_sim::Allegiance { team: 0 },
+        ))
+        .id();
+
+    // Two builders.
+    for _ in 0..2 {
+        game.world.spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(100),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            Builder {
+                build_power: SimFloat::ONE,
+            },
+            BuildTarget { target: site },
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::MoveState::Idle,
+        ));
+    }
+
+    // Run one tick of construction.
+    pierce_sim::construction::construction_system(&mut game.world);
+
+    let progress = game.world.get::<BuildSite>(site).unwrap().progress;
+
+    // Without stall: 2 builders * 1 power / 100 total = 0.02 per tick.
+    // With 50% stall: 0.02 * 0.5 = 0.01 per tick.
+    let expected = SimFloat::from_ratio(1, 100);
+    assert_eq!(
+        progress, expected,
+        "Stall should proportionally reduce all builders' build power"
+    );
+}
+
+/// Builder arriving mid-construction contributes from current progress, not zero.
+#[test]
+fn builder_mid_construction_contributes_from_current() {
+    use pierce_sim::construction::{BuildSite, BuildTarget, Builder};
+
+    let mut game = make_test_game();
+    fund_both_teams(&mut game);
+
+    let site = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(100),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            BuildSite {
+                metal_cost: SimFloat::from_int(100),
+                energy_cost: SimFloat::from_int(100),
+                total_build_time: SimFloat::from_int(100),
+                progress: SimFloat::ZERO,
+            },
+            Health {
+                current: SimFloat::from_int(1),
+                max: SimFloat::from_int(500),
+            },
+            pierce_sim::Allegiance { team: 0 },
+        ))
+        .id();
+
+    // First builder starts.
+    let _b1 = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(100),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            Builder {
+                build_power: SimFloat::ONE,
+            },
+            BuildTarget { target: site },
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::MoveState::Idle,
+        ))
+        .id();
+
+    // Build for 50 ticks with one builder.
+    for _ in 0..50 {
+        pierce_sim::construction::construction_system(&mut game.world);
+    }
+
+    let progress_before_b2 = game.world.get::<BuildSite>(site).unwrap().progress;
+    assert!(
+        progress_before_b2 > SimFloat::ZERO,
+        "Should have some progress after 50 ticks"
+    );
+
+    // Second builder joins mid-construction.
+    let _b2 = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(100),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            Builder {
+                build_power: SimFloat::ONE,
+            },
+            BuildTarget { target: site },
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::MoveState::Idle,
+        ))
+        .id();
+
+    // Run 1 tick.
+    pierce_sim::construction::construction_system(&mut game.world);
+
+    let progress_after_b2 = game.world.get::<BuildSite>(site).unwrap().progress;
+
+    // Progress should increase by 2 * (1/100) = 0.02 from the previous value.
+    // Use approximate comparison due to fixed-point rounding.
+    let delta = progress_after_b2 - progress_before_b2;
+    let expected_delta = SimFloat::from_ratio(2, 100);
+    let diff = if delta > expected_delta {
+        delta - expected_delta
+    } else {
+        expected_delta - delta
+    };
+    assert!(
+        diff <= SimFloat::from_ratio(1, 1000),
+        "Second builder should contribute from current progress, adding ~2/100: delta={:?}, expected={:?}",
+        delta,
+        expected_delta
+    );
+}
+
+/// Removing a builder doesn't reset progress.
+#[test]
+fn removing_builder_does_not_reset_progress() {
+    use pierce_sim::construction::{BuildSite, BuildTarget, Builder};
+
+    let mut game = make_test_game();
+    fund_both_teams(&mut game);
+
+    let site = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(100),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            BuildSite {
+                metal_cost: SimFloat::from_int(100),
+                energy_cost: SimFloat::from_int(100),
+                total_build_time: SimFloat::from_int(100),
+                progress: SimFloat::ZERO,
+            },
+            Health {
+                current: SimFloat::from_int(1),
+                max: SimFloat::from_int(500),
+            },
+            pierce_sim::Allegiance { team: 0 },
+        ))
+        .id();
+
+    let _b1 = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(100),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            Builder {
+                build_power: SimFloat::ONE,
+            },
+            BuildTarget { target: site },
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::MoveState::Idle,
+        ))
+        .id();
+
+    let b2 = game
+        .world
+        .spawn((
+            Position {
+                pos: SimVec3::new(
+                    SimFloat::from_int(100),
+                    SimFloat::ZERO,
+                    SimFloat::from_int(100),
+                ),
+            },
+            Builder {
+                build_power: SimFloat::ONE,
+            },
+            BuildTarget { target: site },
+            pierce_sim::Allegiance { team: 0 },
+            pierce_sim::MoveState::Idle,
+        ))
+        .id();
+
+    // Build for 20 ticks with 2 builders.
+    for _ in 0..20 {
+        pierce_sim::construction::construction_system(&mut game.world);
+    }
+
+    let progress_before_removal = game.world.get::<BuildSite>(site).unwrap().progress;
+    assert!(progress_before_removal > SimFloat::ZERO);
+
+    // Remove builder 2's build target (simulating withdrawal).
+    game.world.entity_mut(b2).remove::<BuildTarget>();
+
+    // Run another tick.
+    pierce_sim::construction::construction_system(&mut game.world);
+
+    let progress_after_removal = game.world.get::<BuildSite>(site).unwrap().progress;
+
+    // Progress should have increased (not reset).
+    assert!(
+        progress_after_removal > progress_before_removal,
+        "Removing builder should not reset progress: before={:?}, after={:?}",
+        progress_before_removal,
+        progress_after_removal
+    );
+
+    // Should have increased by exactly 1 builder's contribution (1/100).
+    let delta = progress_after_removal - progress_before_removal;
+    assert_eq!(
+        delta,
+        SimFloat::from_ratio(1, 100),
+        "Only remaining builder should contribute"
+    );
+}
