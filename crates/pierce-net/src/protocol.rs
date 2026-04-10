@@ -1,4 +1,4 @@
-//! Core network protocol types for the lockstep networking layer.
+//! Core network protocol types for the networking layer.
 
 use serde::{Deserialize, Serialize};
 
@@ -18,12 +18,17 @@ pub struct PlayerCommand {
     pub command: pierce_sim::Command,
 }
 
-/// Network messages exchanged between host and clients.
+/// Network messages exchanged between server and clients.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum NetMessage {
-    /// Client sends its commands for a frame.
+    /// Client sends commands (fire-and-forget, no frame number needed).
+    Commands {
+        player_id: u8,
+        commands: Vec<PlayerCommand>,
+    },
+    /// Client sends its commands for a frame (lockstep mode).
     CommandFrameMsg(CommandFrame),
-    /// Host broadcasts all players' commands for a frame (authoritative).
+    /// Server broadcasts all players' commands for a frame (authoritative).
     FrameAdvance {
         frame: u64,
         commands: Vec<CommandFrame>,

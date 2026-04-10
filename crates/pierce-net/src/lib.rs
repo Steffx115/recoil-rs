@@ -1,10 +1,12 @@
-//! Lockstep networking protocol and replay system for the Pierce RTS engine.
+//! Server-authoritative networking protocol and replay system for the Pierce RTS engine.
 
+pub mod client;
 pub mod codec;
 pub mod lobby;
 pub mod lockstep;
 pub mod protocol;
 pub mod replay;
+pub mod server_tick;
 pub mod sync;
 
 pub use codec::{decode, decode_framed, encode, encode_framed};
@@ -14,4 +16,6 @@ pub use protocol::{CommandFrame, NetMessage, PlayerCommand};
 pub use replay::{
     load_replay, save_replay, Replay, ReplayError, ReplayHeader, ReplayPlayer, ReplayRecorder,
 };
+pub use client::{AdaptLevel, AdaptThresholds, ClientFrameBuffer};
+pub use server_tick::ServerTick;
 pub use sync::{compute_component_hashes, ComponentHashes, SyncStatus, SyncValidator};
