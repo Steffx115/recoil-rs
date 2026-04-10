@@ -21,6 +21,9 @@ Thumbs.db
 # Screenshots
 /images/
 
+# Replays
+/replays/
+
 # Profiling
 *.tracy
 flamegraph.svg
