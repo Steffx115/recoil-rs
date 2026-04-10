@@ -13,6 +13,7 @@ members = [
     "crates/pierce-cob",
     "crates/pierce-s3o",
     "crates/pierce-compute",
+    "crates/bar-server",
 ]
 
 [workspace.package]

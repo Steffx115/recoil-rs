@@ -1,0 +1,29 @@
+[package]
+name = "bar-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Dedicated game server with matchmaking"
+
+[[bin]]
+name = "bar-server"
+path = "src/main.rs"
+
+[[bin]]
+name = "bar-headless-client"
+path = "src/headless_client.rs"
+
+[features]
+gpu-compute = ["bar-game-lib/gpu-compute", "dep:pierce-compute"]
+
+[dependencies]
+bar-game-lib = { path = "../bar-game-lib" }
+pierce-compute = { path = "../pierce-compute", optional = true }
+pierce-net = { path = "../pierce-net" }
+pierce-sim = { path = "../pierce-sim" }
+pierce-math = { path = "../pierce-math" }
+bevy_ecs = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }

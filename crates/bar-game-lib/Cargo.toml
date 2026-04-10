@@ -12,6 +12,7 @@ gpu-compute = ["pierce-compute/gpu", "pierce-sim/all-gpu"]
 [dependencies]
 pierce-compute = { path = "../pierce-compute", default-features = false }
 pierce-math = { path = "../pierce-math" }
+pierce-net = { path = "../pierce-net" }
 pierce-sim = { path = "../pierce-sim" }
 anyhow = { workspace = true }
 bevy_ecs = { workspace = true }
@@ -19,7 +20,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }
-pierce-net = { path = "../pierce-net" }
 proptest = { workspace = true }
 bincode = { workspace = true }
 

@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod building;
 pub mod game;
+pub mod net;
 pub mod production;
 pub mod setup;
 
@@ -35,4 +36,5 @@ impl Lcg {
 // Re-export key types for convenience
 pub use building::PlacementType;
 pub use game::{GameOver, GameState};
+pub use net::NetGame;
 pub use setup::{GameConfig, InitOptions};
