@@ -18,6 +18,9 @@ cd /d "%~dp0.."
 :: Set symbol path so WPA finds PDBs
 set _NT_SYMBOL_PATH=%CD%\target\profiling\deps;%_NT_SYMBOL_PATH%
 
+echo Cleaning old binaries...
+del /q target\profiling\deps\loadtest-*.exe target\profiling\deps\loadtest-*.pdb 2>nul
+
 echo Building loadtest bench (profiling profile)...
 cargo build --profile profiling --bench loadtest -p bar-game-lib --features gpu-compute
 if %ERRORLEVEL% neq 0 (
@@ -27,7 +30,7 @@ if %ERRORLEVEL% neq 0 (
 
 echo.
 echo Starting WPR trace (CPU sampling + context switches)...
-"%WPR%" -start CPU -start DiskIO
+"%WPR%" -start CPU -start GPU -start DiskIO
 if %ERRORLEVEL% neq 0 (
     echo WPR failed. Run as Administrator.
     exit /b 1

@@ -26,6 +26,9 @@ cd /d "%~dp0.."
 :: Set symbol path so WPA finds PDBs
 set _NT_SYMBOL_PATH=%CD%\target\profiling;%CD%\target\profiling\deps;%_NT_SYMBOL_PATH%
 
+echo Cleaning old binaries...
+del /q target\profiling\bar-game.exe target\profiling\bar-game.pdb 2>nul
+
 echo Building game (profiling profile)...
 cargo build --profile profiling --bin bar-game -p bar-game --features gpu-compute
 if %ERRORLEVEL% neq 0 (
