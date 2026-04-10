@@ -185,6 +185,9 @@ pub struct ImpactEvent {
     pub damage_type: DamageType,
     pub area_of_effect: SimFloat,
     pub is_paralyzer: bool,
+    /// For single-target (non-AOE) hits, the known target entity.
+    /// Allows damage_system to skip the spatial query entirely.
+    pub target_entity: Option<Entity>,
 }
 
 /// Per-frame queue of impact events.
@@ -366,6 +369,11 @@ pub fn spawn_projectile_system(world: &mut World) {
                 damage_type: def.damage_type,
                 area_of_effect: def.area_of_effect,
                 is_paralyzer: def.is_paralyzer,
+                target_entity: if def.area_of_effect == SimFloat::ZERO {
+                    Some(event.target)
+                } else {
+                    None
+                },
             });
         } else {
             // RR-132: apply target prediction for ballistic projectiles.
@@ -525,6 +533,7 @@ pub fn projectile_movement_system(world: &mut World) {
                         damage_type: info.damage_type,
                         area_of_effect: info.area_of_effect,
                         is_paralyzer: info.is_paralyzer,
+                        target_entity: None, // terrain hit, no specific target
                     });
                     info.despawned = true;
                     continue;
@@ -540,6 +549,11 @@ pub fn projectile_movement_system(world: &mut World) {
                 damage_type: info.damage_type,
                 area_of_effect: info.area_of_effect,
                 is_paralyzer: info.is_paralyzer,
+                target_entity: if info.area_of_effect == SimFloat::ZERO {
+                    Some(info.target_entity)
+                } else {
+                    None
+                },
             });
             info.despawned = true;
         }

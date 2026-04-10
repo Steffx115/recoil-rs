@@ -63,6 +63,7 @@ fn single_target_takes_damage() {
             damage_type: DamageType::Normal,
             area_of_effect: SimFloat::ZERO,
             is_paralyzer: false,
+            target_entity: None,
         });
 
     damage_system(&mut world);
@@ -126,6 +127,7 @@ fn aoe_damages_multiple_targets() {
             damage_type: DamageType::Normal,
             area_of_effect: sf(5),
             is_paralyzer: false,
+            target_entity: None,
         });
 
     damage_system(&mut world);
@@ -177,6 +179,7 @@ fn unit_dies_and_spawns_wreckage() {
             damage_type: DamageType::Normal,
             area_of_effect: SimFloat::ZERO,
             is_paralyzer: false,
+            target_entity: None,
         });
 
     damage_system(&mut world);
@@ -229,6 +232,7 @@ fn paralyzer_stuns_instead_of_killing() {
             damage_type: DamageType::Paralyzer,
             area_of_effect: SimFloat::ZERO,
             is_paralyzer: true,
+            target_entity: None,
         });
 
     damage_system(&mut world);
@@ -277,6 +281,7 @@ fn armor_multipliers_apply() {
             damage_type: DamageType::Explosive,
             area_of_effect: SimFloat::ZERO,
             is_paralyzer: false,
+            target_entity: None,
         });
 
     damage_system(&mut world);
@@ -317,6 +322,7 @@ fn armor_default_to_light_when_missing() {
             damage_type: DamageType::Laser,
             area_of_effect: SimFloat::ZERO,
             is_paralyzer: false,
+            target_entity: None,
         });
 
     damage_system(&mut world);
@@ -391,6 +397,7 @@ fn determinism_identical_runs() {
                 damage_type: DamageType::Normal,
                 area_of_effect: sf(5),
                 is_paralyzer: false,
+                target_entity: None,
             },
             ImpactEvent {
                 position: SimVec3::new(sf(50), sf(0), sf(50)),
@@ -398,6 +405,7 @@ fn determinism_identical_runs() {
                 damage_type: DamageType::Normal,
                 area_of_effect: SimFloat::ZERO,
                 is_paralyzer: false,
+                target_entity: None,
             },
         ]);
 
@@ -437,6 +445,7 @@ fn impact_queue_cleared() {
             damage_type: DamageType::Normal,
             area_of_effect: SimFloat::ZERO,
             is_paralyzer: false,
+            target_entity: None,
         });
 
     damage_system(&mut world);
