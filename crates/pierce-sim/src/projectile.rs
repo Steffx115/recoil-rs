@@ -452,6 +452,7 @@ pub fn projectile_movement_system(world: &mut World) {
         pos: SimVec3,
         vel: SimVec3,
         indirect_fire: bool,
+        despawned: bool,
     }
 
     let mut infos: Vec<ProjInfo> = Vec::new();
@@ -472,6 +473,7 @@ pub fn projectile_movement_system(world: &mut World) {
             pos: pos.pos,
             vel: vel.vel,
             indirect_fire: proj.indirect_fire,
+            despawned: false,
         });
     }
 
@@ -479,7 +481,6 @@ pub fn projectile_movement_system(world: &mut World) {
     let heightmap = world.get_resource::<Heightmap>().cloned();
 
     let mut impacts: Vec<ImpactEvent> = Vec::new();
-    let mut despawns: Vec<Entity> = Vec::new();
 
     for info in &mut infos {
         let prev_pos = info.pos;
@@ -510,7 +511,7 @@ pub fn projectile_movement_system(world: &mut World) {
         // Decrement lifetime — despawn if expired (prevents infinite orbit).
         info.lifetime = info.lifetime.saturating_sub(1);
         if info.lifetime == 0 {
-            despawns.push(info.entity);
+            info.despawned = true;
             continue;
         }
 
@@ -525,7 +526,7 @@ pub fn projectile_movement_system(world: &mut World) {
                         area_of_effect: info.area_of_effect,
                         is_paralyzer: info.is_paralyzer,
                     });
-                    despawns.push(info.entity);
+                    info.despawned = true;
                     continue;
                 }
             }
@@ -540,13 +541,13 @@ pub fn projectile_movement_system(world: &mut World) {
                 area_of_effect: info.area_of_effect,
                 is_paralyzer: info.is_paralyzer,
             });
-            despawns.push(info.entity);
+            info.despawned = true;
         }
     }
 
     // Write back updated positions and velocities (only for non-despawned).
     for info in &infos {
-        if despawns.contains(&info.entity) {
+        if info.despawned {
             continue;
         }
         if let Some(mut pos) = world.get_mut::<Position>(info.entity) {
@@ -567,9 +568,14 @@ pub fn projectile_movement_system(world: &mut World) {
         .events
         .extend(impacts);
 
+    // Pre-warm the damageable cache for damage_system (runs next).
+    crate::damage::populate_damageable_cache(world);
+
     // Despawn hit projectiles.
-    for entity in despawns {
-        world.despawn(entity);
+    for info in &infos {
+        if info.despawned {
+            world.despawn(info.entity);
+        }
     }
 }
 

@@ -1,8 +1,7 @@
 //! Damage application, death marking, wreckage spawning, and stun processing.
 
-use std::collections::BTreeMap;
-
 use bevy_ecs::entity::Entity;
+use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
 
 use crate::combat_data::{ArmorClass, DamageTable};
@@ -14,6 +13,70 @@ use crate::{SimFloat, SimVec2};
 
 const SINGLE_TARGET_RADIUS: SimFloat = SimFloat::TWO;
 const PARALYZER_STUN_FRAMES: u32 = 150;
+
+// ---------------------------------------------------------------------------
+// DamageableCache — pre-collected per frame, shared across systems
+// ---------------------------------------------------------------------------
+
+/// Cached damageable entity data, sorted by entity bits for binary search.
+/// Populated by `projectile_movement_system` (or lazily by `damage_system`
+/// if the cache is empty) so the data is ready before damage processing.
+#[derive(Resource, Default)]
+pub struct DamageableCache {
+    /// Sorted by `bits` for binary-search lookup.
+    pub entries: Vec<DamageableEntry>,
+}
+
+#[derive(Clone, Copy)]
+pub struct DamageableEntry {
+    pub bits: u64,
+    pub pos_xz: SimVec2,
+    pub armor: ArmorClass,
+}
+
+impl DamageableCache {
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    /// Look up by entity bits (binary search — entries must be sorted).
+    #[inline]
+    pub fn get(&self, bits: u64) -> Option<&DamageableEntry> {
+        self.entries
+            .binary_search_by_key(&bits, |e| e.bits)
+            .ok()
+            .map(|i| &self.entries[i])
+    }
+}
+
+/// Populate the [`DamageableCache`] from the current world state.
+/// Called by `projectile_movement_system` to pre-warm the cache, or
+/// lazily by `damage_system` if the cache is still empty.
+pub fn populate_damageable_cache(world: &mut World) {
+    let mut cache = world.resource_mut::<DamageableCache>();
+    cache.clear();
+
+    // Collect into local vec, then sort.
+    let mut entries = std::mem::take(&mut cache.entries);
+    entries.clear();
+
+    let mut q = world.query::<(Entity, &Position, Option<&Health>, Option<&ArmorClass>)>();
+    for (entity, pos, health, armor) in q.iter(world) {
+        if health.is_some() {
+            entries.push(DamageableEntry {
+                bits: entity.to_bits(),
+                pos_xz: SimVec2::new(pos.pos.x, pos.pos.z),
+                armor: armor.copied().unwrap_or(ArmorClass::Light),
+            });
+        }
+    }
+
+    entries.sort_unstable_by_key(|e| e.bits);
+
+    // Put it back.
+    let mut cache = world.resource_mut::<DamageableCache>();
+    cache.entries = entries;
+}
 
 /// Process all pending impacts: apply damage/stun, mark dead, spawn wreckage.
 pub fn damage_system(world: &mut World) {
@@ -28,35 +91,19 @@ pub fn damage_system(world: &mut World) {
         return;
     }
 
-    // 2. Pre-collect damageable entities (avoids per-impact ECS random access).
-    struct DamageableInfo {
-        pos_xz: SimVec2,
-        armor: ArmorClass,
-        has_health: bool,
-    }
-
-    let mut damageables: BTreeMap<u64, DamageableInfo> = BTreeMap::new();
-    {
-        let mut q = world.query::<(Entity, &Position, Option<&Health>, Option<&ArmorClass>)>();
-        for (entity, pos, health, armor) in q.iter(world) {
-            if health.is_some() {
-                damageables.insert(
-                    entity.to_bits(),
-                    DamageableInfo {
-                        pos_xz: SimVec2::new(pos.pos.x, pos.pos.z),
-                        armor: armor.copied().unwrap_or(ArmorClass::Light),
-                        has_health: true,
-                    },
-                );
-            }
-        }
+    // 2. Ensure damageable cache is populated (lazy fallback if projectile
+    //    system didn't pre-warm it, e.g. in tests).
+    if world.resource::<DamageableCache>().entries.is_empty() {
+        populate_damageable_cache(world);
     }
 
     let grid = world.resource::<SpatialGrid>();
     let table = world.resource::<DamageTable>().clone();
+    let cache = world.resource::<DamageableCache>();
 
-    // 3. Build per-target damage using pre-collected data + for_each_in_radius.
-    let mut damage_map: BTreeMap<u64, (i32, bool)> = BTreeMap::new(); // entity_bits → (total_damage, any_paralyzer)
+    // 3. Build per-target damage using cache + for_each_in_radius.
+    //    Vec of (entity_bits, total_damage, any_paralyzer), accumulated then sorted.
+    let mut damage_list: Vec<(u64, i32, bool)> = Vec::new();
 
     for impact in &impacts {
         let impact_xz = SimVec2::new(impact.position.x, impact.position.z);
@@ -65,12 +112,10 @@ pub fn damage_system(world: &mut World) {
             // AOE: damage all in radius.
             grid.for_each_in_radius(impact_xz, impact.area_of_effect, |entity, _pos| {
                 let bits = entity.to_bits();
-                if let Some(info) = damageables.get(&bits) {
+                if let Some(info) = cache.get(bits) {
                     let mult = table.get(impact.damage_type, info.armor);
                     let dmg = (impact.damage * mult).raw() >> 32;
-                    let entry = damage_map.entry(bits).or_insert((0, false));
-                    entry.0 += dmg as i32;
-                    if impact.is_paralyzer { entry.1 = true; }
+                    damage_list.push((bits, dmg as i32, impact.is_paralyzer));
                 }
             });
         } else {
@@ -78,7 +123,7 @@ pub fn damage_system(world: &mut World) {
             let mut best: Option<(u64, SimFloat)> = None;
             grid.for_each_in_radius(impact_xz, SINGLE_TARGET_RADIUS, |entity, _pos| {
                 let bits = entity.to_bits();
-                if let Some(info) = damageables.get(&bits) {
+                if let Some(info) = cache.get(bits) {
                     let dist_sq = info.pos_xz.distance_squared(impact_xz);
                     if best.is_none() || dist_sq < best.unwrap().1 {
                         best = Some((bits, dist_sq));
@@ -87,19 +132,32 @@ pub fn damage_system(world: &mut World) {
             });
 
             if let Some((bits, _)) = best {
-                if let Some(info) = damageables.get(&bits) {
+                if let Some(info) = cache.get(bits) {
                     let mult = table.get(impact.damage_type, info.armor);
                     let dmg = (impact.damage * mult).raw() >> 32;
-                    let entry = damage_map.entry(bits).or_insert((0, false));
-                    entry.0 += dmg as i32;
-                    if impact.is_paralyzer { entry.1 = true; }
+                    damage_list.push((bits, dmg as i32, impact.is_paralyzer));
                 }
             }
         }
     }
 
-    // 4. Apply accumulated damage (one ECS write per target, not per impact).
-    for (&bits, &(total_dmg, is_paralyzer)) in &damage_map {
+    // 4. Sort by entity bits and merge duplicates into accumulated totals.
+    damage_list.sort_unstable_by_key(|&(bits, _, _)| bits);
+
+    let mut merged: Vec<(u64, i32, bool)> = Vec::new();
+    for (bits, dmg, para) in damage_list {
+        if let Some(last) = merged.last_mut() {
+            if last.0 == bits {
+                last.1 += dmg;
+                last.2 |= para;
+                continue;
+            }
+        }
+        merged.push((bits, dmg, para));
+    }
+
+    // 5. Apply accumulated damage (one ECS write per target, not per impact).
+    for &(bits, total_dmg, is_paralyzer) in &merged {
         let entity = Entity::from_bits(bits);
 
         if is_paralyzer {
@@ -115,7 +173,7 @@ pub fn damage_system(world: &mut World) {
         }
     }
 
-    // 5. Mark dead and spawn wreckage.
+    // 6. Mark dead and spawn wreckage.
     let newly_dead: Vec<(Entity, Position)> = {
         let mut query = world.query::<(Entity, &Health, &Position)>();
         query

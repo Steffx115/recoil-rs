@@ -41,6 +41,7 @@ fn setup_world(defs: Vec<WeaponDef>) -> World {
     world.insert_resource(WeaponRegistry { defs });
     world.insert_resource(FireEventQueue::default());
     world.insert_resource(ImpactEventQueue::default());
+    world.insert_resource(crate::damage::DamageableCache::default());
     world
 }
 
@@ -314,6 +315,7 @@ fn determinism_identical_runs() {
         });
         world.insert_resource(FireEventQueue::default());
         world.insert_resource(ImpactEventQueue::default());
+        world.insert_resource(crate::damage::DamageableCache::default());
 
         let shooter = world.spawn(pos3(0, 0, 0)).id();
         let target = world.spawn(pos3(20, 0, 0)).id();

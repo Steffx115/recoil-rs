@@ -6,7 +6,7 @@ use std::hash::{Hash, Hasher};
 use crate::collision::collision_system;
 use crate::commands::command_system;
 use crate::components::{Heading, Health, MoveState, Position, SimId, Stunned, Velocity};
-use crate::damage::{damage_system, stun_system};
+use crate::damage::{damage_system, stun_system, DamageableCache};
 use crate::economy::economy_system;
 use crate::factory::factory_system;
 use crate::fog::fog_system_dispatched;
@@ -208,6 +208,9 @@ pub fn init_sim_world_sized(
     }
     if !world.contains_resource::<EconomyState>() {
         world.insert_resource(EconomyState::default());
+    }
+    if !world.contains_resource::<DamageableCache>() {
+        world.insert_resource(DamageableCache::default());
     }
 }
 

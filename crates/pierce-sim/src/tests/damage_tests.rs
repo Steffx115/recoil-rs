@@ -2,6 +2,7 @@ use super::*;
 use crate::combat_data::{ArmorClass, DamageTable, DamageType};
 use crate::components::{Dead, Health, Position, Stunned};
 use crate::construction::Reclaimable;
+use crate::damage::DamageableCache;
 use crate::projectile::{ImpactEvent, ImpactEventQueue};
 use crate::spatial::SpatialGrid;
 use crate::{SimFloat, SimVec2, SimVec3};
@@ -21,6 +22,7 @@ fn setup_world() -> World {
     let mut world = World::new();
     world.insert_resource(ImpactEventQueue::default());
     world.insert_resource(DamageTable::default());
+    world.insert_resource(DamageableCache::default());
     // Grid: cell_size=10, 100x100 map.
     world.insert_resource(SpatialGrid::new(sf(10), 100, 100));
     world
